@@ -124,14 +124,75 @@ const GROUP_NAMES = { leaders: "Season leaders", feats: "Moments & feats", award
 const CBY = Object.fromEntries(COLLECTIONS.map(c => [c.key, c]));
 function leaderBump(rank) { return rank === 1 ? 5 : rank <= 3 ? 4 : rank <= 6 ? 3 : 2; }
 
-// Ratings shown on a card: the season's ratings plus the collection's boost.
-function cardRatings(col, r, bump) {
-  const c = CBY[col], o = Object.assign({}, r);
-  if (!c || !bump || !c.boost) return o;
-  const keys = c.boost === "all" ? P.RKEYS : c.boost, add = c.boost === "all" ? bump : bump * 2;
-  for (const k of keys) o[k] = Math.min(99, o[k] + add);
-  return o;
+// ---------- card builds (like 2K: every card has its own attributes) ----------
+// A card starts from the player's ratings as that season began. Its collection reshapes them:
+// each collection has a profile (how much each rating is pushed) and each card a power (how
+// big the push is: the season's leader gets more than the 8th-best). Pushes shrink near 99, and
+// every card gets its own seeded wobble, so no two cards of a player read the same. The card's
+// overall is then recomputed from its ratings with the player's role weights, and never lands
+// below the base overall plus the collection's minimum lift.
+const PROFILES = {
+  posterized: { vert: 1, ins: 1, str: .6, bnc: .6, hands: .3 },
+  swat: { rim: 1, vert: .8, perD: .45, reb: .45 },
+  wrecking: { tck: 1, str: .8, acc: .6, spd: .4 },
+  escape: { brk: 1, sec: .8, str: .6, spd: .45 },
+  fouralarm: { fr: 1, thr: .7, ft: .45, iq: .3 },
+  splash: { thr: 1, mid: .6, ft: .5, fr: .3 },
+  dimes: { pas: 1, iq: .8, hands: .6, sec: .45 },
+  boards: { reb: 1, str: .6, vert: .5, hands: .45 },
+  pickpockets: { perD: 1, hands: .7, spd: .5, acc: .5 },
+  buckets: { ins: .8, mid: .8, thr: .6, ft: .5, iq: .3 },
+  fifty: { ins: .8, mid: .8, thr: .8, fr: .5, ft: .5 },
+  tripledouble: { pas: .8, reb: .8, iq: .6, hands: .45 },
+  postseason: { iq: .7, mid: .7, ins: .6, sta: .5 },
+  mvp: { all: .5, iq: .3 },
+  fmvp: { all: .45, iq: .35, ins: .2 },
+  dpoy: { perD: 1, rim: .8, tck: .7, iq: .4 },
+  roy: { all: .3, spd: .3, acc: .3, vert: .3 },
+  champ: { all: .25, iq: .3 },
+  dynasty: { all: .45, iq: .2 },
+  numberone: { all: .3, vert: .3, spd: .3 },
+  younggun: { spd: .8, acc: .8, vert: .7, bnc: .45 },
+  breakout: { all: .5 },
+  bench: { ins: .6, mid: .6, spd: .5, sta: .45 },
+  ageless: { iq: 1, pas: .6, ft: .6, mid: .5 },
+  prime: { all: .35 },
+  franchise: { all: .4 },
+  journeyman: { iq: .6, sta: .5, all: .1 },
+  hof: { all: .45, sig: .6 },
+  immortals: { all: .7, sig: .6 },
+  founders: { all: .2 },
+  wba: { spd: .45, vert: .45, thr: .45 },
+  expansion: { sta: .5, str: .4, all: .1 },
+  skyscrapers: { rim: .8, reb: .8, ins: .6 },
+  pocket: { spd: 1, acc: .8, sec: .7, hands: .5 },
+  ironworkers: { sta: 1, str: .6, all: .05 }
+};
+const MOMENT_PROFILES = { pts: { ins: .8, mid: .8, thr: .7, ft: .4 }, reb: { reb: 1, vert: .5, str: .5 }, ast: { pas: 1, iq: .7, hands: .5 }, tkl: { tck: 1, str: .7, acc: .5 }, dnk: { vert: 1, ins: 1, bnc: .6 }, fpm: { fr: 1, thr: .6, ft: .4 } };
+const POWER = { moments: 14, fifty: 16, mvp: 14, fmvp: 13, dpoy: 16, roy: 12, champ: 8, dynasty: 12, numberone: 10, younggun: 12, ageless: 12,
+  prime: 10, franchise: 12, journeyman: 8, hof: 16, immortals: 20, founders: 6, wba: 10, expansion: 8, skyscrapers: 12, pocket: 12, ironworkers: 10 };
+function cardPower(col, rank) { const c = CBY[col]; if (!c) return 0; if (c.kind === "leader") return rank === 1 ? 18 : rank <= 3 ? 14 : rank <= 6 ? 11 : 8; return POWER[col] || 0; }
+function minLift(col, rank) { const c = CBY[col]; if (!c) return 0; return c.kind === "leader" ? Math.max(1, leaderBump(rank) - 1) : Math.max(0, (c.bump || 0) - 1); }
+function seeded(seed) { let h = 2166136261; for (const ch of String(seed)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0; return () => { h ^= h << 13; h >>>= 0; h ^= h >> 17; h ^= h << 5; h >>>= 0; return h / 4294967296; }; }
+// o: { role, ovr (base overall), rank, season, pid, k (moment stat) }
+function cardBuild(col, r, o) {
+  const out = Object.assign({}, r), boosts = {};
+  const prof = col === "moments" ? MOMENT_PROFILES[o.k] || MOMENT_PROFILES.pts : PROFILES[col], pw = cardPower(col, o.rank);
+  if (!prof || !pw) return { r: out, ovr: o.ovr, boosts };
+  const R = seeded(col + ":" + o.season + ":" + o.pid);
+  const sig = prof.sig ? P.RKEYS.slice().sort((a, b) => r[b] - r[a]).slice(0, 3) : [];
+  for (const k of P.RKEYS) {
+    const w = (prof[k] || 0) + (prof.all || 0) + (sig.includes(k) ? prof.sig : 0), wob = R();
+    if (!w) continue;
+    const add = pw * w * (0.85 + wob * 0.3);
+    const v = Math.min(99, Math.round(r[k] + add * Math.max(0.15, (99 - r[k]) / 55)));
+    if (v > r[k]) { out[k] = v; boosts[k] = v - r[k]; }
+  }
+  const ovr = Math.min(99, Math.max(P.overall({ role: o.role, r: out }), o.ovr + minLift(col, o.rank)));
+  return { r: out, ovr, boosts };
 }
+// older call: ratings shown on a card (kept for callers that only need the ratings)
+function cardRatings(col, r, rank, o) { return cardBuild(col, r, Object.assign({ role: "WING", ovr: 0, rank, season: 0, pid: 0 }, o || {})).r; }
 
 // ---------- which cards a season hands out ----------
 // S: a season file. ctx: { players: players.json map, firstSeason: {pid: season}, peak: {pid: season}, hof: {pid: year},
@@ -151,7 +212,8 @@ function seasonCards(S, ctx) {
   const out = [];
   const add = (col, id, team, bump, rank, value, extra) => {
     const sp = snap(id); if (!sp) return;
-    const row = [col, S.season, id, team, Math.min(99, sp.ovr + bump), sp.ovr, rank, value, sp.num];
+    const b = cardBuild(col, sp.r, { role: sp.role, ovr: sp.ovr, rank, season: S.season, pid: id, k: extra && extra.k });
+    const row = [col, S.season, id, team, b.ovr, sp.ovr, rank, value, sp.num];
     if (extra) row.push(extra);
     out.push(row);
   };
@@ -227,7 +289,7 @@ function seasonCards(S, ctx) {
   return out;
 }
 
-const API = { TIERS, tierFor, POS, GROUPS, groupScores, BADGES, BADGE_TIERS, badges, COLLECTIONS, GROUP_NAMES, CBY, leaderBump, cardRatings, seasonCards };
+const API = { TIERS, tierFor, POS, GROUPS, groupScores, BADGES, BADGE_TIERS, badges, COLLECTIONS, GROUP_NAMES, CBY, leaderBump, PROFILES, cardPower, cardBuild, cardRatings, seasonCards };
 if (NODE) module.exports = Object.assign({}, API);
 else window.BB = Object.assign(window.BB || {}, { CARDS: API });
 })();

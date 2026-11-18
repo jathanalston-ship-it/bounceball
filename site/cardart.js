@@ -909,11 +909,12 @@ function back(c, r) {
  <text x="26" y="${line ? 266 : 232}" font-size="9" fill="${T.acc}" letter-spacing="1.6">BADGES</text>
  ${bd.length ? bd.map((b, i) => `<g transform="translate(${26 + (i % 2) * 100} ${(line ? 280 : 248) + Math.floor(i / 2) * 16})"><path d="M0,-5.5 L4.8,-2.8 V2.8 L0,5.5 L-4.8,2.8 V-2.8Z" transform="translate(4.5 -3.5)" fill="${BC[b.tier]}"/><text x="13" y="0" font-size="10" fill="#e9edf3">${xe(b.name)}</text></g>`).join("") : `<text x="26" y="${line ? 282 : 250}" font-size="10" fill="#8b95a5">None yet</text>`}
  <text x="30" y="333" font-size="8" fill="#8b95a5" letter-spacing="1.4">${c.serial ? `NO. ${xe(c.serial)}` : `UBL ${c.season}`}</text>
- <text x="220" y="333" font-size="8" fill="#8b95a5" letter-spacing="1.4" text-anchor="end">TAP TO FLIP</text>
+ <text x="220" y="333" font-size="8" fill="${c.boosts && Object.keys(c.boosts).length ? T.acc : "#8b95a5"}" letter-spacing="1" text-anchor="end">${c.boosts && Object.keys(c.boosts).length ? Object.entries(c.boosts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${SHORT[k] || k.toUpperCase()} +${v}`).join("  ") : "TAP TO FLIP"}</text>
 </g>
 ${gemSVG(T, c.tier.key, 125, 336)}
 </svg>`;
 }
+const SHORT = { spd: "SPD", acc: "ACC", str: "STR", vert: "VRT", bnc: "BNC", sta: "STA", hands: "HND", sec: "SEC", brk: "BRK", tck: "TCK", ins: "FIN", mid: "MID", thr: "3PT", fr: "4PT", ft: "FT", pas: "PAS", iq: "IQ", perD: "DEF", rim: "RIM", reb: "REB" };
 function valColor(v) { return v >= 90 ? "#c58bff" : v >= 80 ? "#35eaa3" : v >= 70 ? "#f6cf55" : v >= 60 ? "#ff9e5e" : "#ff5a6a"; }
 return { front, back, packSVG, mystery, valColor, TP, POSES, figure, mix, lum, rngOf, ABBR, ICON, W, H };
 })();

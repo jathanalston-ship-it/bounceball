@@ -34,6 +34,8 @@ function pcCard(col, season, pid, team, ovr, rank, value, num, wt, base) {
   return { col, season, pid, team, teamId: team || "FA", ovr, base: base === undefined ? ovr : base, rank: rank || 0, value, serial: PC.serials ? PC.serials[col + ":" + season + ":" + pid] : undefined, num: num === undefined ? p.num : num, name: p.name || "#" + pid, role: p.role || "WING", ht: p.ht || 78, wt: wt || p.wt || 210, c1: t.c1, c2: t.c2, tier: CC.tierFor(ovr) };
 }
 function pcBump(c) { const C = CC.CBY[c.col]; if (!C) return 0; return C.kind === "leader" ? CC.leaderBump(c.rank) : (C.bump || 0); }
+// this card's own attributes (same build the indexer used to rate it)
+function pcBuild(c) { return c.r ? CC.cardBuild(c.col, c.r, { role: c.role, ovr: c.base, rank: c.rank, season: c.season, pid: c.pid, k: c.extra && c.extra.k }) : null; }
 const COL_ORDER = Object.fromEntries(CC.COLLECTIONS.map((c, i) => [c.key, i]));
 // every card a player owns: one base card per season, the upcoming season's card, and collection cards
 function pcPlayerCards(p, det) {
@@ -83,7 +85,7 @@ function pcArch(r, p, season) { try { if (!BB.archetype || !r || !p) return null
 
 // ---------- flip card + viewer ----------
 function pcFlip(c, cls) {
-  const r = c.r ? CC.cardRatings(c.col, c.r, pcBump(c)) : null;
+  const b = pcBuild(c), r = b ? b.r : null; if (b) c.boosts = b.boosts;
   if (r && c.arch === undefined) { const a = pcArch(c.r, D.pl[c.pid], c.season); c.arch = a ? a.offName + " / " + a.defName : ""; }
   if (c.line === undefined) c.line = pcLine(c);
   return `<div class="fcard tilt ${cls || ""}" onclick="this.classList.toggle('flip')" title="Tap to flip"><div class="fc-in"><div class="fc-f">${CART.front(c)}</div><div class="fc-b">${r ? CART.back(c, r) : CART.front(c)}</div></div><div class="glare"></div></div>`;
@@ -115,7 +117,7 @@ async function pcOpen(i, key) {
   if (!c.r && c.col) { const det = await pcDetail(c.pid); const s = det && det.s.find(x => x[0] === c.season); if (s) { c.r = pcR(s); c.wt = s[4]; } }
   let m = $("cmodal");
   if (!m) { m = document.createElement("div"); m.id = "cmodal"; m.className = "cmodal"; document.body.appendChild(m); m.addEventListener("click", e => { if (e.target === m) pcClose(); }); }
-  const C = CC.CBY[c.col] || CC.CBY.base, base = c.r, boosted = base ? CC.cardRatings(c.col, base, pcBump(c)) : null;
+  const C = CC.CBY[c.col] || CC.CBY.base, base = c.r, built = pcBuild(c), boosted = built ? built.r : null;
   let attrs = "";
   if (boosted) {
     const gs = CC.groupScores(boosted);
@@ -134,6 +136,7 @@ async function pcOpen(i, key) {
     <div class="cm-info"><div><b>${esc(c.name)}</b> <span class="m">· ${c.season} · ${esc(C.name)}</span></div>
       <div class="tierline"><span class="gem t-${c.tier.key}"></span>${c.tier.name} · ${c.ovr} OVR${c.ovr > c.base ? ` <span class="m">(${c.base} base <span class="up">+${c.ovr - c.base}</span> card boost)</span>` : ""}</div>
       <p>${pcEarned(c)} ${c.col === "base" ? "" : `<span class="m">${esc(C.blurb || "")}</span>`}</p>
+      ${built && Object.keys(built.boosts).length ? `<p class="boostline">This card's build: ${Object.entries(built.boosts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `<b>${BB.RLABEL[k]}</b> <span class="up">+${v}</span>`).join(" · ")}${Object.keys(built.boosts).length > 5 ? ` <span class="m">and ${Object.keys(built.boosts).length - 5} more</span>` : ""}</p>` : c.col !== "base" ? `<p class="m small">This card keeps his ratings as they were that season.</p>` : ""}
       <p><a class="btn" href="#player-${c.pid}" onclick="pcClose()">Player page →</a> ${c.col !== "base" ? `<a class="btn ghost" href="#cards-${c.col}" onclick="pcClose()">${esc(C.name)} collection →</a>` : ""}</p></div>
     <h4>Attributes on this card</h4><div class="agrid">${attrs}</div></div>`;
   m.hidden = false; document.body.classList.add("noscroll");
@@ -369,12 +372,31 @@ function psCards() {
   h += `<div class="chips">${CC.COLLECTIONS.filter(c => byCol[c.key]).map(c => `<a class="cchip" href="#cards-${c.key}">${esc(c.name)} <b>${byCol[c.key]}</b></a>`).join("")}</div>`;
   h += `<div class="chips">${CC.TIERS.slice().reverse().filter(t => byTier[t.key]).map(t => `<span class="tchip"><span class="gem t-${t.key}"></span>${t.name} <b>${byTier[t.key]}</b></span>`).join("")}</div>`;
   h += `<div class="seg">${[["all", "All cards"], ["special", "Collections"], ["base", "Base"]].map(([k, n]) => `<button class="${f === k ? "on" : ""}" onclick="PC.ps.cf='${k}';$('pt-cards').innerHTML=psCards()">${n}</button>`).join("")}</div>`;
+  h += psCompare(cards);
   h += `<div class="cgrid binder">`; let lastY = null;
   list.forEach((c, i) => {
     if (c.season !== lastY) { lastY = c.season; const n = list.filter(x => x.season === c.season).length; h += `<div class="cdiv"><b>${c.season}</b> ${TB[c.team] ? chip(c.team) + TB[c.team].name : ""} <span class="m">· ${n} card${n === 1 ? "" : "s"}</span></div>`; }
     h += pcTile(c, i, c.col === "base" ? (c.upcoming ? "Upcoming" : "Base") : esc(CC.CBY[c.col].name), "binder");
   });
   return h + `</div>`;
+}
+
+// side-by-side attributes of every card he has from one season
+function psCompare(cards) {
+  const ys = [...new Set(cards.filter(c => c.r && c.col !== "base").map(c => c.season))].sort((a, b) => b - a);
+  if (!ys.length) return "";
+  const y = PC.ps.cy && ys.includes(PC.ps.cy) ? PC.ps.cy : ys[0];
+  const set = cards.filter(c => c.season === y && c.r).sort((a, b) => (a.col === "base") - (b.col === "base") || b.ovr - a.ovr);
+  const base = set.find(c => c.col === "base"), cols = (base ? [base] : []).concat(set.filter(c => c.col !== "base"));
+  const built = cols.map(c => (pcBuild(c) || { r: c.r }).r);
+  let h = `<h3>Compare his cards</h3><div class="vh"><p class="m small" style="margin:0">Every card has its own build. Same season, different card, different ratings.</p><select class="sp" onchange="PC.ps.cy=+this.value;$('pt-cards').innerHTML=psCards()">${ys.map(x => `<option ${x === y ? "selected" : ""}>${x}</option>`).join("")}</select></div>`;
+  h += `<div class="tw"><table class="box cmp"><thead><tr><th class="pn"></th>${cols.map(c => `<th><span class="gem t-${c.tier.key}"></span>${esc(c.col === "base" ? "Base" : CC.CBY[c.col].name)}</th>`).join("")}</tr></thead><tbody>`;
+  h += `<tr class="tot"><td class="pn">Overall</td>${cols.map(c => `<td><b>${c.ovr}</b></td>`).join("")}</tr>`;
+  for (const g of CC.GROUPS) for (const k of g.keys) {
+    const vals = built.map(r => r[k]), mx = Math.max(...vals), b0 = base ? base.r[k] : null;
+    h += `<tr><td class="pn">${BB.RLABEL[k]}</td>${vals.map((v, i) => `<td class="${v === mx && mx > Math.min(...vals) ? "lead" : ""}">${v}${b0 !== null && i > 0 && v > b0 ? `<sup class="up">+${v - b0}</sup>` : ""}</td>`).join("")}</tr>`;
+  }
+  return h + `</tbody></table></div>`;
 }
 
 // ----- career timeline -----
@@ -608,7 +630,9 @@ function pcMine(all) {
 .setg{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:6px}
 .setg>b{font:700 13px Oswald,sans-serif;letter-spacing:1px;text-transform:uppercase}
 .setr{display:grid;grid-template-columns:1fr 80px 54px;gap:8px;align-items:center;font-size:12.5px;color:var(--ink)}
-.setr .prog{margin:0}.setr small{color:var(--mut);text-align:right}.setr.done span{color:#35eaa3;font-weight:700}
+.setr .prog{margin:0}
+.boostline{font-size:12.5px}
+.box.cmp th{white-space:nowrap;font-size:11px}.box.cmp td{font-size:12.5px}.box.cmp sup.up{font-size:8.5px}.setr small{color:var(--mut);text-align:right}.setr.done span{color:#35eaa3;font-weight:700}
 @media (prefers-reduced-motion:reduce){.tear,.pslot,.pslot:before{animation:none!important}}`;
   document.head.appendChild(st);
 })();

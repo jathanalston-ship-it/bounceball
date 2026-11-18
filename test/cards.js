@@ -12,7 +12,7 @@ ok(C.tierFor(0).key === "rubber" && C.tierFor(99).key === "vulcan" && C.tierFor(
 const r97 = Object.fromEntries(P.RKEYS.map(k => [k, 97]));
 for (const c of C.COLLECTIONS) {
   ok(c.pose && c.name && c.blurb, c.key + " has a pose, name and blurb");
-  ok(Object.values(C.cardRatings(c.key, r97, 6)).every(v => v <= 99), c.key + " boosts cap at 99");
+  ok(Object.values(C.cardBuild(c.key, r97, { role: "BIG", ovr: 95, rank: 1, season: 1990, pid: 1, k: "pts" }).r).every(v => v <= 99), c.key + " ratings cap at 99");
 }
 ok(C.GROUPS.flatMap(g => g.keys).sort().join() === P.RKEYS.slice().sort().join(), "every rating is in exactly one group");
 
@@ -46,7 +46,16 @@ ok(n("numberone") === 1 && n("skyscrapers") === 1 && n("immortals") === 1 && n("
 ok(n("postseason") >= 3, "postseason scorers");
 ok(C.COLLECTIONS.every(c => c.group && C.GROUP_NAMES[c.group] || c.key === "base"), "every collection sits in a group");
 const lead = cards.find(c => c[0] === "posterized" && c[6] === 1);
-ok(lead && lead[4] === Math.min(99, lead[5] + 5), "leader gets +5");
+ok(lead && lead[4] >= Math.min(99, lead[5] + 4), "leader card lifts the overall");
+// every card has its own build: same player and season, different collections, different ratings
+const r60 = Object.fromEntries(P.RKEYS.map(k => [k, 60])), o = { role: "BIG", ovr: 62, rank: 1, season: 1990, pid: 9 };
+const dunk = C.cardBuild("posterized", r60, o), swat = C.cardBuild("swat", r60, o), mvp = C.cardBuild("mvp", r60, o);
+ok(dunk.r.vert > 70 && dunk.r.ins > 70 && dunk.r.rim === 60, "Posterized pushes vertical and finishing, not rim protection");
+ok(swat.r.rim > 70 && swat.r.ins === 60, "Swat Team pushes rim protection, not finishing");
+ok(P.RKEYS.every(k => mvp.r[k] > 60), "MVP lifts every rating");
+ok(C.cardBuild("posterized", r60, Object.assign({}, o, { rank: 1 })).r.vert > C.cardBuild("posterized", r60, Object.assign({}, o, { rank: 9 })).r.vert, "the leader's card is stronger than the 9th-best");
+ok(JSON.stringify(C.cardBuild("posterized", r60, o)) === JSON.stringify(dunk), "builds are deterministic");
+ok(C.cardBuild("rookie", r60, o).ovr === 62 && C.cardBuild("base", r60, o).r.vert === 60, "rookie and base cards keep the season's ratings");
 ok(C.seasonCards(Object.assign({}, S, { season: 1954 }), ctx).filter(c => c[0] === "founders").length === 60, "founders in the first season");
 console.log(`${cards.length} cards from a fake season, ${bad} problems`);
 process.exit(bad ? 1 : 0);
