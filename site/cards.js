@@ -126,7 +126,10 @@ async function vPlayerScreen(id, tab) {
   const keys = D.idx.keys, L = r => Object.fromEntries(keys.map((k, i) => [k, r[i]]));
   const reg = (D.idx.regular[id] || []).map(L).filter(s => s.gp), post = ((D.idx.playoffs || {})[id] || []).map(L).filter(s => s.gp);
   const cards = pcPlayerCards(p, det);
-  PC.ps = { id: +id, p, det, reg, post, cards, mode: "pg", which: "reg", rseason: null };
+  PC.ps = { id: +id, p, det, reg, post, cards, mode: "pg", which: "reg", rseason: null, ppt: null };
+  // how he scored in his most recent season (play types, from the season file)
+  const lastY = reg.length ? reg[reg.length - 1].season : null;
+  if (lastY) { try { const sd = await season(lastY); if (sd.ppt && sd.ppt[id]) PC.ps.ppt = { y: lastY, d: sd.ppt[id] }; } catch (e) { /* older data */ } }
   tab = PS_TABS.some(t => t[0] === tab) ? tab : "overview";
   const team = p.team ? TB[p.team] : TB[(reg[reg.length - 1] || {}).team] || null;
   const c1 = team ? team.c1 : "#59606b", c2 = team ? team.c2 : "#23272e";
@@ -187,6 +190,11 @@ function psOverview() {
     const c = {}; for (const [y, a] of p.awards) (c[a] = c[a] || []).push(y);
     const order = ["mvp", "fmvp", "champ", "dpoy", "roy", "sniper"];
     h += `<h3>Trophy case</h3><div class="trophies">${order.filter(a => c[a]).map(a => `<div class="tro ${a}"><b>${c[a].length > 1 ? c[a].length + "×" : ""}</b><span>${AWS[a]}</span><small>${c[a].join(", ")}</small></div>`).join("")}${p.hof ? `<div class="tro hof"><b>HOF</b><span>Hall of Fame</span><small>Class of ${p.hof}</small></div>` : ""}</div>`;
+  }
+  // how he scores
+  if (PC.ps.ppt) {
+    const d = PC.ps.ppt.d, ks = Object.keys(d).filter(k => BB.PT_LABEL[k]).sort((a, b) => d[b][1] - d[a][1]), tot = ks.reduce((a, k) => a + d[k][1], 0);
+    if (tot > 0) h += `<h3>How he scored in ${PC.ps.ppt.y}</h3><div class="tw"><table class="box strat"><thead><tr><th class="pn">Play type</th><th>Points</th><th>Share</th><th>Shots</th><th>Pts/shot</th></tr></thead><tbody>${ks.map(k => `<tr><td class="pn">${BB.PT_LABEL[k]}</td><td class="b">${d[k][1]}</td><td><i class="meter"><i style="--v:${Math.round(d[k][1] / tot * 100)}%"></i></i> ${Math.round(d[k][1] / tot * 100)}%</td><td>${d[k][0]}</td><td>${(d[k][1] / Math.max(1, d[k][0])).toFixed(2)}</td></tr>`).join("")}</tbody></table></div>`;
   }
   // overall progression
   if (det && det.s.length) h += `<h3>Overall by season</h3>` + psOvrChart(det.s, p);

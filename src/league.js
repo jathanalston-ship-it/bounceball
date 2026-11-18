@@ -10,7 +10,7 @@ const T = NODE ? require("./teams.js") : window.BB;
 const ST = NODE ? require("./staff.js") : window.BB;
 const TR = NODE ? require("./trouble.js") : window.BB;
 const { clamp, makeRng, hashStr } = E;
-const LEAGUE_VERSION = "0.4.0";
+const LEAGUE_VERSION = "0.5.0";
 const GAMES = 82, ROSTER_MIN = 13, ROSTER_MAX = 15, ACTIVE = 13;
 const ROSTER_ROLES = ["PG","WING","SNIPER","BRUISER","BIG","PG","WING","WING","SNIPER","BRUISER","BRUISER","BIG","BIG"];
 const STAT_KEYS = ["gp","gs","min","pts","fgm","fga","tpm","tpa","fpm","fpa","ftm","fta","oreb","dreb","ast","stl","blk","to","tkl","btk","pf","dnk"];
@@ -225,8 +225,30 @@ function runGame(sp, rosters, tactics) {
   const ids = rosters[0].concat(rosters[1]).map(p => p.id);
   const lines = box.map((b, i) => [ids[i], b.played ? 1 : 0, g.roster[i].starter ? 1 : 0, Math.round(b.secs), b.pts, b.fgm, b.fga, b.tpm, b.tpa, b.fpm, b.fpa, b.ftm, b.fta, b.oreb, b.dreb, b.ast, b.stl, b.blk, b.to, b.tkl, b.btk, b.pf, b.dnk]);
   const downs = g.events.filter(e => e.type === "tackle" && e.result === "down").map(e => ids[e.on]);
-  return { gid: sp.gid, hs: g.score[0], as: g.score[1], per: g.periods, lines, downs };
+  // hurt in the game (the engine decides who and what; the league decides how long), and ejections
+  const inj = g.events.filter(e => e.type === "injury").map(e => [ids[e.pid], e.k]);
+  const ej = g.events.filter(e => e.type === "ejected").map(e => ids[e.pid]);
+  // how each team played (identity) and how each player scored (play types)
+  const rep = E.strategyReport(g), style = [0, 1].map(t => styleOf(g, rep, box, t));
+  const ppt = {};
+  for (const e of g.events) if (e.type === "fga" && e.pt) { const id = ids[e.pid], o = ppt[id] || (ppt[id] = {}), a = o[e.pt] || (o[e.pt] = [0, 0]); a[0]++; if (e.made) a[1] += e.val; }
+  return { gid: sp.gid, hs: g.score[0], as: g.score[1], per: g.periods, lines, downs, inj, ej, style, ppt };
 }
+// One game's team identity numbers (summed over a season, then divided by games)
+const STYLE_KEYS = ["g", "poss", "fga", "fpa", "tpa", "pnr", "iso", "post", "offscr", "sets", "ato", "hunt", "tkA", "tkDown", "tkFum", "tkBroke", "hitBig", "moves", "flag", "pAll", "cov_drop", "cov_hedge", "cov_switch", "cov_ice", "cov_trap"];
+function styleOf(g, rep, box, t) {
+  const R = rep[t], o = {}; for (const k of STYLE_KEYS) o[k] = 0;
+  o.g = 1; o.pAll = g.score[t]; o.poss = g.poss ? g.poss[t] : 0;
+  for (const b of box) if (b.t === t) { o.fga += b.fga; o.fpa += b.fpa; o.tpa += b.tpa; }
+  for (const e of g.events) {
+    if (e.type === "call" && e.team === t) { if (o[e.kind] !== undefined && e.kind !== "pnr") o[e.kind]++; if (e.kind === "pnr") o.pnr++; if (e.set && SETS_CUSTOM.has(e.set)) o.sets++; if (e.ato) o.ato++; if (e.hunt) o.hunt++; }
+    else if (e.type === "cover" && e.team === t && o["cov_" + e.kind] !== undefined) o["cov_" + e.kind]++;
+  }
+  const tk = R.tk; o.tkA = tk.down + tk.fumble + tk.broken + tk.whiff + tk.late + tk.rough + tk.flagrant; o.tkDown = tk.down; o.tkFum = tk.fumble; o.tkBroke = tk.broken + tk.whiff; o.hitBig = R.tech.hit || 0; o.flag = tk.flagrant;
+  for (const k in rep[1 - t].moves) o.moves += rep[1 - t].moves[k];
+  return o;
+}
+const SETS_CUSTOM = new Set(["horns", "spain", "split", "floppy", "elevator", "dho", "hammer", "blob"]);
 // Single-game highs and feat counts per player (bookkeeping only: never touches an RNG)
 const HIGH_KEYS = ["pts","reb","ast","stl","blk","tkl","btk","dnk","tpm","fpm"];
 const FEAT_KEYS = ["dd","td","g30","g40","g50"];
@@ -267,17 +289,24 @@ function applyResults(S, specs, results) {
       s.wins[hiWon ? 0 : 1]++; s.games.push(sp.gid);
       if (s.wins[0] === 4 || s.wins[1] === 4) s.winner = s.wins[0] === 4 ? s.hi : s.lo;
     }
-    // injuries: tackles are the main cause, plus wear and tear
+    // injuries: hurt in the game (from the engine, so the replay shows it), plus wear and tear
     const played = new Set(r.lines.filter(l => l[1] && l[3] > 300).map(l => l[0]));
     const hurt = new Set();
-    for (const id of r.downs) if (rng.chance(0.03)) hurt.add(id);
-    for (const id of played) if (rng.chance(0.0025 + Math.max(0, P.age(S.players[id], S.season) - 30) * 0.0006)) hurt.add(id);
-    for (const id of hurt) {
-      const p = S.players[id]; if (!p.team || (p.injury && p.injury.out > 0)) continue;
-      let k = Math.min(INJ.length - 1, Math.floor(Math.abs(rng.normal(0, 2.2))));
-      if (r.downs.includes(id) && rng.chance(0.3)) k = 4;
-      const [name, lo, hi] = INJ[k]; const out = rng.int(lo, hi);
-      p.injury = { name, out }; cur.injuries.push([sp.gid, id, p.team, name, out]);
+    const hurtIn = (id, name, out) => { const p = S.players[id]; if (!p || !p.team || (p.injury && p.injury.out > 0)) return; hurt.add(id); p.injury = { name, out }; cur.injuries.push([sp.gid, id, p.team, name, out]); };
+    if (r.inj) for (const [id, k] of r.inj) { const I = E.INJURIES[k]; hurtIn(id, I[0], rng.int(I[2], I[3])); }
+    for (const id of played) if (!hurt.has(id) && rng.chance(0.0022 + Math.max(0, P.age(S.players[id], S.season) - 30) * 0.0006)) {
+      const k = Math.min(INJ.length - 1, Math.floor(Math.abs(rng.normal(0, 2.2)))), [name, lo, hi] = INJ[k]; hurtIn(id, name, rng.int(lo, hi));
+    }
+    // a flagrant 2 ejection carries a one-game suspension
+    if (r.ej) for (const id of r.ej) { const p = S.players[id]; if (!p || !p.team) continue; p.susp = (p.susp || 0) + 1; cur.blotter.push({ who: "player", id, team: p.team, text: "was ejected for a flagrant 2 and suspended a game", kind: "susp", games: 1, fine: 0, day: cur.day, season: S.season, phase: cur.phase }); }
+    // team identity and how each player scores
+    if (r.style && sp.type === 0) {
+      cur.style = cur.style || {};
+      [sp.home, sp.away].forEach((tid, t) => { const o = cur.style[tid] || (cur.style[tid] = {}); for (const k of STYLE_KEYS) o[k] = (o[k] || 0) + (r.style[t][k] || 0); });
+    }
+    if (r.ppt) {
+      const pt = sp.type === 0 ? (cur.ppt = cur.ppt || {}) : (cur.pppt = cur.pppt || {});
+      for (const id in r.ppt) { const o = pt[id] || (pt[id] = {}); for (const k in r.ppt[id]) { const a = o[k] || (o[k] = [0, 0]); a[0] += r.ppt[id][k][0]; a[1] += r.ppt[id][k][1]; } }
     }
     // games missed (injury or suspension) tick down for both teams
     for (const tid of [sp.home, sp.away]) for (const p of teamPlayers(S, tid)) {
@@ -632,6 +661,7 @@ function exportSeason(S) {
     stats: statArr(cur.stats), pstats: statArr(cur.pstats),
     highKeys: HIGH_KEYS, featKeys: FEAT_KEYS, highs: cur.highs || {}, phighs: cur.phighs || {},
     players: cur.snapshot, injuries: cur.injuries, tx: cur.tx, blotter: cur.blotter,
+    styleKeys: STYLE_KEYS, style: cur.style || {}, ppt: cur.ppt || {}, pppt: cur.pppt || {},
     coaches: cur.coachSnap, owners: Object.fromEntries(S.active.map(t => { const o = S.owners[S.teams[t].owner]; return [t, { id: o.id, name: o.first + " " + o.last }]; }))
   };
 }
