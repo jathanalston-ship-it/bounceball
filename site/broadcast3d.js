@@ -365,6 +365,7 @@ function eraLook(season, id) {
 // r: { id, ht, wt, num, name }, tm: the team (city, name, id), c1/c2: the uniform colors
 function playerSpec(r, era, tm, c1, c2, idx) {
   const id = (r.id || idx || 0) * 3 + 1, look = eraLook(era, id), h = look.h, H = (r.ht || 78) / 12, ws = clamp(Math.sqrt((r.wt || 210) / ((r.ht || 78) * 2.85)), 0.85, 1.3);
+  if ((era || 2000) >= 1986) { look.helmet = true; look.pads = true; look.headband = false; } // the 1986 gear rule: soft-shell helmets and shoulder pads
   const si = Math.floor(hash(id * 7 + 3) * SKIN.length), skin = SKIN[si];
   const hairC = si >= 4 ? HAIRC[h(8) < 0.85 ? 0 : 1] : HAIRC[Math.floor(h(9) * HAIRC.length)];
   let shoe, shoe2;
@@ -373,7 +374,7 @@ function playerSpec(r, era, tm, c1, c2, idx) {
   else { shoe = h(10) < 0.45 ? c1 : h(10) < 0.75 ? "#141414" : "#f2f2f2"; shoe2 = c2; }
   const sockC = look.sock === "low" ? (h(11) < 0.6 ? "#f2f2f2" : "#141414") : look.sock === "mid" ? (h(11) < 0.5 ? c1 : "#f2f2f2") : "#f2f2f2";
   const tightsC = h(18) < 0.6 ? "#141414" : c1, kneeC = h(19) < 0.6 ? "#161616" : "#f0f0f0";
-  return { H, ws, id, skin, hairC, look, accent: c2, c2, shoe, shoe2, shoeStyle: look.shoe, tightsC, kneeC, sock: { kind: look.sock, c: sockC }, sock2: c1,
+  return { H, ws, id, skin, hairC, look, accent: c2, c1, c2, shoe, shoe2, shoeStyle: look.shoe, tightsC, kneeC, sock: { kind: look.sock, c: sockC }, sock2: c1,
     cloth: { atlas: jerseyAtlas(r.num, String(r.name || "").split(" ").slice(-1)[0], tm, c1, c2, skin, era), top: true, hem: 0.5, shortsLen: look.shortsLen, bag: look.bag } };
 }
 
@@ -579,7 +580,7 @@ function buildHead(gb, o, M, H, skin, look, hg) {
   // hair: a shell over the skull trimmed to a hairline, plus volume by style
   const hl = (x, y, z) => y > 0.5 * sstep(z / 0.9) - 0.56 * sstep(-z / 0.9) - 0.04 && !(Math.abs(x) > 0.75 && y < 0.18 && z > -0.45);
   hl.sdf = (x, y, z) => Math.min(y - (0.5 * sstep(z / 0.9) - 0.56 * sstep(-z / 0.9) - 0.04) + 0.012 * Math.sin(x * 23 + z * 17), z < -0.5 ? 1 : (Math.hypot((Math.abs(x) - 0.98) / 0.32, (y + 0.06) / 0.3) - 1) * 0.25); // round cut around the temples and ears
-  const style = look.hair || "crop";
+  const style = look.helmet ? "none" : look.hair || "crop";
   const hcol = (x, y, z) => hairC.clone().multiplyScalar(0.84 + 0.3 * (0.5 + 0.5 * Math.sin(x * 37 / r + z * 23 / r) * Math.sin(y * 29 / r + x * 5 / r))); // lighter and darker locks
   if (style === "crop") placeH(shell(1.05, hl), 0, 0, 0, hcol);
   else if (style === "buzz") placeH(shell(1.022, hl), 0, 0, 0, hcol);
@@ -596,6 +597,14 @@ function buildHead(gb, o, M, H, skin, look, hg) {
     const strap = new THREE.TorusGeometry(1.0 * r, 0.045 * r, 5, 28); strap.rotateX(PI / 2); place(strap, 0, 0.14 * r, -0.03 * r, gm);
   }
   if (look.headband) { const b = new THREE.TorusGeometry(1.0 * r, 0.085 * r, 6, 24); b.rotateX(PI / 2 + 0.18); b.scale(0.92, 1, 1.02); place(b, 0, 0.38 * r, -0.03 * r, col(o.accent || "#ffffff")); }
+  if (look.helmet) { // 1986 on: a padded soft-shell helmet in the team color (vertical pad ridges, ear flaps, a chin strap)
+    const hc = col(o.c1 || o.accent || "#888888");
+    const cap = shell(1.13, (x, y, z) => y > -0.12 + 0.2 * sstep(z / 0.7) && !(z > 0.5 && y < 0.42), (x, y, z) => 0.045 * Math.pow(Math.abs(Math.cos(Math.atan2(x, z) * 5)), 0.6) * sstep((y + 0.1) / 0.4));
+    place(cap, 0, 0.02 * r, -0.02 * r, hc);
+    const rim = new THREE.TorusGeometry(1.08 * r, 0.05 * r, 6, 30); rim.rotateX(PI / 2 + 0.38); rim.scale(0.98, 1, 1.03); place(rim, 0, 0.14 * r, -0.12 * r, col(o.accent || "#ffffff"));
+    for (const sd of [-1, 1]) { const flap = new THREE.SphereGeometry(1, 12, 10); flap.scale(0.13 * r, 0.3 * r, 0.25 * r); place(flap, sd * 0.93 * r, -0.02 * r, -0.08 * r, hc); }
+    const strap = new THREE.TorusGeometry(0.86 * r, 0.025 * r, 5, 22, PI); strap.rotateY(PI / 2); strap.rotateX(PI); place(strap, 0, -0.22 * r, 0.12 * r, col("#1a1a1a"), jawW);
+  }
 }
 function castShadows(m, on) { m.root.traverse(o => { if (o.isMesh) o.castShadow = on; }); }
 function disposeFigure(m) { m.root.traverse(o => { if (o.isMesh) { o.geometry.dispose(); if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); }
@@ -669,6 +678,7 @@ const _pv = new V3(), _pw = new V3();
 function photo(spec) {
   const P = photoRig(), C = CPOSE[spec.pose] || CPOSE.portrait;
   const o = playerSpec(spec.r, spec.season, spec.tm, spec.c1, spec.c2);
+  if (o.look.helmet && (spec.hat || !["dunk", "block", "shoot", "tackle", "stiffarm", "pass", "rebound", "steal", "dribble", "guard", "fadeaway", "hangrim", "crossover"].includes(spec.pose))) o.look = Object.assign({}, o.look, { helmet: false }); // helmet off for the studio
   if (spec.hat === "clover") { o.look = Object.assign({}, o.look, { headband: true }); o.accent = "#2f9e44"; }
   const m = buildFigure(o), H = m.H;
   if (spec.hat === "santa") santaHat(m, o.look.hair);
@@ -904,6 +914,16 @@ function poseFor(m, c) {
     case ACT.HURDLE: { // lead leg out straight, trail leg tucked, arms out for balance
       p = base(); p.hLx = -1.7; p.kL = 0.15; p.fL = 0.2; p.hRx = 0.7; p.kR = 1.9; p.fR = 0.5; p.aLx = -1.4; p.aLz = 1.0; p.eL = -0.3; p.aRx = -0.9; p.aRz = -1.15; p.eR = -0.6; p.spineX = 0.2; p.headX = -0.2; fast = true; break;
     }
+    case ACT.FIGHT: { // squared up: fists high, throwing hands
+      const ph = (t * 3.1) % 2, pr = ph < 0.45 ? Math.sin(ph / 0.45 * PI) : 0, pl = ph > 1 && ph < 1.45 ? Math.sin((ph - 1) / 0.45 * PI) : 0;
+      p.crouch = 0.12; p.spineX += 0.1; p.spineY = (pr - pl) * 0.35;
+      p.aLx = -1.25 - pl * 0.35; p.eL = -2.0 + pl * 1.8; p.aLz = 0.25; p.aRx = -1.2 - pr * 0.35; p.eR = -2.1 + pr * 1.9; p.aRz = -0.25;
+      p.kL = 0.5; p.kR = 0.35; p.hLx = -0.35; p.brow = -0.95; p.jaw = 0.1; fast = true; break;
+    }
+    case ACT.HOLD: { // in the middle of it: grabbing, shoving, pulling a teammate away
+      const sw = Math.sin(t * 4.2 + m.ph) * 0.15; p.crouch = 0.1; p.spineX += 0.16; p.spineY = sw;
+      p.aLx = p.aRx = -1.5; p.eL = p.eR = -0.45; p.aLz = 0.28 + sw; p.aRz = -0.28 + sw; p.kL = 0.45; p.kR = 0.3; p.brow = -0.6; fast = true; break;
+    }
     case ACT.HURT: { // down and staying down: a knee pulled up, a hand on the spot
       p = base(); const face = m.fallDir > 0, k = sstep(t / 0.28), wr = t > 0.6 ? Math.sin(t * 2.4) : 0;
       p.pitch = (face ? 1.5 : -1.45) * k; p.drop = k;
@@ -986,6 +1006,8 @@ function poseFor(m, c) {
       case ACT.TACKLE: case ACT.DIVE: case ACT.BIGHIT: cl = cr = 1.05; break;
       case ACT.DOWN: case ACT.GETUP: case ACT.HURT: cl = cr = 0.75; break;
       case ACT.STIFFARM: cl = -0.2; break;
+      case ACT.FIGHT: cl = cr = 1.15; break;
+      case ACT.HOLD: cl = cr = 0.3; break;
       case ACT.CALL: { const fist = t > 0.6 ? 1.55 : -0.12; if (c.dribble.hand > 0) cr = fist; else cl = fist; break; }
       case ACT.DUNK: if (c.z > 0.3) cl = cr = 0.32; break;
     }
@@ -1820,7 +1842,7 @@ function create(canvas, opts) {
   }
 
   // ---------- game state ----------
-  let waves = [], G = null, teams = null, EV = [], EVT = [], era = 2000, signTex = null;
+  let waves = [], G = null, teams = null, EV = [], EVT = [], era = 2000, signTex = null, FIGHTS = [];
   const courtCache = new Map();
   function setGame(game, home, away, colors, o) {
     G = game; teams = [home, away]; era = (o && o.season) || 2000;
@@ -1836,6 +1858,7 @@ function create(canvas, opts) {
     paintCourtside(home, away, colors); padMat.color.set(home.c1); buildBanners(home, (o && o.banners) || []);
     buildCoaches(home, away);
     EV = G.events; EVT = EV.map(e => e.tk);
+    FIGHTS = EV.filter(e => e.type === "fight").map(e => { const z = EV.find(x => x.type === "ejected" && x.why === "fight" && x.tk >= e.tk); return { t0: e.tk, t1: z ? z.tk : e.tk + 120, a: e.pid, b: e.on }; });
     waves = []; for (const per of [2, 3]) { const a = EV.find(e => e.type === "period_start" && e.per === per), z = EV.find(e => e.type === "period_end" && e.per === per); if (a && z) { const t0 = a.tk + (0.3 + 0.35 * hash(G.ticks * 0.37 + per)) * (z.tk - a.tk); waves.push([t0, t0 + 680]); } }
     cam.init = false; dir.shot = null; lastTick = -1; finT0 = -1;
     for (const h of hoops) h.net.reset();
@@ -1873,7 +1896,12 @@ function create(canvas, opts) {
   const attRight = (off, per) => ((off === 0) !== (per >= 3));
 
   // ---------- refs and crowd energy: pure functions of the tick ----------
+  // fights: the officials run in and pull them apart
+  function fightAt(tick) { for (const f of FIGHTS) if (tick >= f.t0 && tick <= f.t1 + 30) return f; return null; }
+  function fightSpot(f, tick) { let x = 0, y = 0, n = 0; for (let k = 0; k < 10; k++) { const sp = samplePlayer(k, tick); if (sp.idx === f.a || sp.idx === f.b) { x += sp.x; y += sp.y; n++; } } return n ? { x: x / n, y: y / n } : null; }
   function refTargets(tick) {
+    const fg = fightAt(tick), fs = fg && tick >= fg.t0 + 14 ? fightSpot(fg, tick) : null;
+    if (fs) return [{ x: fs.x + 2.0, y: fs.y }, { x: fs.x - 1.5, y: fs.y + 1.9 }, { x: fs.x - 1.5, y: fs.y - 1.9 }];
     const m = meta(tick), b = sampleBall(tick), right = attRight(m.off, m.per), hx = right ? 88.75 : 5.25, d = right ? -1 : 1, base_ = right ? 96.2 : -2.2;
     return [{ x: base_, y: clamp(b.y, 14, 36) }, { x: hx + d * 31, y: 52.2 }, { x: hx + d * 23, y: -2.2 }];
   }
@@ -2168,6 +2196,7 @@ function create(canvas, opts) {
         else if (sig.kind === "point") { t.aRx = -1.6 * k; t.eR = -0.05; t.aRz = -0.2; }
       }
       if (tip) { t.aRx = -2.95; t.eR = -0.15; t.wR = 0.4; t.aLx = -0.4; t.headX = -0.4; }
+      const fgt = fightAt(tick); if (fgt && tick > fgt.t0 + 24) { t.aLx = t.aRx = -1.45; t.eL = t.eR = -0.25; t.aLz = 0.55; t.aRz = -0.55; t.spineX = 0.12; } // arms out, getting between them
       if (jump) r.m.P = null;
       if (!r.m.look) r.m.look = new V3(); r.m.look.set(b.x, b.z, b.y); r.m.lookW = sig && sig.kind ? 0.3 : 0.8;
       applyPose(r.m, t, gdt, true, () => { r.m.root.position.set(p.x, 0, p.y); r.m.root.rotation.y = PI / 2 - face; });

@@ -449,3 +449,15 @@ div.tline{border-left:2px solid var(--line);margin:6px 0 0 8px;padding-left:16px
 @media (max-width:600px){.chalk{width:min(150px,40%)}.chalk .cht{font-size:10.5px}}
 .idtags{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}.idtags span{background:#222a36;border:1px solid #384356;border-radius:12px;padding:2px 10px;font:600 12px Oswald;letter-spacing:.5px;color:#e8ecf2}
 .idkv small{display:block;color:#8b95a6;font-size:11px}
+
+/* v0.6: officials, storylines, the head game */
+.card .crew{margin:8px auto 0;max-width:560px;font-size:12.5px;color:#d7dce4;text-align:center;line-height:1.4}
+.card .crew b{font:600 11px Oswald;letter-spacing:1.2px;color:#ffd166;text-transform:uppercase;margin-right:6px}
+.card .crew em{font-style:normal;color:#8b95a6}.card .crew span{display:block;color:#9aa4b5;font-size:11.5px}
+.card .crew.sm{margin-top:10px}
+.card .story{list-style:none;margin:8px auto 0;padding:0;max-width:560px;font-size:12.5px;color:#e8ecf2;text-align:center}
+.card .story li{margin:2px 0}.card .story li:before{content:"▸ ";color:#ffd166}
+.psytag{position:absolute;left:8px;top:118px;background:rgba(10,12,16,.88);border-left:4px solid var(--c);padding:2px 9px 3px;border-radius:3px;color:#fff;font:600 12px Oswald;letter-spacing:.8px;transform:translateX(-130%);transition:transform .3s ease;pointer-events:none;z-index:5}
+.psytag.on{transform:none}.psytag b{color:var(--t);margin-right:5px;letter-spacing:1.2px}
+.crewp{font-size:13px;margin:4px 0 8px}
+.rulebook{list-style:none;padding:0;margin:4px 0 14px}.rulebook li{padding:5px 0;border-bottom:1px solid #222a36;font-size:13.5px}.rulebook b{display:inline-block;width:52px;color:#ffd166;font:600 14px Oswald}

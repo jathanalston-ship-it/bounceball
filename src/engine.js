@@ -1,7 +1,13 @@
 // ===================== BOUNCEBALL GAME ENGINE =====================
 // Pure, seeded, deterministic. No DOM. Same seed + same rosters + same coaches + same season + same
-// ENGINE_VERSION = same game. A stored game only needs {seed, lineups, coaches, season}; frames are re-derived.
+// ENGINE_VERSION = same game. A stored game only needs {seed, lineups, coaches, season, ctx}; frames are re-derived.
 //
+// v0.6: the rules change with the era (the flagrant rule in 1969, the fighting crackdown in 1977, helmets and pads
+// in 1986, the two-man gang limit in 1998, the targeting rule in 2011). Referee crews have tendencies and lean
+// (slightly) toward the home team. Cheap shots bring enforcers and fights. Players have a temperament: clutch or
+// not, streaky (a subtle hot hand), tough or easily rattled, hot-tempered or calm; grudges, rivalries and revenge
+// games carry from game to game, and new teammates take time to click. Tired legs (back-to-backs, travel) and
+// concussion history come in from the league. Everything per-game arrives in opts.ctx, so replays still match.
 // v0.5: coaches run real sets from a playbook (Horns, Spain, Floppy, Elevator, Hammer, handoffs, post splits,
 // after-timeout and baseline-inbound plays), pick a pick-and-roll coverage (drop, hedge, switch, ice, hit trap),
 // hunt mismatches and scram-switch out of them, and scout the opponent. The tackle game goes deeper: a hit on
@@ -13,7 +19,7 @@
 // own way (and low-IQ hotheads freelance). Rules added: fumbles are live balls, gang tackles are legal,
 // and hitting an airborne player is roughing. The four-point line arrives with the 1979 merger.
 "use strict";
-const ENGINE_VERSION = "0.5.0";
+const ENGINE_VERSION = "0.6.0";
 const C = {
   L: 94, W: 50, HX: [5.25, 88.75], HY: 25, RIM: 10,
   R3: 23.75, C3: 22, C3X: 14.2, R4: 30, FTD: 15,
@@ -27,7 +33,7 @@ const DT = C.DT, GRAV = C.G;
 // What each player is doing, recorded in every frame so the broadcast can animate it.
 const ACT = { NONE: 0, DRIBBLE: 1, SHOOT: 2, LAYUP: 3, DUNK: 4, PASS: 5, CATCH: 6, TACKLE: 7, DOWN: 8, GETUP: 9, CONTEST: 10, REBOUND: 11, SWAT: 12,
   CELEBRATE: 13, STANCE: 14, BOXOUT: 15, SCREEN: 16, FT: 17, INBOUND: 18, STUMBLE: 19, REACH: 20, POST: 21, HUDDLE: 22, CALL: 23, WALL: 24,
-  SPIN: 25, HURDLE: 26, STIFFARM: 27, JUKE: 28, HURT: 29, DIVE: 30, BIGHIT: 31 };
+  SPIN: 25, HURDLE: 26, STIFFARM: 27, JUKE: 28, HURT: 29, DIVE: 30, BIGHIT: 31, FIGHT: 32, HOLD: 33 };
 const BALL_MODE = { held: 0, pass: 1, shot: 2, loose: 3, dead: 4, ftshot: 5 };
 
 // ---------- strategy vocabulary ----------
@@ -86,7 +92,8 @@ const COVERS = {
 const INJURIES = [["stinger", 0, 0, 0], ["bruised ribs", 1, 1, 4], ["sprained ankle", 1, 3, 10], ["concussion", 2, 3, 12], ["hamstring strain", 1, 4, 14], ["separated shoulder", 2, 10, 30], ["broken wrist", 3, 20, 45], ["torn ACL", 3, 82, 82]];
 const MOVES = { juke: "Juke", spin: "Spin move", stiff: "Stiff-arm", hurdle: "Hurdle" };
 const TECH_Q = { wrap: 0.06, hit: -0.04, dive: 0.03 }; // how well each technique brings him down
-const FLAG_RATE = 0.021, INJ_RATE = 0.017;         // flagrant and injury calibration
+const FLAG_RATE = 0.021, INJ_RATE = 0.012;         // flagrant and injury calibration
+const FIGHT_RATE = 0.04;                            // fights (before the 1977 crackdown; about a quarter of that after)
 const TECHS = { wrap: "Wrap-up", hit: "Big hit", dive: "Dive at the legs" };
 const SCHEMES = {
   man: { name: "Man-to-Man", blurb: "everybody takes a man, help on drives" },
@@ -134,7 +141,21 @@ function dist(a, b) { return hyp(a.x - b.x, a.y - b.y); }
 // side index (0 = left hoop, 1 = right hoop) that team t attacks in a period
 function attSide(t, per) { return ((t === 0) !== (per >= 3)) ? 1 : 0; }
 function dirOf(side) { return side === 1 ? -1 : 1; } // unit x from that hoop toward midcourt
-function rulesFor(season) { return { four: !(season > 0) || season >= C.FOUR_YEAR }; }
+// The rulebook by season (no season = today's rules)
+const RULE_YEARS = { four: 1979, flag: 1969, fightBan: 1977, gear: 1986, gang: 1998, target: 2011 };
+const RULE_NOTES = {
+  flag: "Flagrant rule: dirty hits draw two shots and the ball; the worst ones mean an ejection",
+  fightBan: "Fighting crackdown: fighting means an automatic ejection and a multi-game suspension",
+  four: "The four-point line arrives (30 ft)",
+  gear: "Soft-shell helmets and shoulder pads become mandatory",
+  gang: "Two-man limit: a third tackler piling on is a foul",
+  target: "Targeting rule: a hit to the head is an automatic flagrant 2"
+};
+function rulesFor(season) {
+  const s = season > 0 ? season : 1e9, R = {};
+  for (const k in RULE_YEARS) R[k] = s >= RULE_YEARS[k];
+  return R;
+}
 function shotValue(x, y, side, four) {
   const hx = C.HX[side], d = hyp(x - hx, y - C.HY);
   if (four !== false && d >= C.R4) return 4;
@@ -173,6 +194,14 @@ function datan(z) {
   const z2 = z * z; let s = 0, term = z, sg = 1;
   for (let k = 1; k <= 33; k += 2) { s += sg * term / k; term *= z2; sg = -sg; }
   let r = 4 * s; if (inv) r = HALF_PI - r; return neg ? -r : r;
+}
+// 0.5^x for half-life decay (Math.pow isn't bit-identical across engines either)
+function dhalf(x) {
+  if (x <= 0) return 1; if (x > 60) return 0;
+  const n = Math.floor(x), y = -(x - n) * 0.6931471805599453; let r = 1;
+  for (let i = 0; i < n; i++) r *= 0.5;
+  let s = 1, term = 1; for (let k = 1; k <= 18; k++) { term *= y / k; s += term; }
+  return r * s;
 }
 function datan2(y, x) {
   if (x > 0) return datan(y / x);
@@ -283,6 +312,8 @@ const PERMS5 = (() => { const out = [], a = [0, 1, 2, 3, 4]; const rec = k => { 
 function simulateGame(home, away, rosters, seed, opts) {
   opts = opts || {}; const REC = opts.frames !== false;
   const RULES = rulesFor(opts.season), FOUR = RULES.four;
+  // per-game context from the league: the referee crew, tired legs, rivalry, grudges, revenge, chemistry, concussions
+  const CTX = opts.ctx || {}, REF = Object.assign({ s: 0.5, w: 1, h: 0 }, CTX.ref || {}), FAT = CTX.fat || [0, 0];
   const rng = makeRng(seed);
   const DBG = opts.debug || null; // calibration counters only; never read by the simulation
   const dbg = (k, v) => { if (DBG) DBG[k] = (DBG[k] || 0) + (v === undefined ? 1 : v); };
@@ -306,8 +337,18 @@ function simulateGame(home, away, rosters, seed, opts) {
       pf, arch: pf.arch, darch: pf.darch, comp: compliance(p, TAC[t]), job: "space", crash: false, use: 1,
       ctx: null, ctxT: -1e9, iso: null, leakT: 0, backT: 0, callT: 0, lob: null, alley: false, passLob: false, zone: 0,
       holdT: 0, fga: 0, fpa: 0, pnrT: -1e9, isoT: -1e9,
-      setT: null, out: false, hurt: null, moveT: 0, move: null, techT: 0
+      setT: null, out: false, hurt: null, moveT: 0, move: null, techT: 0,
+      // temperament (hidden ratings) and how he's feeling tonight
+      clutch: p.clutch || 0, streak: p.streak !== undefined ? p.streak : 0.3, tough: p.tough !== undefined ? p.tough : 0.5, temper: p.temper !== undefined ? p.temper : (p.aggr || 0.5),
+      heat: 0, heatTk: 0, mood: 0, moodTk: 0, fightRole: null, fightOut: false,
+      chem: 1, conc: 0, rev: false
     };
+    const gi = all.length;
+    if (CTX.chem && CTX.chem[gi] !== undefined) P.chem = CTX.chem[gi];
+    if (CTX.conc && CTX.conc[gi]) P.conc = CTX.conc[gi];
+    if (CTX.rev && CTX.rev.includes(gi)) { P.rev = true; P.mood = 0.3; } // revenge game: he's up for this one
+    P.energy = 1 - (FAT[t] || 0) * (1.25 - r.sta / 99 * 0.6);
+    P.comp *= 0.8 + 0.2 * P.chem; // still learning the system
     all.push(P); team[t].push(P);
   }
   const G = {
@@ -319,8 +360,10 @@ function simulateGame(home, away, rosters, seed, opts) {
     run: { team: -1, pts: 0 }, to: [3, 3], screenCD: [0, 0], offScreenCD: [0, 0], help: null,
     trans: [-1, -1], calls: { pnr: 0, iso: 0, post: 0 }, play: null, dbl: null, dblPoss: -1, fouler: null, desp: [false, false], hackOn: [null, null], putback: null, fumble: null,
     cov: null, lastCov: null, injWhistle: -1, ato: [false, false], hunt: -1, lastMM: [new Map(), new Map()],
+    riv: CTX.riv || 0, grudge: new Map(), mark: [null, null], fight: null, fights: 0,
     adj: [{ at: {}, tried: new Set(), pts: 0, poss: 0 }, { at: {}, tried: new Set(), pts: 0, poss: 0 }], ts: [newTS(), newTS()], pp: new Array(all.length).fill(0), closers: [null, null], closeAt: [-1e9, -1e9], possN: 0, sitO: ""
   };
+  for (const [a, b, w] of CTX.gr || []) if (all[a] && all[b]) G.grudge.set(a * 64 + b, w); // a holds it against b
   const PL = [null, null], DP = [null, null];
   const B = { x: 47, y: 25, z: 0, vx: 0, vy: 0, vz: 0, mode: "dead", holder: null, shot: null, pass: null, t: 0, lastTouch: -1 };
   function newTS() { return { pts: 0, poss: 0, a2: 0, m2: 0, a3: 0, m3: 0, a4: 0, m4: 0, forced: 0, broken: 0, hitFouls: 0, tackled: 0, tov: 0, covA: 0, covP: 0 }; }
@@ -384,6 +427,28 @@ function simulateGame(home, away, rosters, seed, opts) {
   function mean(a, f) { let s = 0; for (const x of a) s += f(x); return a.length ? s / a.length : 0; }
   function cnt(a, f) { let n = 0; for (const x of a) if (f(x)) n++; return n; }
   function best(a, f) { let b = null, bv = -1e18; for (const x of a) { const v = f(x); if (v > bv) { bv = v; b = x; } } return b; }
+  // ---- the head game ----
+  // the hot hand: makes warm a streaky shooter up, misses cool him, and it fades (half-life about four minutes)
+  function heatNow(P) { return P.heat ? P.heat * dhalf((G.tick - P.heatTk) / 4800) : 0; }
+  // rattled (below zero) or fired up (above): from big hits, cheap shots and revenge; fades over about five minutes
+  function moodNow(P) { return P.mood ? P.mood * dhalf((G.tick - P.moodTk) / 6000) : 0; }
+  function setMood(P, m) {
+    const m0 = moodNow(P); P.mood = clamp(m, -1, 1); P.moodTk = G.tick;
+    if (m0 > -0.45 && P.mood <= -0.45) ev("mood", { pid: P.idx, team: P.t, lvl: -1 });
+    else if (m0 < 0.45 && P.mood >= 0.45) ev("mood", { pid: P.idx, team: P.t, lvl: 1 });
+  }
+  // a big hit: the tough get angry, the soft get rattled
+  function jolt(P, size) { if (P.out) return; const m = moodNow(P), t = P.tough; setMood(P, m + (t < 0.5 ? -size * (1 - t) * 1.15 : size * (t - 0.5) * 1.9)); }
+  // crunch time: the last five minutes (or overtime) of a one- or two-possession game
+  function clutchTime(t) { return G.per >= 4 && (G.per > 4 || G.clock <= 300) && Math.abs(G.score[t] - G.score[1 - t]) <= 6; }
+  function grudgeW(A, Bp) { return G.grudge.size ? G.grudge.get(A.idx * 64 + Bp.idx) || 0 : 0; }
+  // how his head is affecting his shot (all small: the hot hand is real, but subtle)
+  function psyMult(P) {
+    if (P.psyTk === G.tick) return P.psyV; // (asked many times a tick while players weigh their options)
+    const m = moodNow(P);
+    P.psyTk = G.tick; P.psyV = 1 + P.streak * 0.012 * heatNow(P) + (clutchTime(P.t) ? P.clutch * 0.035 : 0) + (m < 0 ? m * 0.03 : m * 0.006);
+    return P.psyV;
+  }
   function makeProb(P, val, d, cd, D) {
     const r = P.p.r; let p;
     if (d < 5) p = canDunk(P) ? 0.80 + r.ins * 0.0016 : 0.46 + r.ins * 0.0042;
@@ -395,7 +460,7 @@ function simulateGame(home, away, rosters, seed, opts) {
       const dr = D ? clamp((D.reach + D.vertFt * 0.7 - 9.5) / 3, 0.4, 1.3) : 1;
       p *= 1 - 0.42 * (1 - cd / 6) * dr * (d < 5 ? 0.8 : 1);
     } else if (cd > 9) p *= 1.05;
-    p *= 0.86 + 0.14 * P.energy;
+    p *= (0.86 + 0.14 * P.energy) * psyMult(P);
     return clamp(p, 0.02, 0.97);
   }
   function evalAt(P, x, y) {
@@ -429,7 +494,7 @@ function simulateGame(home, away, rosters, seed, opts) {
       const px = H.x + ax * tt, py = H.y + ay * tt, perp = hyp(D.x - px, D.y - py);
       if (perp < 3.8) s += (1 - perp / 3.8) * (0.6 + D.p.r.perD / 250);
     }
-    return s + Math.sqrt(L2) * 0.004;
+    return (s + Math.sqrt(L2) * 0.004) * (1 + (1 - Math.min(H.chem, M.chem)) * 0.5); // new teammates don't read each other yet
   }
   function spotXY(P, t) {
     const h = hoopOf(t); const s = SPOTS[P.spot] || SPOTS.TOP;
@@ -555,7 +620,7 @@ function simulateGame(home, away, rosters, seed, opts) {
     for (let t = 0; t < 2; t++) {
       const pl = PL[t], tac = TAC[t], R = rot(t), avg = mean(R, P => P.pf.off);
       const k = 1 + tac.star * 2 + (pl.sys === "helio" ? 1.6 : 0);
-      for (const P of team[t]) P.use = clamp(1 + (P.pf.off / avg - 1) * k, 0.35, 2.6);
+      for (const P of team[t]) P.use = clamp((1 + (P.pf.off / avg - 1) * k) * (P.rev ? 1.15 : 1), 0.35, 2.6); // a revenge game: he wants it
       pl.crash = clamp(Math.round(SYSTEMS[pl.sys].crash - pl.pace * 1.2 + (mean(R, P => P.pf.reb) > 58 ? 0.5 : 0)), 0, 3);
       pl.order = team[t].slice().sort((a, b) => (b.p.ovr + sysBonus(b, pl.sys)) - (a.p.ovr + sysBonus(a, pl.sys)) || a.idx - b.idx);
       pl.rot = new Set(pl.order.slice(0, tac.depth));
@@ -886,7 +951,7 @@ function simulateGame(home, away, rosters, seed, opts) {
       S.wait -= DT;
       if (S.wait <= 0 && (hyp(P.x - lx, P.y - h.y) < 1.5 || S.wait < -3)) {
         P.x = lx; P.y = h.y;
-        const made = rng.next() < ftProb(P.p.r, P.energy);
+        const made = rng.next() < Math.min(0.98, ftProb(P.p.r, P.energy) * (clutchTime(P.t) ? 1 + P.clutch * 0.04 : 1) * (1 + Math.min(0, moodNow(P)) * 0.04));
         let tx = h.x, ty = h.y;
         if (!made) { const a = rng.range(0, 6.283); tx += dcos(a) * 0.8; ty += dsin(a) * 0.8; }
         const Tf = 0.95, z0 = 7.6;
@@ -1268,6 +1333,7 @@ function simulateGame(home, away, rosters, seed, opts) {
       if (cov && cov.kind === "drop" && e.d > 12 && e.d < 27) s += 0.06 * (0.6 + r.mid / 150); // the big dropped: pull up
       if (cov && cov.kind === "ice" && e.d < 12) s -= 0.06; // iced to the baseline: the big is waiting
       s += sitShot(sit, e.val);
+      s += H.streak * heatNow(H) * 0.015 + (clutchTime(H.t) ? H.clutch * 0.06 : 0) - (moodNow(H) < -0.3 ? 0.04 : 0); // feeling it, wanting it, or not
       if (holding) s -= 2;
       opts.push({ k: "shoot", s });
       // call a pick-and-roll
@@ -1288,7 +1354,7 @@ function simulateGame(home, away, rosters, seed, opts) {
         const finP = makeProb(H, 2, 3, 3.5, null);
         let threat = 0; for (const D of G.lineup[1 - H.t]) if (D.st !== "down" && hyp(D.x - h.x, D.y - h.y) < d) threat += D.p.r.tck / 99 * 0.06;
         threat *= hitMul(1 - H.t) * (1.25 - carry);   // bulldozers want the contact; everyone else fears it
-        opts.push({ k: "drive", s: finP * 2 * shotW(H, 0) / (1 + lane * 1.6) + beat * 0.004 + r.brk * 0.0015 - pressure * 0.12 - threat - 0.12 - settle - rimGuard(H) * 0.15 + (H.iso ? 0.12 : 0) + sitShot(sit, 2) * 0.5 - (cov && cov.kind === "ice" ? 0.14 : 0) });
+        opts.push({ k: "drive", s: finP * 2 * shotW(H, 0) / (1 + lane * 1.6) + beat * 0.004 + r.brk * 0.0015 - pressure * 0.12 - threat - 0.12 - settle - rimGuard(H) * 0.15 + (H.iso ? 0.12 : 0) + sitShot(sit, 2) * 0.5 - (cov && cov.kind === "ice" ? 0.14 : 0) + moodNow(H) * (moodNow(H) < 0 ? 0.12 : 0.05) });
       }
       if (H.driving) opts[0].s = 1.05 - lane * 0.45 - pressure * 0.15 + (H.arch === "DOZ" ? 0.1 : 0);
     }
@@ -1299,7 +1365,7 @@ function simulateGame(home, away, rosters, seed, opts) {
       if (inBack) s = 0.5 + pressure * 0.5 - risk + (hyp(M.x - h.x, M.y - h.y) < d - 10 ? 0.25 + pl.pace * 0.1 : 0) + (M.job === "c1" && H.job !== "c1" ? 0.12 : 0) + danger * 0.2;
       else {
         const e = evalAt(M, M.x, M.y), cls = shotCls(e.val, e.d);
-        const want = shotW(M, cls) * (1 + (M.use - 1) * 0.35);
+        const want = shotW(M, cls) * (1 + (M.use - 1) * 0.35) * (1 + Math.max(0, heatNow(M)) * M.streak * 0.05) * (clutchTime(M.t) ? 1 + M.clutch * 0.08 : 1); // feed the hot hand; get it to the closer
         const swing = base - 0.16 + S.swing + Math.min(H.holdT, 4) * 0.045 - (H.job === "c1" ? 0.03 : 0) + danger * (1 - carry) * 0.3 + (ARCH[H.arch].pass - 1) * 0.3;
         const shotV = e.ev * 0.93 * want - settle * 0.5 - M.fga * 0.01 + sitShot(sit, e.val) * 0.8 - (cls === 0 ? rimGuard(M) * 0.18 : 0);
         s = Math.max(shotV, swing) - risk * (shotV < swing ? 1.4 : 0.9) - (far > 45 ? 0.3 : 0) + pressure * 0.2
@@ -1371,7 +1437,7 @@ function simulateGame(home, away, rosters, seed, opts) {
     const Tf = clamp(hyp(tx - x0, ty - y0) / spd, alley ? 0.6 : 0.12, 2.2), zt = alley ? M.reach + M.vertFt * 0.85 : lob ? 6.8 : 4.4;
     B.mode = "pass"; B.holder = null; B.x = x0; B.y = y0; B.z = z0; B.t = 0;
     B.vx = (tx - x0) / Tf; B.vy = (ty - y0) / Tf; B.vz = (zt - z0 + 0.5 * GRAV * Tf * Tf) / Tf;
-    B.pass = { from: H, to: M, T: Tf, tx, ty, tried: new Set(), alley: !!alley }; B.lastTouch = H.t;
+    B.pass = { from: H, to: M, T: Tf, tx, ty, tried: new Set(), alley: !!alley }; B.lastTouch = H.t; G.lastRel = G.tick;
     G.lastHandler = H;
     dbg(alley ? "pass:alley" : lob ? "pass:lob" : "pass"); if (G.inbound) dbg("pass:inb");
     if (alley) { const tApex = Math.sqrt(2 * M.vertFt / GRAV); M.lob = { at: G.tick + Math.max(0, Math.round((Tf - tApex * 0.8) / DT)) }; }
@@ -1411,7 +1477,7 @@ function simulateGame(home, away, rosters, seed, opts) {
     const ast = (G.lastPass && G.lastPass.to === H && G.tick - G.lastPass.tick < 80) ? G.lastPass.from : null;
     const set = G.play && G.play.set !== "flow" && G.tick - G.play.tk0 < 220 ? G.play.set : undefined;
     const covK = G.lastCov && G.lastCov.poss === G.possN && G.tick - G.lastCov.tk < 80 ? G.lastCov.kind : undefined;
-    B.shot = { P: H, team: H.t, val, made, d, dunk, layup, hook, T: Tf, ast, touched: new Set(), foul: null, flag: 0, hoop: h, rel: G.tick, sx: H.x, sy: H.y, pt, set, cov: covK };
+    B.shot = { P: H, team: H.t, val, made, d, dunk, layup, hook, T: Tf, ast, touched: new Set(), foul: null, flag: 0, hoop: h, rel: G.tick, sx: H.x, sy: H.y, pt, set, cov: covK }; G.lastRel = G.tick;
     H.post = null; H.pnr = null; H.iso = null; H.alley = false;
     B.lastTouch = H.t; G.shotRun = false; G.lastPass = null; G.lastHandler = H; G.putback = null;
     // contact foul on the shot (hitting a shooter is a foul; this is not a tackle)
@@ -1460,6 +1526,15 @@ function simulateGame(home, away, rosters, seed, opts) {
     B.mode = "loose"; B.x = h.x + dcos(a) * 0.8; B.y = h.y + dsin(a) * 0.8; B.z = 10.2;
     B.vx = dcos(a) * sp; B.vy = dsin(a) * sp; B.vz = rng.range(5, 11); G.looseT = 0;
   }
+  // the shot is in the book: log it, then let it warm (or cool) the shooter
+  function shotDone(S, extra) {
+    const e = fgaEv(S, extra), P = S.P; ev("fga", e);
+    const h0 = heatNow(P); P.heat = clamp(h0 + (e.made ? (e.val >= 3 ? 1.15 : 0.8) : -0.6), -3, 4); P.heatTk = G.tick;
+    if (P.streak > 0.35) {
+      if (h0 < 2.8 && P.heat >= 2.8) ev("heat", { pid: P.idx, team: P.t, lvl: 1 });
+      else if (h0 > -2.2 && P.heat <= -2.2) ev("heat", { pid: P.idx, team: P.t, lvl: -1 });
+    }
+  }
   function fgaEv(S, extra) {
     return Object.assign({ pid: S.P.idx, team: S.team, val: S.val, made: S.made, d: Math.round(S.d), dunk: S.dunk, layup: S.layup, hook: S.hook || undefined, ast: S.made && S.ast ? S.ast.idx : -1, pt: S.pt, set: S.set, cov: S.cov }, extra || {});
   }
@@ -1467,12 +1542,12 @@ function simulateGame(home, away, rosters, seed, opts) {
     const S = B.shot, P = S.P;
     if (S.made) {
       score(S.team, S.val);
-      ev("fga", fgaEv(S));
+      shotDone(S);
       if (S.dunk || S.val >= 3 || S.foul) P.celebT = 1.4;
       B.mode = "dead"; B.x = S.hoop.x; B.y = S.hoop.y; B.z = 9.6; B.vx = 0; B.vy = 0; B.vz = -6;
       afterScore(S, true);
     } else {
-      ev("fga", fgaEv(S));
+      shotDone(S);
       if (S.flag) { B.shot = null; startFT(shooterFor(P), 2, "flagrant", true); return; }
       if (S.foul) { const n = S.val; B.shot = null; startFT(shooterFor(S.foul.on), n, "shooting"); return; }
       rimBounce(S.hoop, S.sx, S.sy); G.reboundable = true; G.lastShotTeam = S.team; B.shot = null;
@@ -1492,9 +1567,11 @@ function simulateGame(home, away, rosters, seed, opts) {
   function dribTop(H) { return Math.abs(dsin(G.tick * 0.42 + H.idx)) > 0.55; }
   // how the tackler goes in: a sure wrap-up, a big shoulder hit (strips it, but gets broken and hurts people), or a dive at the legs
   function pickTech(D, H) {
+    const mk = G.mark[D.t]; if (mk && mk.E === D && mk.on === H) return "hit"; // the enforcer isn't wrapping anybody up
     const aggr = D.p.aggr, disc = TAC[D.t].disc;
     const w = 1 + disc * 0.8 + (D.darch === "LCK" || D.darch === "HWK" ? 0.4 : 0) - aggr * 0.4;
-    const x = 0.3 + aggr * 1.1 + (D.darch === "HIT" ? 0.7 : 0) + (G.desp[D.t] ? 0.6 : 0) + (DP[D.t].hit === "blitz" ? 0.3 : 0) - disc * 0.3;
+    const x = (0.3 + aggr * 1.1 + (D.darch === "HIT" ? 0.7 : 0) + (G.desp[D.t] ? 0.6 : 0) + (DP[D.t].hit === "blitz" ? 0.3 : 0) - disc * 0.3
+      + Math.max(0, moodNow(D)) * 0.8 + grudgeW(D, H) * 1.2 + G.riv * 0.3) * (RULES.target ? 0.6 : 1); // the targeting rule tamed the big hit
     const v = 0.35 + (H.p.r.spd > D.p.r.spd + 6 ? 0.5 : 0) + (H.driving ? 0.2 : 0);
     const q = rng.next() * (w + x + v);
     return q < w ? "wrap" : q < w + x ? "hit" : "dive";
@@ -1540,13 +1617,17 @@ function simulateGame(home, away, rosters, seed, opts) {
     if (D.fouls >= 4) p *= 0.35; if (D.fouls >= 5) p *= 0.4;
     if (G.tf[D.t] >= 5) p *= 1 - 0.35 * TAC[D.t].disc; // late hits are free throws now
     if (G.per >= 4 && G.clock < 120 && G.score[D.t] > G.score[H.t]) p *= 0.6; // protecting a lead: don't gamble
-    for (const O of G.lineup[D.t]) if (O !== D && O.st === "lunge" && O.lunge && O.lunge.H === H) { p = Math.max(p * 3, 0.15); break; } // pile on
+    p *= 1 + G.riv * 0.15 + grudgeW(D, H) * 0.6 + Math.max(0, moodNow(D)) * 0.3 + (heatNow(H) >= 2.5 && H.streak > 0.3 ? 0.15 : 0); // bad blood, a fired-up hitter, a shooter who's heating up
+    const mk = G.mark[D.t]; if (mk && mk.E === D && mk.on === H && G.tick < mk.until) p *= 2.2; // the enforcer is hunting him
+    let piling = 0; for (const O of G.lineup[D.t]) if (O !== D && O.st === "lunge" && O.lunge && O.lunge.H === H) piling++;
+    if (piling) p = Math.max(p * 3, 0.15); // pile on
+    if (piling >= 2 && RULES.gang && rng.chance(0.75 + 0.25 * D.comp)) return; // two's the limit now
     if (rng.chance(p)) {
       const tech = pickTech(D, H);
       D.st = "lunge"; D.stT = 0.32; D.lunge = { H, ck: false, tech, move: null }; D.energy = Math.max(0.05, D.energy - 0.014); // hitting people is exhausting
       // handler sees it coming: quick-release pass (if it gets away first, the hit becomes a late-hit foul), or a move
       if (!H.gather && B.holder === H) {
-        const react = 0.1 + H.p.r.iq * 0.0022 + H.p.r.pas * 0.0014 - (H.arch === "DOZ" ? 0.08 : 0) + (PL[H.t].sys === "motion" ? 0.18 * H.comp : 0) + (!H.driving && dh > 16 ? 0.08 : 0);
+        const react = Math.max(0, -moodNow(H)) * 0.15 + 0.1 + H.p.r.iq * 0.0022 + H.p.r.pas * 0.0014 - (H.arch === "DOZ" ? 0.08 : 0) + (PL[H.t].sys === "motion" ? 0.18 * H.comp : 0) + (!H.driving && dh > 16 ? 0.08 : 0);
         if (rng.chance(react)) {
           let bm = null, br = 1e9;
           for (const M of G.lineup[H.t]) { if (M === H || M.st === "down") continue; const rr = laneRisk(H, M); if (rr < br) { br = rr; bm = M; } }
@@ -1555,39 +1636,115 @@ function simulateGame(home, away, rosters, seed, opts) {
       }
     }
   }
-  // dirty hit? from behind, a hothead's big hit, a late or airborne hit
+  // dirty hit? from behind, a hothead's big hit, a late or airborne hit, bad blood
   function flagrantCheck(D, H, tech, air, late) {
-    const sp = hyp(H.vx, H.vy), dd = dist(D, H) || 1;
+    const sp = hyp(H.vx, H.vy), dd = dist(D, H) || 1, mk = G.mark[D.t];
     const behind = sp > 4 && ((D.x - H.x) * H.vx + (D.y - H.y) * H.vy) / (sp * dd) < -0.55;
-    const dirty = (D.p.aggr - 0.45) * 1.4 + (1 - D.comp) * 0.6 + (tech === "hit" ? 0.5 : 0) + (behind ? 0.7 : 0) + (air ? 0.9 : 0) + (late ? 0.4 : 0);
-    if (dirty <= 0.3 || !rng.chance(clamp((dirty - 0.3) * FLAG_RATE, 0, 0.12))) return 0;
-    return rng.chance(0.04 + Math.max(0, dirty - 1.4) * 0.15) ? 2 : 1;
+    const dirty = (D.p.aggr - 0.45) * 1.4 + (1 - D.comp) * 0.6 + (tech === "hit" ? 0.5 : 0) + (behind ? 0.7 : 0) + (air ? 0.9 : 0) + (late ? 0.4 : 0)
+      + (mk && mk.E === D && mk.on === H ? 0.8 : 0) + G.riv * 0.3 + grudgeW(D, H) * 0.6 + Math.max(0, moodNow(D)) * 0.4;
+    if (!RULES.flag) return { lvl: 0, dirty }; // before 1969 there's no such thing: a cheap shot is just a hit (or a foul, if it's late)
+    const home = D.t === 0 ? 1 - REF.h * 4 : 1 + REF.h * 4; // the crew leans (a little) toward the home team
+    if (dirty <= 0.3 || !rng.chance(clamp((dirty - 0.3) * FLAG_RATE * (0.55 + 0.9 * REF.s) * home, 0, 0.14))) return { lvl: 0, dirty };
+    return { lvl: rng.chance((0.04 + Math.max(0, dirty - 1.4) * 0.15) * (0.7 + 0.6 * REF.s)) ? 2 : 1, dirty };
   }
+  // a hit to the head: legal (and the main cause of concussions) until the 2011 targeting rule
+  function highHit(D, H) { return rng.chance((0.07 + D.p.aggr * 0.1 + Math.max(0, D.p.ht - H.p.ht) * 0.004 + (1 - D.comp) * 0.05) * (RULES.target ? 0.012 : 1) * (RULES.gear ? 0.8 : 1)); }
   // hard hits hurt people: out for the night at least (the league decides how many games after that)
-  function injuryCheck(P, tech, n, hard, mult) {
-    const p = INJ_RATE * (tech === "hit" ? 2.6 : tech === "dive" ? 1.2 : 0.7) * (1 + (n - 1) * 0.5) * (hard ? 2.5 : 1) * (mult || 1) * (1.15 - P.p.r.str / 200);
+  function injuryCheck(P, tech, n, hard, mult, high, by) {
+    const p = INJ_RATE * (tech === "hit" ? 2.6 : tech === "dive" ? 1.2 : 0.7) * (1 + (n - 1) * 0.5) * (hard ? 2.5 : 1) * (mult || 1) * (1.15 - P.p.r.str / 200)
+      * (RULES.gear ? 0.62 : 1) * (1 + (1 - P.energy) * 0.8) * (high ? 1.6 : 1); // helmets and pads; tired legs
     if (P.out || !rng.chance(p)) return false;
-    const w = tech === "hit" ? [36, 18, 12, 16, 8, 4.5, 2.5, 0.6] : tech === "dive" ? [36, 12, 24, 4, 14, 2.5, 3, 1.2] : [40, 18, 18, 5, 12, 2.5, 2, 0.4];
+    const w = (tech === "hit" ? [36, 18, 12, 16, 8, 4.5, 2.5, 0.6] : tech === "dive" ? [36, 12, 24, 4, 14, 2.5, 3, 1.2] : [40, 18, 18, 5, 12, 2.5, 2, 0.4]).slice();
+    w[3] *= (1 + 0.45 * P.conc) * (RULES.gear ? 0.4 : 1) * (high ? 4 : 1); // every concussion makes the next one likelier
     let tot = 0; for (const x of w) tot += x;
     let x = rng.next() * tot, k = 0; for (; k < w.length - 1; k++) { x -= w[k]; if (x <= 0) break; }
     P.hurt = { k }; P.out = true; P.st = "down"; P.stT = 3.5;
-    ev("injury", { pid: P.idx, team: P.t, kind: INJURIES[k][0], sev: INJURIES[k][1], k });
+    ev("injury", { pid: P.idx, team: P.t, kind: INJURIES[k][0], sev: INJURIES[k][1], k, by: by ? by.idx : undefined, high: high || undefined });
     if (G.injWhistle < 0) G.injWhistle = G.tick + 30;
     return true;
   }
+  // what a hit leaves behind: a rattled (or angry) ball handler, an enforcer with a score to settle, sometimes a fight
+  function aftermath(D, H, kind, dirty) {
+    const size = kind === "flagrant" || kind === "targeting" ? 0.7 : kind === "big" ? 0.5 : kind === "rough" || kind === "late" || kind === "pileon" ? 0.35 : 0.2;
+    jolt(H, size);
+    // a hit a hair late is usually an accident; it's a cheap shot when it was dirty
+    const cheap = kind === "flagrant" || kind === "targeting" || kind === "rough" || dirty >= 1.2 || ((kind === "late" || kind === "pileon") && dirty >= 1.0);
+    if (cheap) for (const Q of G.lineup[H.t]) if (Q !== H) setMood(Q, moodNow(Q) + 0.2 * Q.temper); // you don't do that to our guy
+    const mk = G.mark[D.t];
+    if (mk && mk.E === D && mk.on === H) { G.mark[D.t] = null; return fightCheck(H, D, "retaliation", 1.3) ? true : false; } // the message is delivered; does he answer?
+    const star = H.use >= 1.4 || H.p.ovr >= 76, grudge = grudgeW(H, D) + grudgeW(D, H);
+    if (!cheap && !(kind === "big" && star) && grudge < 0.3) return false;
+    const E = enforcerFor(H.t, D), A = !H.out && H.st !== "down" ? H : null;
+    const k = (kind === "flagrant" || kind === "targeting" ? 1 : dirty >= 1.2 ? 0.8 : kind === "rough" ? 0.5 : kind === "big" ? 0.2 : 0.15) * (star ? 1.4 : 1) + grudge * 1.5;
+    const who = E && (!A || E.temper > A.temper) ? E : A || E;
+    if (who && fightCheck(who, D, kind, k)) return true;
+    if (E && !G.mark[H.t] && cheap && E.temper >= 0.45 && rng.chance(0.04 + E.temper * 0.14 + (star ? 0.1 : 0))) { G.mark[H.t] = { E, on: D, until: G.tick + 14400 }; ev("enforcer", { pid: E.idx, team: E.t, on: D.idx, for: H.idx }); }
+    return false;
+  }
+  // the man who answers cheap shots: mean, strong, and not afraid of a suspension
+  function enforcerFor(t, D) {
+    let bE = null, bv = 0.78;
+    for (const Q of G.lineup[t]) { if (Q.out || Q.st === "down") continue; const v = Q.temper * 0.5 + Q.p.aggr * 0.3 + Q.p.r.tck / 99 * 0.3 + Q.p.r.str / 99 * 0.3 + (Q.darch === "HIT" ? 0.3 : 0); if (v > bv) { bv = v; bE = Q; } }
+    return bE;
+  }
+  // will it come to blows? (only at a dead ball)
+  function fightCheck(A, Bp, why, k) {
+    if (G.fight || A.out || Bp.out || !A.on || !Bp.on || A.t === Bp.t || (G.phase !== "dead" && G.phase !== "ft")) return false;
+    const heat = (A.temper * 0.65 + Bp.temper * 0.35 - 0.3) * 2.2 + Math.max(0, moodNow(A)) * 0.8;
+    const p = (RULES.fightBan ? FIGHT_RATE * 0.42 : FIGHT_RATE) * k * clamp(heat, 0.05, 2.2) * (1 + G.riv * 1.5) * (1 + (grudgeW(A, Bp) + grudgeW(Bp, A)) * 2.5) * (1.25 - REF.s * 0.5);
+    if (!rng.chance(clamp(p, 0, 0.7))) return false;
+    startFight(A, Bp, why); return true;
+  }
+  function startFight(A, Bp, why) {
+    const brawl = rng.chance((RULES.fightBan ? 0.07 : 0.2) * (1 + G.riv) * (1.25 - REF.s * 0.5)), join = [];
+    if (brawl) { for (const P of onC()) if (P !== A && P !== Bp && !P.out) join.push(P); } // everybody's in it
+    else for (const t of [A.t, Bp.t]) { // a teammate or two come to pull them apart (or get a shot in)
+      const near = G.lineup[t].filter(P => P !== A && P !== Bp && !P.out && P.st !== "down").sort((p, q) => dist(p, A) - dist(q, A)).slice(0, rng.chance(0.4) ? 2 : 1);
+      for (const P of near) join.push(P);
+    }
+    const sep = 3.2 + (1 - REF.s) * 1.8 + (brawl ? 2.5 : 0); // seconds until the refs get them apart (strict crews are quicker)
+    G.fight = { A, B: Bp, x: (A.x + Bp.x) / 2, y: (A.y + Bp.y) / 2, t0: G.tick, sepT: Math.round(sep / DT), endT: Math.round((sep + 1.6) / DT), brawl, join, clock: G.clockRun };
+    G.clockRun = false; A.fightRole = "fight"; Bp.fightRole = "fight"; for (const P of join) P.fightRole = "hold";
+    G.fights++;
+    ev("fight", { pid: A.idx, team: A.t, on: Bp.idx, why, brawl, join: join.map(P => P.idx) });
+  }
+  // the fight plays out (the dead ball or free throws wait), then the fighters are tossed
+  function fightStep() {
+    const F = G.fight, t = G.tick - F.t0, apart = t >= F.sepT;
+    for (const P of [F.A, F.B]) {
+      const dx = P.x - F.x, dy = P.y - F.y, L = hyp(dx, dy) || 1;
+      if (P.st === "down" && P.stT < 0.3) P.st = "ok";
+      P.tx = F.x + dx / L * (apart ? 7 : 1.1); P.ty = F.y + dy / L * (apart ? 7 : 1.1); P.urg = apart ? 0.5 : 1;
+    }
+    for (const P of F.join) { const dx = P.x - F.x, dy = P.y - F.y, L = hyp(dx, dy) || 1; P.tx = F.x + dx / L * (apart ? 6 : 3); P.ty = F.y + dy / L * (apart ? 6 : 3); P.urg = 0.9; }
+    if (t < F.endT) return;
+    G.fight = null; G.clockRun = F.clock;
+    for (const P of F.join) P.fightRole = null;
+    for (const P of [F.A, F.B]) { P.fightRole = null; P.out = true; P.fightOut = true; P.st = "ok"; ev("ejected", { pid: P.idx, team: P.t, why: "fight" }); }
+    for (const tt of [0, 1]) if (G.lineup[tt].some(P => P.out && !(P.hurt && P.st === "down"))) doSubs(tt, null, true);
+    // whoever was set to inbound or shoot may be gone now
+    if (G.phase === "dead" && G.dead) {
+      const D0 = G.dead, L = G.lineup[D0.t];
+      if (!D0.inb.on || D0.inb.out) D0.inb = L.find(Q => Q !== D0.recv && !Q.out && Q.st !== "down") || L[0];
+      if (D0.recv && (!D0.recv.on || D0.recv.out)) D0.recv = L.find(Q => Q !== D0.inb && !Q.out) || L[1];
+      D0.timer = Math.max(D0.timer, 1.2);
+    }
+    if (G.phase === "ft" && G.ftS && (!G.ftS.P.on || G.ftS.P.out)) G.ftS.P = best(G.lineup[G.ftS.P.t].filter(Q => !Q.out), Q => Q.p.r.ft) || G.lineup[G.ftS.P.t][0];
+  }
   // who shoots when the fouled man is hurt: the coach sends his best free-throw shooter
   function shooterFor(P) { return P.out ? best(G.lineup[P.t].filter(Q => Q !== P && !Q.out), Q => Q.p.r.ft) || P : P; }
-  function flagrant(D, H, lvl, gIdx, tech) {
+  function flagrant(D, H, lvl, gIdx, tech, targeting, dirty) {
     D.fouls++; G.tf[D.t]++;
     H.st = "down"; H.stT = 1.6; H.gather = false; H.driving = false; D.st = "down"; D.stT = 0.8;
-    ev("tackle", { pid: D.idx, team: D.t, on: H.idx, result: "flagrant", lvl, tech, gang: gIdx });
-    ev("foul", { pid: D.idx, team: D.t, on: H.idx, kind: "flagrant", lvl, pf: D.fouls });
-    injuryCheck(H, tech, 1, false, 3);
-    if (lvl === 2) { D.out = true; ev("ejected", { pid: D.idx, team: D.t }); }
+    ev("tackle", { pid: D.idx, team: D.t, on: H.idx, result: "flagrant", lvl, tech, gang: gIdx, targeting: targeting || undefined });
+    ev("foul", { pid: D.idx, team: D.t, on: H.idx, kind: "flagrant", lvl, pf: D.fouls, targeting: targeting || undefined });
+    injuryCheck(H, tech, 1, false, 3, targeting, D);
+    if (lvl === 2) { D.out = true; ev("ejected", { pid: D.idx, team: D.t, why: targeting ? "targeting" : "flagrant" }); }
     else if (D.fouls >= 6) ev("fouledout", { pid: D.idx, team: D.t });
-    if (B.mode === "shot" && B.shot.P === H) { B.shot.flag = lvl; return; } // the shot plays out, then two shots and the ball
+    if (B.mode === "shot" && B.shot.P === H) { B.shot.flag = lvl; aftermath(D, H, targeting ? "targeting" : "flagrant", dirty || 1.5); return; } // the shot plays out, then two shots and the ball
     B.mode = "dead"; B.holder = null; B.pass = null; B.vx *= 0.2; B.vy *= 0.2;
     startFT(shooterFor(H), 2, "flagrant", true);
+    aftermath(D, H, targeting ? "targeting" : "flagrant", dirty || 1.5);
   }
   function popLoose(H, D, gIdx, extra) { // the ball comes out and it's live
     ev("tackle", Object.assign({ pid: D.idx, team: D.t, on: H.idx, result: "fumble", gang: gIdx }, extra));
@@ -1597,40 +1754,67 @@ function simulateGame(home, away, rosters, seed, opts) {
   }
   function resolveTackle(D, H) {
     const L0 = D.lunge || {}, tech = L0.tech || "wrap", move = L0.move;
-    // everyone already flying at him piles on (gang tackles are legal)
+    // everyone already flying at him piles on (gang tackles are legal; from 1998, only two of them)
     const gang = [D];
     for (const O of G.lineup[D.t]) if (O !== D && O.st === "lunge" && O.lunge && O.lunge.H === H && dist(O, H) < 3.2) gang.push(O);
     for (const O of gang) { O.lunge = null; O.st = "ok"; }
     const gIdx = gang.length > 1 ? gang.slice(1).map(O => O.idx) : undefined;
     const hasBall = B.mode === "held" && B.holder === H;
-    const lvl = flagrantCheck(D, H, tech, H.air, !hasBall && !H.air);
-    if (lvl) { flagrant(D, H, lvl, gIdx, tech); return; }
+    const fc = flagrantCheck(D, H, tech, H.air, !hasBall && !H.air), dirty = fc.dirty;
+    if (fc.lvl) { flagrant(D, H, fc.lvl, gIdx, tech, false, dirty); return; }
     if (H.air) { // roughing: airborne players are protected
       D.fouls++; G.tf[D.t]++;
       H.st = "down"; H.stT = 1.0; H.gather = false; for (const O of gang) { O.st = "down"; O.stT = 0.8; }
       ev("tackle", { pid: D.idx, team: D.t, on: H.idx, result: "rough", tech, gang: gIdx });
       ev("foul", { pid: D.idx, team: D.t, on: H.idx, kind: "roughing", pf: D.fouls });
       if (D.fouls >= 6) ev("fouledout", { pid: D.idx, team: D.t });
-      injuryCheck(H, tech, gang.length, true);
-      if (B.mode === "shot" && B.shot.P === H) { if (!B.shot.foul) B.shot.foul = { by: D, on: H }; return; }
+      injuryCheck(H, tech, gang.length, true, 1 + Math.max(0, dirty - 0.8) * 0.5, false, D);
+      if (B.mode === "shot" && B.shot.P === H) { if (!B.shot.foul) B.shot.foul = { by: D, on: H }; aftermath(D, H, "rough", dirty); return; }
       B.mode = "dead"; B.holder = null; B.pass = null; B.vx *= 0.2; B.vy *= 0.2;
       startFT(shooterFor(H), 2, "roughing");
+      aftermath(D, H, "rough", dirty);
       return;
     }
     if (!hasBall) {
+      // a hair late: some crews let it go (and they lean toward the home team)
+      const since = G.tick - (G.lastRel === undefined ? -1e9 : G.lastRel);
+      const noCall = since <= 8 ? clamp((1.04 - REF.w) * 2.0 + (D.t === 0 ? REF.h * 6 : -REF.h * 6), 0, 0.4) : 0;
+      if (noCall > 0 && rng.chance(noCall)) {
+        H.st = "down"; H.stT = 1.1; H.gather = false; for (const O of gang) { O.st = "down"; O.stT = 0.8; }
+        ev("tackle", { pid: D.idx, team: D.t, on: H.idx, result: "nocall", tech, gang: gIdx });
+        injuryCheck(H, tech, gang.length, false, 0.8, false, D); jolt(H, 0.3);
+        return;
+      }
       const shotFoul = B.mode === "shot" && B.shot.P === H && G.tick - B.shot.rel < 16;
       D.fouls++; G.tf[D.t]++;
       H.st = "down"; H.stT = 1.1; H.gather = false; for (const O of gang) { O.st = "down"; O.stT = 0.8; }
       ev("tackle", { pid: D.idx, team: D.t, on: H.idx, result: "late", tech, gang: gIdx });
       ev("foul", { pid: D.idx, team: D.t, on: H.idx, kind: shotFoul ? "shooting" : "late", pf: D.fouls });
       if (D.fouls >= 6) ev("fouledout", { pid: D.idx, team: D.t });
-      injuryCheck(H, tech, gang.length, false, 0.8);
-      if (shotFoul) { if (!B.shot.foul) B.shot.foul = { by: D, on: H }; return; }
+      injuryCheck(H, tech, gang.length, false, 0.8 * (1 + Math.max(0, dirty - 0.8) * 0.5), false, D);
+      if (shotFoul) { if (!B.shot.foul) B.shot.foul = { by: D, on: H }; aftermath(D, H, "late", dirty); return; }
       B.mode = "dead"; B.pass = null; B.vx *= 0.2; B.vy *= 0.2;
       if (G.tf[D.t] >= 5) startFT(shooterFor(H), 2, "bonus");
       else deadInbound(H.t, sidelineSpot(H.x, H.y), { wait: 1.6, kind: "foul", keepShot: 14 });
+      aftermath(D, H, "late", dirty);
       return;
     }
+    // a third man piling on (from 1998): the hit stands, but it's a foul and they keep the ball
+    if (RULES.gang && gang.length > 2) {
+      const X = gang[2]; X.fouls++; G.tf[X.t]++;
+      H.st = "down"; H.stT = 1.3; H.gather = false; H.driving = false; H.action = null; for (const O of gang) { O.st = "down"; O.stT = 0.8; }
+      ev("tackle", { pid: X.idx, team: X.t, on: H.idx, result: "pileon", tech, gang: gIdx });
+      ev("foul", { pid: X.idx, team: X.t, on: H.idx, kind: "pileon", pf: X.fouls });
+      if (X.fouls >= 6) ev("fouledout", { pid: X.idx, team: X.t });
+      injuryCheck(H, tech, gang.length, false, 1, false, D);
+      B.mode = "dead"; B.holder = null; B.pass = null; B.vx *= 0.2; B.vy *= 0.2;
+      if (G.tf[X.t] >= 5) startFT(shooterFor(H), 2, "bonus"); else deadInbound(H.t, sidelineSpot(H.x, H.y), { wait: 1.6, kind: "foul", keepShot: 14 });
+      aftermath(X, H, "pileon", dirty);
+      return;
+    }
+    // a hit to the head: from 2011, that's targeting
+    const high = tech === "hit" && highHit(D, H);
+    if (high && RULES.target) { flagrant(D, H, 2, gIdx, tech, true, dirty); return; }
     // his move
     let failedHurdle = false;
     if (move) {
@@ -1640,6 +1824,7 @@ function simulateGame(home, away, rosters, seed, opts) {
         H.move = move; H.moveT = 0.6;
         if (!H.gather) { H.driving = true; H.decT = 0.35; H.iso = null; H.post = null; }
         ev("tackle", { pid: D.idx, team: D.t, on: H.idx, result: move === "juke" || move === "hurdle" ? "whiff" : "broken", move, tech, gang: gIdx });
+        if (move === "stiff") jolt(D, 0.3); // getting stiff-armed into the floor gets to you
         return;
       }
       if (move === "hurdle") failedHurdle = true; // jumped into him, or mistimed it: he goes down hard
@@ -1656,20 +1841,24 @@ function simulateGame(home, away, rosters, seed, opts) {
     if (rng.chance(clamp(p, 0.18, 0.96))) {
       H.st = "down"; H.stT = 1.5; H.gather = false; H.driving = false; H.action = null; H.iso = null; H.post = null; H.pnr = null;
       for (const O of gang) { O.st = "down"; O.stT = 0.7; } D.celebT = 2.0;
-      const hurt = () => { injuryCheck(H, tech, gang.length, failedHurdle); if (tech === "hit") injuryCheck(D, "hit", 1, false, 0.25); }; // (after the tackle, so the broadcast hears it in order)
-      if (!inHand) { popLoose(H, D, gIdx, { drib: true, tech }); hurt(); return; } // hit on the dribble: the ball pops loose
-      const strip = clamp((0.1 + (D.p.r.hands - rH.sec) * 0.004 + (gang.length - 1) * 0.07 + (H.driving ? 0.03 : 0)) * (tech === "hit" ? 1.8 : tech === "wrap" ? 0.6 : 0.8), 0.03, 0.5);
-      if (rng.chance(strip)) { popLoose(H, D, gIdx, { tech }); hurt(); return; } // FUMBLE: jarred loose before he's down
-      ev("tackle", { pid: D.idx, team: D.t, on: H.idx, result: "down", tech, gang: gIdx });
+      const dm = 1 + Math.max(0, dirty - 0.8) * 0.5; // (a cheap shot nobody called still hurts)
+      const hurt = () => { injuryCheck(H, tech, gang.length, failedHurdle, dm, high, D); if (tech === "hit") injuryCheck(D, "hit", 1, false, 0.25); }; // (after the tackle, so the broadcast hears it in order)
+      const kind = tech === "hit" ? "big" : "down";
+      if (!inHand) { popLoose(H, D, gIdx, { drib: true, tech, high: high || undefined }); hurt(); jolt(H, kind === "big" ? 0.5 : 0.2); return; } // hit on the dribble: the ball pops loose
+      const strip = clamp((0.1 + (D.p.r.hands - rH.sec) * 0.004 + (gang.length - 1) * 0.07 + (H.driving ? 0.03 : 0)) * (tech === "hit" ? 1.8 : tech === "wrap" ? 0.6 : 0.8) * (1 - Math.min(0, moodNow(H)) * 0.5) * (clutchTime(H.t) ? 1 - H.clutch * 0.15 : 1), 0.03, 0.55);
+      if (rng.chance(strip)) { popLoose(H, D, gIdx, { tech, high: high || undefined }); hurt(); jolt(H, kind === "big" ? 0.5 : 0.2); return; } // FUMBLE: jarred loose before he's down
+      ev("tackle", { pid: D.idx, team: D.t, on: H.idx, result: "down", tech, gang: gIdx, high: high || undefined });
       ev("to", { pid: H.idx, team: H.t, kind: "tackle", by: D.idx });
       hurt();
       B.mode = "dead"; B.holder = null; B.vx = rng.normal(0, 3); B.vy = rng.normal(0, 3); B.vz = 4;
       deadInbound(D.t, sidelineSpot(H.x, H.y), { wait: H.out ? 3.4 : 1.8, kind: "tackle" });
+      aftermath(D, H, kind, dirty);
     } else {
       for (const O of gang) { O.st = "down"; O.stT = 1.6; } H.st = "stun"; H.stT = 0.35;
       if (!inHand && rng.chance(0.25 * (1.1 - rH.sec / 99))) { popLoose(H, D, gIdx, { drib: true, tech, broke: true }); return; } // stayed up, but lost the dribble
       if (!H.gather && B.holder === H) { H.driving = true; H.decT = 0.4; H.iso = null; H.post = null; } // broke it: now he's going to the rim
       ev("tackle", { pid: D.idx, team: D.t, on: H.idx, result: "broken", move: move || undefined, moveFail: move ? true : undefined, tech, gang: gIdx });
+      const mk = G.mark[D.t]; if (mk && mk.E === D && mk.on === H) G.mark[D.t] = null; // he had his shot
     }
   }
   function commitFoul(D, T, kind) {
@@ -1780,7 +1969,7 @@ function simulateGame(home, away, rosters, seed, opts) {
       D.tx = mx + ux * Math.min(gap, md - 0.5); D.ty = my + uy * Math.min(gap, md - 0.5); D.urg = 1;
       if (G.phase === "live") tackleCheck(D, H);
     } else {
-      const threat = Math.max(thr(man), md <= 22 ? 0.75 : 0, dp.scout && dp.scout.lock.has(man.idx) ? 0.9 : 0); // scouted shooters get no air
+      const threat = Math.max(thr(man), md <= 22 ? 0.75 : 0, dp.scout && dp.scout.lock.has(man.idx) ? 0.9 : 0, heatNow(man) >= 2.5 && man.streak > 0.3 && TAC[1 - man.t].adapt > 0.35 ? 0.85 : 0); // scouted shooters (and hot ones) get no air
       const gap = Math.max(ext && threat > 0.6 && md > 26 ? 1.8 : 2, 3 + (1 - threat) * 6 - td * 0.6);
       let tx = mx + ux * Math.min(gap, md - 1), ty = my + uy * Math.min(gap, md - 1);
       if (H && B.mode === "held") { const sag = ext ? 0.06 : 0.12 + (1 - threat) * 0.08; tx += (H.x - tx) * sag; ty += (H.y - ty) * sag; }
@@ -1836,7 +2025,7 @@ function simulateGame(home, away, rosters, seed, opts) {
       // moving screen: he's still sliding when the defender arrives
       if (!S.mv && hyp(D.x - P.x, D.y - P.y) < 2.2) {
         S.mv = true; const spd = hyp(P.vx, P.vy);
-        if (spd > 5 && G.phase === "live" && rng.chance(0.02 * (1.2 - P.p.r.iq / 99) * (1.2 - TAC[P.t].disc * 0.6))) { movingScreen(P, D); return; }
+        if (spd > 5 && G.phase === "live" && rng.chance(0.02 * (1.2 - P.p.r.iq / 99) * (1.2 - TAC[P.t].disc * 0.6) * REF.w * (P.t === 0 ? 1 - REF.h * 4 : 1 + REF.h * 4))) { movingScreen(P, D); return; }
       }
       if (S.slip && hyp(P.x - P.tx, P.y - P.ty) < 3.2) { S.phase = "roll"; S.t = 0; S.pop = false; ev("call", { team: P.t, kind: "slip", pid: P.idx, w: F.idx }); return; }
       if (hyp(P.x - P.tx, P.y - P.ty) < 1.3 || S.t > 3) { S.phase = "set"; S.t = 0; S.sx = P.x; S.sy = P.y; }
@@ -2025,18 +2214,18 @@ function simulateGame(home, away, rosters, seed, opts) {
           const h = S.hoop, nearRim = hyp(B.x - h.x, B.y - h.y) < 0.85 && B.z >= 9.9 && B.z < 11.3;
           if (S.val >= 3 && B.vz < 0) { // goaltending: counts
             S.made = true; score(S.team, S.val);
-            ev("fga", fgaEv(S, { made: true, gt: D.idx, ast: S.ast ? S.ast.idx : -1 }));
+            shotDone(S, { made: true, gt: D.idx, ast: S.ast ? S.ast.idx : -1 });
             ev("violation", { kind: "goaltend", pid: D.idx, team: D.t });
             B.mode = "dead"; B.vx = 0; B.vy = 0; afterScore(S, true); return;
           }
           if (S.val === 2 && nearRim && rng.chance(0.12 * (1 - D.p.r.bnc / 140))) { // hand went through the cylinder
             S.made = true; score(S.team, 2);
-            ev("fga", fgaEv(S, { made: true, val: 2, ci: D.idx, ast: S.ast ? S.ast.idx : -1 }));
+            shotDone(S, { made: true, val: 2, ci: D.idx, ast: S.ast ? S.ast.idx : -1 });
             ev("violation", { kind: "cylinder", pid: D.idx, team: D.t });
             B.mode = "dead"; B.vx = 0; B.vy = 0; afterScore(S, true); return;
           }
           // legal block / swat
-          ev("fga", fgaEv(S, { made: false, blk: D.idx, swat: B.vz < 0, ast: -1 }));
+          shotDone(S, { made: false, blk: D.idx, swat: B.vz < 0, ast: -1 });
           const a = datan2(B.y - D.y, B.x - D.x) + rng.normal(0, 0.8), sp = rng.range(8, 20);
           B.mode = "loose"; B.vx = dcos(a) * sp; B.vy = dsin(a) * sp; B.vz = rng.range(-4, 6); B.lastTouch = D.t;
           G.reboundable = true; G.lastShotTeam = S.team; G.looseT = 0;
@@ -2136,7 +2325,7 @@ function simulateGame(home, away, rosters, seed, opts) {
       if (handler) { P.x = clamp(P.x, 0.6, C.L - 0.6); P.y = clamp(P.y, 0.6, C.W - 0.6); }
       else { P.x = clamp(P.x, -4, C.L + 4); P.y = clamp(P.y, -4, C.W + 4); }
       const sp = hyp(P.vx, P.vy);
-      P.energy -= (0.00003 + 0.00007 * sp / P.vmax) * (1.4 - P.p.r.sta / 99 * 0.8);
+      P.energy -= (0.00003 + 0.00007 * sp / P.vmax) * (1.4 - P.p.r.sta / 99 * 0.8) * (1 + (FAT[P.t] || 0) * 2);
       if (P.energy < 0.05) P.energy = 0.05;
       if (G.clockRun) P.secs += DT;
     }
@@ -2281,7 +2470,8 @@ function simulateGame(home, away, rosters, seed, opts) {
       if (P.catchT > 0) P.catchT -= DT; if (P.reachT > 0) P.reachT -= DT; if (P.celebT > 0) P.celebT -= DT; if (P.callT > 0) P.callT -= DT; if (P.moveT > 0) P.moveT -= DT;
       const hp = hoopOf(P.t);
       let a = ACT.NONE, fx = 0, fy = 0, look = null;
-      if (P.st === "down") a = P.hurt ? ACT.HURT : P.stT < 0.45 ? ACT.GETUP : ACT.DOWN;
+      if (P.fightRole && G.fight) { a = P.fightRole === "fight" && G.tick - G.fight.t0 < G.fight.sepT ? ACT.FIGHT : ACT.HOLD; look = P === G.fight.A ? G.fight.B : P === G.fight.B ? G.fight.A : G.fight.A; }
+      else if (P.st === "down") a = P.hurt ? ACT.HURT : P.stT < 0.45 ? ACT.GETUP : ACT.DOWN;
       else if (P.st === "lunge") { a = P.lunge.tech === "dive" ? ACT.DIVE : P.lunge.tech === "hit" ? ACT.BIGHIT : ACT.TACKLE; look = P.lunge.H; }
       else if (P.moveT > 0 && P.move && P.move !== "hurdle" && !P.air) a = P.move === "spin" ? ACT.SPIN : P.move === "stiff" ? ACT.STIFFARM : ACT.JUKE;
       else if (P.st === "stun") a = ACT.STUMBLE;
@@ -2328,7 +2518,8 @@ function simulateGame(home, away, rosters, seed, opts) {
 
   // ---- main loop ----
   function step() {
-    if (G.phase === "tip") tipStep();
+    if (G.fight) fightStep(); // the dead ball (or the free throws) wait for the fight
+    else if (G.phase === "tip") tipStep();
     else if (G.phase === "dead") deadStep();
     else if (G.phase === "ft") ftStep();
     if (G.phase === "live") {
@@ -2434,7 +2625,8 @@ function boxScore(game, uptoTick, nowPer, nowClk) {
 // Each team's plan, adjustments, points by play type and by set, coverages, tackling and play calls, from the event log.
 function strategyReport(game, uptoTick) {
   const T = [0, 1].map(() => ({ plan: null, adjust: [], pts: {}, att: {}, calls: {}, sets: {}, tk: { down: 0, fumble: 0, broken: 0, whiff: 0, late: 0, rough: 0, gang: 0, flagrant: 0, pop: 0 },
-    moves: {}, movesTried: {}, tech: {}, fouls: {}, recov: 0, cover: {}, covPts: {}, covAtt: {}, mismatch: 0, mmAlert: 0, scram: 0, inj: [], ejected: [], ato: 0, blob: 0 }));
+    moves: {}, movesTried: {}, tech: {}, fouls: {}, recov: 0, cover: {}, covPts: {}, covAtt: {}, mismatch: 0, mmAlert: 0,
+    fights: [], marks: [], heat: [], mood: [], nocall: 0, pileon: 0, targeting: 0, scram: 0, inj: [], ejected: [], ato: 0, blob: 0 }));
   if (uptoTick === undefined) uptoTick = 1e12;
   const S = (X, k) => X.sets[k] || (X.sets[k] = { n: 0, pts: 0, att: 0 });
   for (const e of game.events) {
@@ -2459,6 +2651,7 @@ function strategyReport(game, uptoTick) {
       case "scram": X.scram++; break;
       case "tackle":
         X.tk[e.result] = (X.tk[e.result] || 0) + 1; if (e.gang) X.tk.gang++;
+        if (e.result === "nocall") X.nocall++; if (e.result === "pileon") X.pileon++; if (e.targeting) X.targeting++;
         if (e.result === "fumble" && e.drib) X.tk.pop++;
         if (e.tech) X.tech[e.tech] = (X.tech[e.tech] || 0) + 1;
         if (e.move) { const O = T[1 - e.team]; O.movesTried[e.move] = (O.movesTried[e.move] || 0) + 1; if (!e.moveFail) O.moves[e.move] = (O.moves[e.move] || 0) + 1; }
@@ -2467,12 +2660,16 @@ function strategyReport(game, uptoTick) {
       case "recover": if (!e.own) X.recov++; break;
       case "injury": X.inj.push(e); break;
       case "ejected": X.ejected.push(e); break;
+      case "fight": X.fights.push(e); break;
+      case "enforcer": X.marks.push(e); break;
+      case "heat": X.heat.push(e); break;
+      case "mood": X.mood.push(e); break;
     }
   }
   return T;
 }
 
 const ENGINE_API = { ACT, BALL_MODE, simulateGame, boxScore, strategyReport, C, shotValue, makeRng, hashStr, ENGINE_VERSION, gameSec, clamp, attSide, dsin, dcos, dlog, datan2,
-  SYSTEMS, SCHEMES, HITS, ARCH, DARCH, JOBS, PT_LABEL, SETS, COVERS, INJURIES, MOVES, TECHS, profile, archetype, rulesFor, ftProb };
+  SYSTEMS, SCHEMES, HITS, ARCH, DARCH, JOBS, PT_LABEL, SETS, COVERS, INJURIES, MOVES, TECHS, RULE_YEARS, RULE_NOTES, profile, archetype, rulesFor, ftProb };
 if (typeof module !== "undefined" && module.exports) module.exports = ENGINE_API;
 else if (typeof window !== "undefined") window.BB = Object.assign(window.BB || {}, ENGINE_API);

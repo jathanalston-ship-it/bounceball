@@ -9,8 +9,9 @@ const P = NODE ? require("./players.js") : window.BB;
 const T = NODE ? require("./teams.js") : window.BB;
 const ST = NODE ? require("./staff.js") : window.BB;
 const TR = NODE ? require("./trouble.js") : window.BB;
+const CD = NODE ? require("./cards.js") : window.BB; // the league calendar (real dates for back-to-backs and travel)
 const { clamp, makeRng, hashStr } = E;
-const LEAGUE_VERSION = "0.5.0";
+const LEAGUE_VERSION = "0.6.0";
 const GAMES = 82, ROSTER_MIN = 13, ROSTER_MAX = 15, ACTIVE = 13;
 const ROSTER_ROLES = ["PG","WING","SNIPER","BRUISER","BIG","PG","WING","WING","SNIPER","BRUISER","BRUISER","BIG","BIG"];
 const STAT_KEYS = ["gp","gs","min","pts","fgm","fga","tpm","tpa","fpm","fpa","ftm","fta","oreb","dreb","ast","stl","blk","to","tkl","btk","pf","dnk"];
@@ -32,11 +33,25 @@ function setNumber(S, p, tid, rng) {
   let n, k = 0; do { n = rng.int(0, 55); k++; } while (used.has(n) && k < 200); p.num = n;
 }
 function addToTeam(S, p, tid, rng) { p.team = tid; S.teams[tid].roster.push(p.id); setNumber(S, p, tid, rng); }
-function removeFromTeam(S, p) { if (!p.team) return; const r = S.teams[p.team].roster; r.splice(r.indexOf(p.id), 1); p.team = null; }
+function removeFromTeam(S, p) {
+  if (!p.team) return; const r = S.teams[p.team].roster; r.splice(r.indexOf(p.id), 1);
+  p.left = (p.left || []).filter(x => S.season - x.season <= 1).concat([{ team: p.team, season: S.season }]); // for revenge games
+  p.team = null;
+}
 function newPlayer(S, rng, role, q, age) {
   const p = P.genPlayer(rng, role, q, S.nextPid++, S.season, age);
   p.career = null; p.awards = []; p.teams = [];
-  S.players[p.id] = p; return p;
+  S.players[p.id] = p; giveTraits(S, p); return p;
+}
+// temperament, from the player's own random stream (so it never shifts anything else in the league)
+const r2 = x => Math.round(x * 100) / 100;
+function giveTraits(S, p) {
+  if (p.temper !== undefined) return;
+  const r = makeRng(hashStr(S.masterSeed + ":traits:" + p.id) || 1);
+  p.clutch = r2(clamp(r.normal(0, 0.4), -1, 1));                 // rises late in close games, or shrinks
+  p.streak = r2(clamp(r.normal(0.32, 0.2), 0, 1));               // how much a few makes (or misses) get to him
+  p.tough = r2(clamp(r.normal(0.55, 0.2) + (p.role === "BRUISER" || p.role === "BIG" ? 0.08 : 0), 0, 1)); // big hits: angry (high) or rattled (low)
+  p.temper = r2(clamp(p.aggr * 0.55 + (p.trouble || 0.25) * 0.5 + r.normal(0.1, 0.15), 0, 1)); // how easily he fights
 }
 function contractYears(age, rng) { return age < 25 ? rng.int(3, 4) : age < 30 ? rng.int(2, 4) : age < 33 ? rng.int(1, 2) : 1; }
 function sign(S, p, tid, salary, years, rng, how) {
@@ -50,7 +65,7 @@ function sign(S, p, tid, salary, years, rng, how) {
 function generateRoster(S, tid, rng, q) {
   for (const role of ROSTER_ROLES) {
     const p = newPlayer(S, rng, role, q + rng.normal(0, 2));
-    addToTeam(S, p, tid, rng);
+    addToTeam(S, p, tid, rng); p.chemTeam = tid; p.chemG = 30; // a team that has been together a while
     const yrs = contractYears(P.age(p, S.season), rng);
     p.contract = { salary: P.askingSalary(p, S.season), thru: S.season + yrs - 1, signed: S.season }; p.teams.push(tid);
   }
@@ -153,9 +168,9 @@ function makeSchedule(teamIds, rng) {
 
 // ---------- depth chart ----------
 function healthy(p) { return (!p.injury || p.injury.out <= 0) && !(p.susp > 0); }
-function depthChart(S, tid, rng) {
-  let avail = teamPlayers(S, tid).filter(healthy);
-  if (avail.length < 10) { hardship(S, tid, 10 - avail.length, rng); avail = teamPlayers(S, tid).filter(healthy); }
+function depthChart(S, tid, rng, rest) {
+  let avail = teamPlayers(S, tid).filter(p => healthy(p) && !(rest && rest.includes(p.id)));
+  if (avail.length < 10) { hardship(S, tid, 10 - avail.length, rng); avail = teamPlayers(S, tid).filter(p => healthy(p) && !(rest && rest.includes(p.id))); }
   avail.sort((a, b) => b.ovr - a.ovr || a.id - b.id);
   const starters = [];
   for (const role of P.ROLE_LIST) {
@@ -174,10 +189,101 @@ function hardship(S, tid, n, rng) {
   }
 }
 
+// ---------- v0.6: the people and the road around the game ----------
+// Referees: hired, aging, retiring; three to a game. Each has tendencies the engine feels.
+function newRef(S, rng) {
+  const id = S.nextRid++, born = S.season - rng.int(28, 46);
+  S.refs[id] = { id, first: P.pickFirst(rng, born), last: rng.pick(P.LAST), born, hired: S.season, retired: null,
+    strict: r2(clamp(rng.normal(0.5, 0.18), 0.08, 0.95)),   // how readily he calls a flagrant
+    whistle: r2(clamp(rng.normal(1, 0.07), 0.82, 1.18)),    // tight crew or let-them-play
+    home: r2(clamp(Math.abs(rng.normal(0, 0.45)), 0, 1)) };  // how much the building gets to him
+  return S.refs[id];
+}
+function staffRefs(S) {
+  if (!S.refs) { S.refs = {}; S.nextRid = 1; }
+  const rng = rngFor(S, "refs");
+  for (const r of Object.values(S.refs)) if (!r.retired && (S.season - r.born > 62 || S.season - r.hired > 30 || (S.season - r.born > 54 && rng.chance(0.18)))) r.retired = S.season;
+  const need = Math.ceil(S.active.length / 2) * 3 + 3;
+  while (Object.values(S.refs).filter(r => !r.retired).length < need) newRef(S, rng);
+}
+// the day's crews: shuffle the active officials, three to a game, the senior man as crew chief
+function dealCrews(S, n, tag) {
+  const rng = rngFor(S, "crews" + tag), pool = Object.values(S.refs).filter(r => !r.retired).map(r => r.id);
+  for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(rng.next() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  const out = [];
+  for (let g = 0; g < n; g++) { const c = [0, 1, 2].map(k => pool[(g * 3 + k) % pool.length]); c.sort((a, b) => S.refs[a].hired - S.refs[b].hired || a - b); out.push(c); }
+  return out;
+}
+function crewTend(S, crew) {
+  const rs = crew.map(id => S.refs[id]), m = k => rs.reduce((a, r) => a + r[k], 0) / rs.length;
+  return { s: r2(m("strict")), w: r2(m("whistle")), h: Math.round(m("home") * 0.025 * 1000) / 1000 };
+}
+// the map: miles between arenas (for travel and old rivalries)
+const GEO = { AKR: [41.08, -81.52], TOL: [41.66, -83.56], GRY: [41.59, -87.35], FLN: [43.01, -83.69], YNG: [41.1, -80.65], ERI: [42.13, -80.09], PIT: [40.44, -80], CLE: [41.5, -81.69], DET: [42.33, -83.05], BUF: [42.89, -78.88],
+  LV: [36.17, -115.14], PHX: [33.45, -112.07], SD: [32.72, -117.16], HOU: [29.76, -95.37], DEN: [39.74, -104.99], MIA: [25.76, -80.19], MEM: [35.15, -90.05], POR: [45.52, -122.68], NSH: [36.16, -86.78], ABQ: [35.08, -106.65],
+  OMA: [41.26, -95.93], KC: [39.1, -94.58], BOI: [43.62, -116.2], TUL: [36.15, -95.99] };
+function miles(a, b) {
+  const A = GEO[a], B = GEO[b]; if (!A || !B || a === b) return 0;
+  const dy = (A[0] - B[0]) * 69, dx = (A[1] - B[1]) * 69 * Math.cos((A[0] + B[0]) / 2 * Math.PI / 180);
+  return Math.round(Math.sqrt(dx * dx + dy * dy));
+}
+// buses and trains, then planes, then charters
+function travelFactor(season) { return season < 1960 ? 1.5 : season < 1980 ? 1.2 : season < 2000 ? 1 : 0.75; }
+// how often a coach sits a healthy star on the second night of a back-to-back
+function restRate(season) { return season < 1985 ? 0 : season < 2000 ? 0.05 : season < 2010 ? 0.12 : season < 2015 ? 0.25 : 0.38; }
+// rivalries: geography, plus what happened (playoff series, fights, cheap shots); grudges between players
+const pairKey = (a, b) => a < b ? a + "|" + b : b + "|" + a;
+function rivalry(S, a, b) { return clamp(Math.max(0, 0.25 - miles(a, b) / 1600) + ((S.riv || {})[pairKey(a, b)] || 0), 0, 1); }
+function addRivalry(S, a, b, x) { S.riv = S.riv || {}; const k = pairKey(a, b); S.riv[k] = r2(clamp((S.riv[k] || 0) + x, 0, 0.8)); }
+function addGrudge(S, a, b, w) { S.grudges = S.grudges || {}; const k = a + ">" + b, g = S.grudges[k]; S.grudges[k] = r2(clamp(Math.max(g || 0, w) + (g ? 0.15 : 0), 0, 1)); }
+// how well a player knows his teammates: games played for this team
+function chemOf(p, tid) { return p.chemTeam === tid ? clamp(0.55 + 0.45 * (p.chemG || 0) / 30, 0.55, 1) : 0.55; }
+// the context the engine needs for one game (stored with the game, so replays see the same thing)
+function gameCtx(S, sp, crew) {
+  const cur = S.cur, ids = sp.h.concat(sp.a), ctx = { crew, ref: crewTend(S, crew) };
+  ctx.fat = [sp.fat[0], sp.fat[1]]; if (sp.b2b[0] || sp.b2b[1]) ctx.b2b = sp.b2b.slice(); ctx.mi = sp.mi.slice();
+  if (sp.rest[0].length || sp.rest[1].length) ctx.rest = [sp.rest[0].slice(), sp.rest[1].slice()];
+  const rv = rivalry(S, sp.home, sp.away); if (rv >= 0.02) ctx.riv = r2(rv);
+  const gr = [], at = {}; ids.forEach((id, i) => { at[id] = i; });
+  for (const k in S.grudges || {}) { const [a, b] = k.split(">").map(Number); if (at[a] !== undefined && at[b] !== undefined && (at[a] < sp.h.length) !== (at[b] < sp.h.length)) gr.push([at[a], at[b], S.grudges[k]]); }
+  if (gr.length) ctx.gr = gr;
+  const rev = [], chem = {}, conc = {};
+  ids.forEach((id, i) => {
+    const p = S.players[id], mine = i < sp.h.length ? sp.home : sp.away, opp = i < sp.h.length ? sp.away : sp.home;
+    if ((p.left || []).some(x => x.team === opp && S.season - x.season <= 1)) rev.push(i);
+    const c = chemOf(p, mine); if (c < 0.97) chem[i] = r2(c);
+    if (p.health && p.health.conc) conc[i] = p.health.conc;
+  });
+  if (rev.length) ctx.rev = rev; if (Object.keys(chem).length) ctx.chem = chem; if (Object.keys(conc).length) ctx.conc = conc;
+  return ctx;
+}
+// the road: back-to-backs, travel and three-in-four nights tire a team; tired teams rest their old stars
+function roadFor(S, tid, day, city, type) {
+  const cur = S.cur, L = (cur.road = cur.road || {})[tid] || [], t = cur.cal ? cur.cal.time(day) : day * 2 * 864e5;
+  const prev = L[L.length - 1], gap = prev ? (t - prev.t) / 864e5 : 9, mi = prev ? miles(prev.city, city) : 0;
+  const b2b = type === 0 && gap <= 1, three = L.length >= 2 && (t - L[L.length - 2].t) / 864e5 <= 3;
+  const fat = Math.round(((b2b ? 0.05 : gap <= 2 ? 0.015 : 0) + mi / 2000 * 0.025 * travelFactor(S.season) + (three ? 0.02 : 0)) * 1000) / 1000;
+  return { b2b, mi, fat: type === 0 ? fat : Math.min(fat, 0.02), t };
+}
+function noteRoad(S, tid, t, city) { const cur = S.cur, L = (cur.road = cur.road || {})[tid] = ((cur.road || {})[tid] || []).concat([{ t, city }]); if (L.length > 3) L.shift(); }
+function restList(S, tid, rng) {
+  const rate = restRate(S.season); if (!rate) return [];
+  const ps = teamPlayers(S, tid).filter(healthy).sort((a, b) => b.ovr - a.ovr).slice(0, 3), out = [];
+  for (const p of ps) {
+    const age = P.age(p, S.season), worn = p.health && p.health.chronic && p.health.chronic.length;
+    if (age < 29 && !worn) continue;
+    if (rng.chance(rate * (age >= 33 ? 1.3 : 1) * (worn ? 1.4 : 1)) && out.length < (S.season >= 2015 ? 2 : 1)) out.push(p.id);
+  }
+  return out;
+}
+
 // ---------- season ----------
 function startSeason(S) {
   const rng = rngFor(S, "schedule");
-  S.cur = { season: S.season, day: 0, phase: "regular", schedule: makeSchedule(S.active, rng), games: [], tx: S.offTx, injuries: [], stats: {}, pstats: {}, standings: {}, deadlineDone: false, gameSeq: 0, playoffs: null, snapshot: snapshotPlayers(S), coachSnap: {}, coachStart: {}, blotter: [] };
+  for (const p of Object.values(S.players)) if (!p.retired) giveTraits(S, p); // (leagues saved before v0.6)
+  staffRefs(S);
+  S.cur = { season: S.season, day: 0, phase: "regular", schedule: makeSchedule(S.active, rng), games: [], tx: S.offTx, injuries: [], stats: {}, pstats: {}, standings: {}, deadlineDone: false, gameSeq: 0, playoffs: null, snapshot: snapshotPlayers(S), coachSnap: {}, coachStart: {}, blotter: [], fights: [], refsUsed: {} };
+  S.cur.cal = CD.seasonCalendar(S.season, S.cur.schedule.length);
   S.offTx = [];
   for (const tid of S.active) S.cur.standings[tid] = [0, 0, 0, 0];
 }
@@ -187,52 +293,67 @@ function snapshotPlayers(S) {
   return snap;
 }
 // minimal, replay-complete view of a player for the engine
-function engineView(p) { return { id: p.id, role: p.role, first: p.first, last: p.last, ht: p.ht, wt: p.wt, wing: p.wing, r: Object.assign({}, p.r), aggr: p.aggr, ovr: p.ovr, num: p.num }; }
+function engineView(p) { return { id: p.id, role: p.role, first: p.first, last: p.last, ht: p.ht, wt: p.wt, wing: p.wing, r: Object.assign({}, p.r), aggr: p.aggr, ovr: p.ovr, num: p.num, clutch: p.clutch, streak: p.streak, tough: p.tough, temper: p.temper }; }
 function gameSeed(S, tag) { return hashStr(S.masterSeed + ":" + S.season + ":g:" + tag) || 1; }
 // Returns the specs for the next batch of games (one day), or null when the phase is over.
 function nextGames(S) {
   const cur = S.cur, rng = rngFor(S, "day" + cur.phase + cur.day);
   if (cur.phase === "regular") {
     if (cur.day >= cur.schedule.length) return null;
-    return cur.schedule[cur.day].map(([h, a]) => spec(S, h, a, 0, rng));
+    const day = cur.schedule[cur.day], crews = dealCrews(S, day.length, "r" + cur.day);
+    return day.map(([h, a], i) => spec(S, h, a, 0, rng, crews[i]));
   }
   if (cur.phase === "playoffs") {
     const live = cur.playoffs.series.filter(s => s.round === cur.playoffs.round && !s.winner);
     if (!live.length) return null;
-    return live.map(s => {
+    const crews = dealCrews(S, live.length, "p" + cur.day);
+    return live.map((s, i) => {
       const g = s.wins[0] + s.wins[1]; const hiHome = [0, 1, 4, 6].includes(g);
       const h = hiHome ? s.hi : s.lo, a = hiHome ? s.lo : s.hi;
-      const sp = spec(S, h, a, 1, rng); sp.series = s.id; return sp;
+      const sp = spec(S, h, a, 1, rng, crews[i]); sp.series = s.id; return sp;
     });
   }
   return null;
 }
-function spec(S, h, a, type, rng) {
-  const gid = S.cur.gameSeq++;
-  const hr = depthChart(S, h, rng), ar = depthChart(S, a, rng);
+function spec(S, h, a, type, rng, crew) {
+  const gid = S.cur.gameSeq++, cday = S.cur.day; // (the day count runs on into the playoffs)
+  // the road: who's tired, and who sits
+  const rh = roadFor(S, h, cday, h, type), ra = roadFor(S, a, cday, h, type);
+  const rrng = rngFor(S, "rest" + gid), restH = rh.b2b ? restList(S, h, rrng) : [], restA = ra.b2b ? restList(S, a, rrng) : [];
+  const hr = depthChart(S, h, rng, restH), ar = depthChart(S, a, rng, restA);
+  noteRoad(S, h, rh.t, h); noteRoad(S, a, ra.t, h);
   for (const p of hr.concat(ar)) if (!S.cur.snapshot[p.id]) S.cur.snapshot[p.id] = engineView(p);
   const hc = S.teams[h].coach, ac = S.teams[a].coach;
   for (const cid of [hc, ac]) if (!S.cur.coachSnap[cid]) { const c = S.coaches[cid]; S.cur.coachSnap[cid] = { id: cid, name: c.first + " " + c.last, tac: ST.tactics(c) }; }
-  return { gid, season: S.season, day: S.cur.day, type, home: h, away: a, seed: gameSeed(S, gid), h: hr.map(p => p.id), a: ar.map(p => p.id), hc, ac };
+  const sp = { gid, season: S.season, day: S.cur.day, type, home: h, away: a, seed: gameSeed(S, gid), h: hr.map(p => p.id), a: ar.map(p => p.id), hc, ac,
+    fat: [rh.fat, ra.fat], b2b: [rh.b2b ? 1 : 0, ra.b2b ? 1 : 0], mi: [rh.mi, ra.mi], rest: [restH, restA] };
+  crew = crew || dealCrews(S, 1, "x" + gid)[0];
+  for (const id of crew) S.cur.refsUsed[id] = 1;
+  sp.ctx = gameCtx(S, sp, crew);
+  return sp;
 }
 // What a worker needs: player views from the season snapshot (ratings are frozen in-season)
 function rostersFor(S, sp) { return [sp.h.map(id => S.cur.snapshot[id]), sp.a.map(id => S.cur.snapshot[id])]; }
 function tacticsFor(S, sp) { return [S.cur.coachSnap[sp.hc].tac, S.cur.coachSnap[sp.ac].tac]; }
 // Run one game (used by workers and single-thread mode). Returns a compact result.
 function runGame(sp, rosters, tactics) {
-  const g = E.simulateGame({ id: sp.home }, { id: sp.away }, rosters, sp.seed, { frames: false, tactics, season: sp.season });
+  const g = E.simulateGame({ id: sp.home }, { id: sp.away }, rosters, sp.seed, { frames: false, tactics, season: sp.season, ctx: sp.ctx });
   const box = E.boxScore(g, 1e12);
   const ids = rosters[0].concat(rosters[1]).map(p => p.id);
   const lines = box.map((b, i) => [ids[i], b.played ? 1 : 0, g.roster[i].starter ? 1 : 0, Math.round(b.secs), b.pts, b.fgm, b.fga, b.tpm, b.tpa, b.fpm, b.fpa, b.ftm, b.fta, b.oreb, b.dreb, b.ast, b.stl, b.blk, b.to, b.tkl, b.btk, b.pf, b.dnk]);
   const downs = g.events.filter(e => e.type === "tackle" && e.result === "down").map(e => ids[e.on]);
   // hurt in the game (the engine decides who and what; the league decides how long), and ejections
   const inj = g.events.filter(e => e.type === "injury").map(e => [ids[e.pid], e.k]);
-  const ej = g.events.filter(e => e.type === "ejected").map(e => ids[e.pid]);
+  const ej = g.events.filter(e => e.type === "ejected").map(e => [ids[e.pid], e.why || "flagrant"]);
+  // what the league remembers: fights, cheap shots, who hurt whom
+  const fights = g.events.filter(e => e.type === "fight").map(e => ({ a: ids[e.pid], b: ids[e.on], brawl: !!e.brawl, join: (e.join || []).map(i => ids[i]), why: e.why }));
+  const flags = g.events.filter(e => e.type === "tackle" && e.result === "flagrant").map(e => [ids[e.pid], ids[e.on]]);
+  const hurtBy = g.events.filter(e => e.type === "injury" && e.by !== undefined).map(e => [ids[e.by], ids[e.pid]]);
   // how each team played (identity) and how each player scored (play types)
   const rep = E.strategyReport(g), style = [0, 1].map(t => styleOf(g, rep, box, t));
   const ppt = {};
   for (const e of g.events) if (e.type === "fga" && e.pt) { const id = ids[e.pid], o = ppt[id] || (ppt[id] = {}), a = o[e.pt] || (o[e.pt] = [0, 0]); a[0]++; if (e.made) a[1] += e.val; }
-  return { gid: sp.gid, hs: g.score[0], as: g.score[1], per: g.periods, lines, downs, inj, ej, style, ppt };
+  return { gid: sp.gid, hs: g.score[0], as: g.score[1], per: g.periods, lines, downs, inj, ej, style, ppt, fights, flags, hurtBy };
 }
 // One game's team identity numbers (summed over a season, then divided by games)
 const STYLE_KEYS = ["g", "poss", "fga", "fpa", "tpa", "pnr", "iso", "post", "offscr", "sets", "ato", "hunt", "tkA", "tkDown", "tkFum", "tkBroke", "hitBig", "moves", "flag", "pAll", "cov_drop", "cov_hedge", "cov_switch", "cov_ice", "cov_trap"];
@@ -287,6 +408,23 @@ function addLine(store, line, tid) {
   for (let i = 0; i < STAT_KEYS.length; i++) s[STAT_KEYS[i]] += line[i + 1];
 }
 const INJ = [["jammed finger", 1, 3], ["bruised ribs", 2, 5], ["sprained ankle", 3, 10], ["hamstring strain", 4, 14], ["concussion", 3, 12], ["separated shoulder", 10, 30], ["broken wrist", 20, 45], ["torn ACL", 82, 82]];
+// injuries that never fully heal: a permanent hit to the ratings, and flare-ups
+const CHRONIC = {
+  knee: { name: "bad knee", r: { spd: -4, vert: -5, acc: -3 } }, shoulder: { name: "bad shoulder", r: { str: -3, tck: -3, hands: -2 } },
+  wrist: { name: "bad wrist", r: { thr: -2, fr: -2, mid: -2, ft: -2 } }, hamstring: { name: "bad hamstring", r: { spd: -2, acc: -3 } },
+  ankles: { name: "bad ankles", r: { acc: -2, brk: -2, spd: -1 } }, back: { name: "bad back", r: { str: -2, sta: -3, vert: -1 } }
+};
+function chronicCheck(S, p, name, rng) {
+  const h = p.health; h.n = h.n || {}; h.n[name] = (h.n[name] || 0) + 1;
+  const c = name === "torn ACL" ? (rng.chance(0.55) ? "knee" : null) : name === "separated shoulder" ? (rng.chance(0.3) ? "shoulder" : null) : name === "broken wrist" ? (rng.chance(0.2) ? "wrist" : null)
+    : name === "hamstring strain" && h.n[name] >= 2 ? (rng.chance(0.25) ? "hamstring" : null) : name === "sprained ankle" && h.n[name] >= 3 ? (rng.chance(0.3) ? "ankles" : null)
+    : name === "bruised ribs" && h.n[name] >= 3 ? (rng.chance(0.12) ? "back" : null) : null;
+  if (!c || h.chronic.includes(c)) return;
+  h.chronic.push(c);
+  for (const k in CHRONIC[c].r) p.r[k] = Math.max(20, p.r[k] + CHRONIC[c].r[k]);
+  p.ovr = P.overall(p);
+  (S.cur.chronic = S.cur.chronic || []).push([p.id, c]);
+}
 function applyResults(S, specs, results) {
   const cur = S.cur, rng = rngFor(S, "apply" + cur.phase + cur.day);
   for (let i = 0; i < specs.length; i++) {
@@ -296,7 +434,9 @@ function applyResults(S, specs, results) {
     const hstore = sp.type === 0 ? (cur.highs = cur.highs || {}) : (cur.phighs = cur.phighs || {});
     for (const ln of r.lines) addHighs(hstore, ln, sp.gid);
     (cur.pog = cur.pog || []).push(gameStars(r.lines, sp.gid, sp.h.length, r.hs > r.as));
-    cur.games.push([sp.gid, sp.day, sp.home, sp.away, sp.seed, r.hs, r.as, r.per, sp.type, sp.h, sp.a, sp.hc, sp.ac]);
+    cur.games.push([sp.gid, sp.day, sp.home, sp.away, sp.seed, r.hs, r.as, r.per, sp.type, sp.h, sp.a, sp.hc, sp.ac, sp.ctx]);
+    // chemistry: games played together
+    r.lines.forEach((ln, j) => { if (!ln[1]) return; const p = S.players[ln[0]], tid = j < sp.h.length ? sp.home : sp.away; if (!p) return; if (p.chemTeam !== tid) { p.chemTeam = tid; p.chemG = 0; } p.chemG = Math.min(60, (p.chemG || 0) + 1); });
     if (sp.type === 0) {
       const H = cur.standings[sp.home], A = cur.standings[sp.away];
       if (r.hs > r.as) { H[0]++; A[1]++; } else { A[0]++; H[1]++; }
@@ -305,18 +445,43 @@ function applyResults(S, specs, results) {
       const s = cur.playoffs.series.find(x => x.id === sp.series);
       const hiWon = (r.hs > r.as) === (sp.home === s.hi);
       s.wins[hiWon ? 0 : 1]++; s.games.push(sp.gid);
-      if (s.wins[0] === 4 || s.wins[1] === 4) s.winner = s.wins[0] === 4 ? s.hi : s.lo;
+      if (s.wins[0] === 4 || s.wins[1] === 4) {
+        s.winner = s.wins[0] === 4 ? s.hi : s.lo;
+        const last = cur.playoffs.series.filter(x => x.round === s.round).length === 1;
+        addRivalry(S, s.hi, s.lo, 0.18 + (s.wins[0] + s.wins[1] === 7 ? 0.1 : 0) + (last ? 0.12 : 0)); // a playoff series makes enemies
+      }
     }
     // injuries: hurt in the game (from the engine, so the replay shows it), plus wear and tear
     const played = new Set(r.lines.filter(l => l[1] && l[3] > 300).map(l => l[0]));
     const hurt = new Set();
     const hurtIn = (id, name, out) => { const p = S.players[id]; if (!p || !p.team || (p.injury && p.injury.out > 0)) return; hurt.add(id); p.injury = { name, out }; cur.injuries.push([sp.gid, id, p.team, name, out]); };
-    if (r.inj) for (const [id, k] of r.inj) { const I = E.INJURIES[k]; hurtIn(id, I[0], rng.int(I[2], I[3])); }
-    for (const id of played) if (!hurt.has(id) && rng.chance(0.0022 + Math.max(0, P.age(S.players[id], S.season) - 30) * 0.0006)) {
+    if (r.inj) for (const [id, k] of r.inj) {
+      const I = E.INJURIES[k], p = S.players[id]; if (!p) continue;
+      const h = p.health || (p.health = { conc: 0, chronic: [] });
+      let out = rng.int(I[2], I[3]);
+      if (I[0] === "concussion") { h.conc++; out = Math.round(out * (1 + 0.35 * (h.conc - 1))); } // each one takes longer to clear
+      hurtIn(id, I[0], out); chronicCheck(S, p, I[0], rng);
+    }
+    for (const id of played) {
+      const p = S.players[id], worn = p.health && p.health.chronic ? p.health.chronic.length : 0;
+      if (hurt.has(id) || !rng.chance((0.0022 + Math.max(0, P.age(p, S.season) - 30) * 0.0006) * (1 + 1.2 * worn))) continue;
+      if (worn && rng.chance(0.6)) { const c = rng.pick(p.health.chronic); hurtIn(id, CHRONIC[c].name + " flare-up", rng.int(2, 8)); continue; } // the old injury again
       const k = Math.min(INJ.length - 1, Math.floor(Math.abs(rng.normal(0, 2.2)))), [name, lo, hi] = INJ[k]; hurtIn(id, name, rng.int(lo, hi));
     }
-    // a flagrant 2 ejection carries a one-game suspension
-    if (r.ej) for (const id of r.ej) { const p = S.players[id]; if (!p || !p.team) continue; p.susp = (p.susp || 0) + 1; cur.blotter.push({ who: "player", id, team: p.team, text: "was ejected for a flagrant 2 and suspended a game", kind: "susp", games: 1, fine: 0, day: cur.day, season: S.season, phase: cur.phase }); }
+    // ejections: a flagrant 2 or targeting means a one-game suspension (fights are below)
+    const sus = (id, games, text, kind) => { const p = S.players[id]; if (!p || !p.team) return; if (games > 0) p.susp = (p.susp || 0) + games; cur.blotter.push({ who: "player", id, team: p.team, text, kind: kind || (games > 0 ? "susp" : "fine"), games, fine: games > 0 ? 0 : Math.round(P.capFor(S.season) * 0.002 / 100) * 100, day: cur.day, season: S.season, phase: cur.phase }); };
+    if (r.ej) for (const e of r.ej) { const [id, why] = Array.isArray(e) ? e : [e, "flagrant"]; if (why === "flagrant") sus(id, 1, "was ejected for a flagrant 2 and suspended a game"); else if (why === "targeting") sus(id, 1, "was ejected for targeting and suspended a game"); }
+    // fights: before the 1977 crackdown, a fine and maybe a game; after it, an automatic suspension (and a game for everyone who left his spot in a brawl)
+    const ban = S.season >= E.RULE_YEARS.fightBan;
+    for (const f of r.fights || []) {
+      (cur.fights = cur.fights || []).push([sp.gid, f.a, f.b, f.brawl ? 1 : 0, f.join, f.why]);
+      if (ban) { sus(f.a, rng.int(3, 6) + (f.brawl ? 2 : 0), `was suspended for starting a fight${f.brawl ? " that emptied the benches" : ""}`); sus(f.b, rng.int(2, 4), "was suspended for fighting"); for (const id of f.brawl ? f.join : []) sus(id, 1, "was suspended a game for joining a brawl"); }
+      else { sus(f.a, rng.chance(0.3) ? 1 : 0, "was fined for fighting"); sus(f.b, 0, "was fined for fighting"); }
+      addGrudge(S, f.a, f.b, 1); addGrudge(S, f.b, f.a, 1); addRivalry(S, sp.home, sp.away, f.brawl ? 0.25 : 0.15);
+    }
+    // grudges: cheap shots and injuries are remembered
+    for (const [by, on] of r.flags || []) { addGrudge(S, on, by, 0.6); addRivalry(S, sp.home, sp.away, 0.04); }
+    for (const [by, on] of r.hurtBy || []) { addGrudge(S, on, by, 0.8); addRivalry(S, sp.home, sp.away, 0.03); }
     // team identity and how each player scores
     if (r.style && sp.type === 0) {
       cur.style = cur.style || {};
@@ -532,6 +697,7 @@ function offseason(S) {
   for (const p of Object.values(S.players)) if (!p.retired) {
     const c = p.team && S.teams[p.team].coach ? S.coaches[S.teams[p.team].coach] : null;
     P.develop(p, drng, S.season, c ? (c.dev - 50) / 50 : 0);
+    if (p.health && p.health.chronic.length) { for (const k of p.health.chronic) for (const r in CHRONIC[k].r) p.r[r] = Math.max(20, Math.round(p.r[r] + CHRONIC[k].r[r] * 0.12)); p.ovr = P.overall(p); } // bad joints keep wearing down
     if (p.injury && p.injury.out < 82) p.injury = null; else if (p.injury) p.injury.out = Math.max(0, p.injury.out - 30);
     if (S.season - p.born > 27) p.trouble = Math.max(0.02, Math.round(((p.trouble || 0.25) - 0.01) * 100) / 100); // most guys calm down
   }
@@ -542,14 +708,22 @@ function offseason(S) {
     let pr = a < 30 ? 0.004 : a < 33 ? 0.04 + Math.max(0, 62 - p.ovr) * 0.01 : a < 36 ? 0.22 + Math.max(0, 66 - p.ovr) * 0.02 : a < 39 ? 0.55 : 0.9;
     if (!p.team) pr += a > 28 ? 0.25 : 0.05;
     if (p.injury && p.injury.out >= 82) pr += 0.1;
-    if (drng.chance(clamp(pr, 0, 1))) {
-      p.retired = S.season - 1; p.fa = false;
-      if (p.team) { log(S, "retire", { pid: p.id, team: p.team }); removeFromTeam(S, p); }
+    const hh = p.health, conc = hh ? hh.conc : 0;
+    if (hh && hh.chronic.length && a >= 30) pr += 0.04 * hh.chronic.length;
+    // concussions: three is a warning, five is usually the end, whatever his age
+    const cpr = conc >= 3 ? clamp(0.12 * (conc - 2) + (conc >= 5 ? 0.35 : 0), 0, 0.95) : 0;
+    const byConc = cpr > 0 && drng.chance(cpr);
+    if (byConc || drng.chance(clamp(pr, 0, 1))) {
+      p.retired = S.season - 1; p.fa = false; if (byConc) p.retireWhy = "concussions";
+      if (p.team) { log(S, "retire", { pid: p.id, team: p.team, why: byConc ? "concussions" : undefined }); removeFromTeam(S, p); }
       p.contract = null;
       if (p.career && p.career.seasons >= 4) ST.maybeCoachingCareer(S, p, drng);
     }
   }
   eraAdjust(S);
+  // old wounds heal: rivalries cool, grudges fade
+  for (const k in S.riv || {}) { S.riv[k] = r2(S.riv[k] * 0.8); if (S.riv[k] < 0.03) delete S.riv[k]; }
+  for (const k in S.grudges || {}) { const [a, b] = k.split(">"); S.grudges[k] = r2(S.grudges[k] * 0.55); if (S.grudges[k] < 0.12 || S.players[a].retired || S.players[b].retired) delete S.grudges[k]; }
   // coaches and owners
   ST.staffOffseason(S, rng, (type, d) => log(S, type, d));
   // 6. expansion / merger
@@ -680,6 +854,11 @@ function exportSeason(S) {
     highKeys: HIGH_KEYS, featKeys: FEAT_KEYS, highs: cur.highs || {}, phighs: cur.phighs || {}, pogKeys: POG_KEYS, pog: cur.pog || [],
     players: cur.snapshot, injuries: cur.injuries, tx: cur.tx, blotter: cur.blotter,
     styleKeys: STYLE_KEYS, style: cur.style || {}, ppt: cur.ppt || {}, pppt: cur.pppt || {},
+    gameKeys2: ["ctx"], ctxKeys: { crew: "referee ids (crew chief first)", ref: "crew tendencies s/w/h", fat: "fatigue home/away", b2b: "back-to-back", mi: "miles traveled", rest: "rested players", riv: "rivalry", gr: "grudges [i,j,w]", rev: "revenge players", chem: "chemistry by roster slot", conc: "concussion history by roster slot" },
+    rules: E.rulesFor(cur.season), refs: Object.fromEntries(Object.keys(cur.refsUsed || {}).map(id => { const r = S.refs[id]; return [id, { name: r.first + " " + r.last, born: r.born, hired: r.hired, strict: r.strict, whistle: r.whistle, home: r.home }]; })),
+    fights: cur.fights || [], chronic: cur.chronic || [],
+    health: Object.fromEntries(Object.values(S.players).filter(p => p.health && (p.health.conc || p.health.chronic.length) && (p.team || p.retired === cur.season)).map(p => [p.id, { conc: p.health.conc, chronic: p.health.chronic.map(k => CHRONIC[k].name) }])),
+    rivals: Object.entries(S.riv || {}).filter(([k, v]) => v >= 0.1).map(([k, v]) => k.split("|").concat([v])),
     coaches: cur.coachSnap, owners: Object.fromEntries(S.active.map(t => { const o = S.owners[S.teams[t].owner]; return [t, { id: o.id, name: o.first + " " + o.last }]; }))
   };
 }

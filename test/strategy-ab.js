@@ -17,7 +17,7 @@ for (const o of opts) {
   let m = 0, w = 0, n = 0; const st = {}, add = (k, v) => st[k] = (st[k] || 0) + v;
   for (const g of games) for (let side = 0; side < 2; side++) {
     const T = g.T.map((x, i) => Object.assign({}, x, { lock: true }, i === side ? { [key]: o } : OPP));
-    const r = E.simulateGame({ id: g.sp.home }, { id: g.sp.away }, g.R, g.sp.seed, { frames: false, tactics: T, season: g.sp.season });
+    const r = E.simulateGame({ id: g.sp.home }, { id: g.sp.away }, g.R, g.sp.seed, { frames: false, tactics: T, season: g.sp.season, ctx: g.sp.ctx });
     const mg = r.score[side] - r.score[1 - side]; m += mg; w += mg > 0 ? 1 : 0; n++;
     for (const x of E.boxScore(r, 1e12)) { if (x.t === side) { add("pts", x.pts); add("fpa", x.fpa); add("tkl", x.tkl); add("to", x.to); } else { add("opp", x.pts); add("ofga", x.fga); add("ofgm", x.fgm); add("oto", x.to); } }
   }

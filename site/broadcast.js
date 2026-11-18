@@ -37,7 +37,8 @@ function buildNotable(game) {
     const e = E[i];
     let label = null, col = "#fff", big = 0;
     if (e.type === "tackle" && e.move && !e.moveFail && (e.result === "whiff" || e.result === "broken")) { label = MOVE_LABEL[e.move] + "!"; col = "#7cf"; big = e.move === "hurdle" || e.move === "stiff" ? 3 : 2; }
-    else if (e.type === "tackle" && e.result === "flagrant") { label = "FLAGRANT " + e.lvl; col = "#ff4d4d"; big = 2; }
+    else if (e.type === "fight") { label = e.brawl ? "BENCHES CLEAR!" : "FIGHT!"; col = "#ff4d4d"; big = 2; }
+    else if (e.type === "tackle" && e.result === "flagrant") { label = e.targeting ? "TARGETING" : "FLAGRANT " + e.lvl; col = "#ff4d4d"; big = 2; }
     else if (e.type === "tackle" && e.result === "fumble" && e.drib) { label = "POPPED LOOSE!"; col = "#ff4d4d"; big = 3; }
     else if (e.type === "tackle" && e.result === "down" && e.tech === "hit" && !e.gang) { label = "BIG HIT!"; col = "#ff4d4d"; big = 3; }
     else if (e.type === "tackle" && e.result === "down" && e.tech === "dive" && !e.gang) { label = "DIVING TACKLE!"; col = "#ff4d4d"; big = 3; }
@@ -123,6 +124,14 @@ function showChalk(e, col) {
   el.style.setProperty("--c", col);
   el.innerHTML = `<div class="cht">${e.ato ? "<i>ATO</i>" : e.hunt ? "<i>MISMATCH</i>" : `<i>${esc(TB[e.team === 0 ? GAME.home : GAME.away].id)}</i>`}${esc(S.name)}</div>` + setDiagram(e.set, e.roles, e.side, seasonNow() >= 1979);
   el.classList.add("on"); clearTimeout(chTimer); chTimer = setTimeout(() => el.classList.remove("on"), V.speed >= 2 ? 2800 : 4000);
+}
+// the head game: heating up, ice cold, rattled, fired up
+let psTimer = 0;
+function psyTag(label, r, col, tint) {
+  const el = $("psytag"); if (!el || V.replay || V.intro) return;
+  el.style.setProperty("--c", col); el.style.setProperty("--t", tint);
+  el.innerHTML = `<b>${label}</b>#${r.num} ${esc(r.short.split(" ").pop().toUpperCase())}`;
+  el.classList.add("on"); clearTimeout(psTimer); psTimer = setTimeout(() => el.classList.remove("on"), 2600);
 }
 // the coverage on each ball screen: shown when it changes, or now and then as a reminder
 let cvTimer = 0; const cvLast = [{ k: "", tk: -1e9 }, { k: "", tk: -1e9 }];
@@ -316,7 +325,11 @@ function callFor(e) {
       return null;
     case "mismatch": return e.v < 12 ? null : [pickLine(["Look at the mismatch: " + n + " has " + lastName(e.d) + " on him" + (e.kind === "post" ? ", and they're going to the post." : ". Clear it out!"), "They want " + n + " against " + lastName(e.d) + ". Smart basketball."], k), 2];
     case "injury": return [e.sev === 0 ? n + " is slow to get up. He's holding his " + (BODY[e.kind] || "shoulder") + "." : pickLine([n + " is down, and he's holding his " + (BODY[e.kind] || "leg") + ". That does not look good.", "Trainers are coming out for " + n + ". He took a shot to the " + (BODY[e.kind] || "body") + "."], k), 3];
-    case "ejected": return [n + " has been tossed from this game.", 3];
+    case "ejected": return [e.why === "fight" ? n + " is gone. Ejected for fighting." : e.why === "targeting" ? n + " is ejected for targeting. That was a hit to the head." : n + " has been tossed from this game.", 3];
+    case "fight": return [e.brawl ? pickLine(["Here come the benches! This is a full-scale brawl!", "Oh no. Everybody's in it now. Both benches have emptied!"], k) : pickLine([n + " and " + lastName(e.on) + " are going at it! The officials are trying to get in there!", "Punches thrown! " + n + " and " + lastName(e.on) + " have to be separated!"], k), 3];
+    case "enforcer": return [pickLine([n + " is going to remember that. Watch number " + GAME.roster[e.pid].num + " the next time " + lastName(e.on) + " has the ball.", "You can bet " + n + " has a message for " + lastName(e.on) + "."], k), 2];
+    case "heat": return e.lvl > 0 ? [pickLine([n + " is heating up!", "Somebody find " + n + "! He's feeling it!"], k), 2] : Math.abs(k) % 2 ? [n + " just can't buy one tonight.", 1] : null;
+    case "mood": return e.lvl < 0 ? (Math.abs(k) % 2 ? [n + " looks rattled after those hits.", 1] : null) : [pickLine([n + " is fired up now!", "That woke " + n + " up. He's angry."], k), 1];
     case "timeout": return ["Timeout, " + teamOf(e.team).name + ".", 2];
     case "period_end": return [e.per === 2 ? "That will do it for the first half." : e.per < 4 ? "That's the end of the " + ["first", "second", "third"][e.per - 1] + " quarter." : "", 2];
     case "final": { const w = e.s0 > e.s1 ? 0 : 1; return ["And that's the ballgame! The " + teamOf(w).name + " win it, " + Math.max(e.s0, e.s1) + " to " + Math.min(e.s0, e.s1) + ".", 4]; }
@@ -348,7 +361,9 @@ function playEvents(fromTick, toTick) {
         break;
       case "tackle":
         if (e.move && !e.moveFail && (e.result === "whiff" || e.result === "broken")) { if (AUDIO) AUDIO.excite(e.team === 0 ? 0.5 : 0.9); lowerThird(COLORS[1 - e.team], `${MOVE_LABEL[e.move]} · ${esc(GAME.roster[e.on].short)}`, `${e.move === "hurdle" ? "right over" : e.move === "stiff" ? "plants" : "leaves"} ${esc(r.short)}${e.move === "stiff" ? " on the floor" : e.move === "hurdle" ? " on the dive" : " grabbing air"}`); }
-        else if (e.result === "flagrant") { if (AUDIO) AUDIO.whistle(); lowerThird(col, `FLAGRANT ${e.lvl} · ${esc(r.short)}`, (e.lvl === 2 ? "ejected · " : "") + "two shots and the ball", 4000); }
+        else if (e.result === "flagrant") { if (AUDIO) AUDIO.whistle(); lowerThird(col, `${e.targeting ? "TARGETING" : "FLAGRANT " + e.lvl} · ${esc(r.short)}`, (e.targeting ? "hit to the head · " : "") + (e.lvl === 2 ? "ejected · " : "") + "two shots and the ball", 4000); }
+        else if (e.result === "nocall") { lowerThird(col, `NO CALL · ${esc(r.short)}`, `hit ${esc(GAME.roster[e.on].short)} after the release · play on`, 3000); }
+        else if (e.result === "pileon") { if (AUDIO) AUDIO.whistle(); lowerThird(col, `PILE-ON · ${esc(r.short)}`, "third man in · foul, they keep the ball", 3200); }
         else if (e.result === "down") { if (AUDIO) { AUDIO.excite(0.9); AUDIO.whistle(); } lowerThird(col, (e.gang ? "GANG TACKLE · " : e.tech === "hit" ? "BIG HIT · " : e.tech === "dive" ? "DIVING TACKLE · " : "TACKLE · ") + esc(r.short) + (e.gang ? " +" + e.gang.length : ""), "turnover"); }
         else if (e.result === "fumble" && e.drib) { if (AUDIO) AUDIO.excite(1); lowerThird(col, "POPPED LOOSE · " + esc(r.short), `hit ${esc(GAME.roster[e.on].short)} on the dribble · live ball`); }
         else if (e.result === "fumble") { if (AUDIO) AUDIO.excite(1); lowerThird(col, "FUMBLE · " + esc(r.short), `jarred loose from ${esc(GAME.roster[e.on].short)} · live ball`); }
@@ -360,7 +375,11 @@ function playEvents(fromTick, toTick) {
       case "cover": covTag(e, col); break;
       case "mismatch": if (e.v >= 12) lowerThird(col, `MISMATCH · #${r.num} ${esc(r.short)}`, `${htStr(e.pid)} on ${htStr(e.d)} ${esc(GAME.roster[e.d].short)} · ${e.kind === "post" ? "taking him to the post" : "clearing out for him"}`); break;
       case "injury": lowerThird(col, `INJURY · ${esc(r.short)}`, `${esc(e.kind)} · ${e.sev === 0 ? "done for the night" : "will not return"}`, 4500, true); break;
-      case "ejected": lowerThird(col, `EJECTED · ${esc(r.short)}`, "flagrant 2 · he's gone", 4000, true); break;
+      case "ejected": lowerThird(col, `EJECTED · ${esc(r.short)}`, e.why === "fight" ? "fighting · he's gone" : e.why === "targeting" ? "targeting · a hit to the head" : "flagrant 2 · he's gone", 4000, true); break;
+      case "fight": if (AUDIO) { AUDIO.excite(1); AUDIO.whistle(); } lowerThird("#ff4d4d", e.brawl ? "BENCHES CLEAR" : `FIGHT · ${esc(r.short)} & ${esc(GAME.roster[e.on].short)}`, e.brawl ? `${esc(r.short)} and ${esc(GAME.roster[e.on].short)} started it` : "the officials step in", 4500, true); break;
+      case "enforcer": lowerThird(col, `ENFORCER · ${esc(r.short)}`, `has a message for ${esc(GAME.roster[e.on].short)}`, 3200); break;
+      case "heat": psyTag(e.lvl > 0 ? "HEATING UP" : "ICE COLD", r, col, e.lvl > 0 ? "#ff9f43" : "#7cc6ff"); break;
+      case "mood": psyTag(e.lvl > 0 ? "FIRED UP" : "RATTLED", r, col, e.lvl > 0 ? "#ff6b6b" : "#c8b6ff"); break;
       case "adjust": lowerThird(col, "ADJUSTMENT · " + TB[e.team === 0 ? GAME.home : GAME.away].id, adjustText(e)); break;
       case "plan": if (e.team === 1 && e.tk <= 0) showPlanCard(); break;
       case "foul":
@@ -430,6 +449,26 @@ function records(ctxx) {
   const co = sd.coaches || {};
   return { rec, series, coach: [co[row[11]] ? co[row[11]].name : null, co[row[12]] ? co[row[12]].name : null], season: sd.season, type, day };
 }
+// the officials and the storylines: who's calling it, who's tired, who's sitting, who has a score to settle
+function crewNames() { const c = GAME.ctx; return c && c.crew ? c.crew.map(id => GAME.refs[id] ? GAME.refs[id].name : "Ref #" + id) : []; }
+function crewStyle() {
+  const r = GAME.ctx && GAME.ctx.ref; if (!r) return "";
+  const tight = r.w >= 1.04 ? "a tight crew" : r.w <= 0.96 ? "a let-them-play crew" : "a by-the-book crew";
+  const flag = r.s >= 0.6 ? "quick to call a flagrant" : r.s <= 0.4 ? "slow to call a flagrant" : "";
+  return tight + (flag ? ", " + flag : "");
+}
+function whistles(tk) { let n = 0; for (const e of GAME.events) { if (e.tk > tk) break; if (e.type === "foul") n++; } return n; }
+function storylines() {
+  const c = GAME.ctx || {}, out = [], nm2 = i => esc(GAME.roster[i].short), tn = t => esc(teamOf(t).name);
+  if (c.riv >= 0.5) out.push(`Bad blood: the ${tn(1)} and ${tn(0)} do not like each other`); else if (c.riv >= 0.3) out.push(`A rivalry game`);
+  const seen = new Set();
+  for (const [a, b, w] of (c.gr || []).slice().sort((x, y) => y[2] - x[2])) { const k = Math.min(a, b) + "-" + Math.max(a, b); if (w < 0.5 || seen.has(k) || seen.size >= 2) continue; seen.add(k); out.push(`History between ${nm2(a)} and ${nm2(b)}`); }
+  for (const i of c.rev || []) out.push(`Revenge game for ${nm2(i)} against his old team`);
+  (c.b2b || []).forEach((b, t) => { if (b) out.push(`The ${tn(t)} are on the second night of a back-to-back`); });
+  (c.mi || []).forEach((m, t) => { if (m >= 900 && !(c.b2b && c.b2b[t])) out.push(`The ${tn(t)} flew ${m.toLocaleString()} miles to get here`); });
+  for (const r of GAME.restNames || []) out.push(`${esc(r.name)} sits tonight for the ${tn(r.t)} (rest)`);
+  return out;
+}
 function introHTML() {
   const R = records(V.ctx), H = TB[GAME.home], A = TB[GAME.away];
   const tm = t => { const T = t ? A : H, rec = R && R.rec[T.id]; return `<div class="tm" style="--c:${COLORS[t]}"><span class="cty">${esc(T.city)}</span><b>${esc(T.name)}</b><span class="rec">${rec ? rec[0] + "-" + rec[1] : ""}${R && R.coach[t] ? " · " + esc(R.coach[t]) : ""}</span></div>`; };
@@ -437,13 +476,20 @@ function introHTML() {
   const kick = R ? `${R.season} · ${R.type ? "PLAYOFFS · " + esc(R.series) : "DAY " + (R.day + 1)}` : "UBL";
   return `<div class="cin"><div class="ck">UBL ON TV · ${kick}</div><div class="mu">${tm(1)}<div class="at">at</div>${tm(0)}</div>
     <div class="arena">${esc(H.arena || H.city + " Arena")} · ${esc(H.city)}</div>
-    <div class="lus">${lu(1)}${lu(0)}</div><button class="skip" data-a="skip">Tip it off ▶</button></div>`;
+    <div class="lus">${lu(1)}${lu(0)}</div>
+    ${crewNames().length ? `<div class="crew"><b>Officials</b> ${crewNames().map((n, i) => esc(n) + (i === 0 ? " <em>(crew chief)</em>" : "")).join(" · ")}<span>${esc(crewStyle())}</span></div>` : ""}
+    ${storylines().length ? `<ul class="story">${storylines().slice(0, 4).map(x => `<li>${x}</li>`).join("")}</ul>` : ""}
+    <button class="skip" data-a="skip">Tip it off ▶</button></div>`;
 }
 const POSN = { PG: "guard", SNIPER: "guard", WING: "forward", BRUISER: "forward", BIG: "center" };
 const INTRO_CARD = 4.2, INTRO_EACH = 2.0;
 function introStarters() { return GAME.roster.filter(r => r.t === 0 && r.starter); }
 function newIntro() { const now = performance.now(); return { t0: now, step: -1, until: now + (INTRO_CARD + 5 * INTRO_EACH + 0.6) * 1000 }; }
-function startIntro() { V.intro = newIntro(); showCard("intro", introHTML()); $("skipIntro").hidden = false; ANN.say(`Welcome to ${TB[GAME.home].arena || TB[GAME.home].city}, where the ${TB[GAME.away].name} take on the ${TB[GAME.home].name}.`, 2); }
+function startIntro() {
+  V.intro = newIntro(); showCard("intro", introHTML()); $("skipIntro").hidden = false;
+  const st = storylines().map(x => x.replace(/<[^>]+>/g, ""));
+  ANN.say(`Welcome to ${TB[GAME.home].arena || TB[GAME.home].city}, where the ${TB[GAME.away].name} take on the ${TB[GAME.home].name}.${st.length ? " " + st[0] + "." : ""}`, 2);
+}
 function endIntro() { if (!V.intro) return; V.intro = null; hideCard(); $("skipIntro").hidden = true; $("l3").classList.remove("on"); if (AUDIO) AUDIO.whoosh(); stingerFx(); if (V.tick < 40) setTimeout(showPlanCard, 600); }
 // what the intro camera shows right now; fires the player introductions as they come up
 function introView(now) {
@@ -469,7 +515,8 @@ function showBreakCard(e) {
   const html = `<div class="cin"><div class="ck">${title}${e.per === 4 ? " · OVERTIME NEXT" : ""}</div>
     <div class="score"><span style="--c:${COLORS[1]}">${TB[GAME.away].id} <b>${e.s1}</b></span><span style="--c:${COLORS[0]}"><b>${e.s0}</b> ${TB[GAME.home].id}</span></div>
     <table class="cmp">${rows.map(([l, f]) => `<tr><td>${f(1)}</td><th>${l}</th><td>${f(0)}</td></tr>`).join("")}</table>
-    <div class="leaders">${lead(1)}${lead(0)}</div></div>`;
+    <div class="leaders">${lead(1)}${lead(0)}</div>
+    ${crewNames().length ? `<div class="crew sm"><b>The crew</b> ${whistles(e.tk)} whistles so far<span>${esc(crewStyle())}</span></div>` : ""}</div>`;
   showCard("brk", html, 6000);
   if (!V.live && V.speed <= 4) V.hold = performance.now() + 6000;
 }
@@ -647,7 +694,11 @@ function pbpLine(e) {
     case "mismatch": return [`MISMATCH: ${tnm(e.team)} goes at ${nm(e.d)} with ${nm(e.pid)} ${e.kind === "post" ? "in the post" : "in isolation"} <span class="m">(${htStr(e.pid)} vs ${htStr(e.d)})</span>`, "call"];
     case "scram": return [`${nm(e.pid)} and ${nm(e.w)} scram-switch to fix the mismatch`, "m call"];
     case "injury": return [e.sev === 0 ? `${nm(e.pid)} is shaken up (${esc(e.kind)}) and heads to the locker room` : `INJURY: ${nm(e.pid)} goes down with a ${esc(e.kind)} and won't return`, "hot"];
-    case "ejected": return [`${nm(e.pid)} has been ejected`, "hot"];
+    case "ejected": return [`${nm(e.pid)} has been ejected${e.why === "fight" ? " for fighting" : e.why === "targeting" ? " for targeting" : ""}`, "hot"];
+    case "fight": return [`${e.brawl ? "BRAWL: the benches clear after " : "FIGHT: "}${nm(e.pid)} and ${nm(e.on)} ${e.brawl ? "square off" : "trade punches"}${e.join && e.join.length && !e.brawl ? ` <span class="m">(${e.join.map(i => esc(GAME.roster[i].short)).join(", ")} in to separate them)</span>` : ""}`, "hot"];
+    case "enforcer": return [`${nm(e.pid)} will be looking for ${nm(e.on)}`, "m"];
+    case "heat": return [e.lvl > 0 ? `${nm(e.pid)} is heating up` : `${nm(e.pid)} has gone ice cold`, "m"];
+    case "mood": return [e.lvl > 0 ? `${nm(e.pid)} is fired up` : `${nm(e.pid)} looks rattled`, "m"];
     case "whistle": return e.kind === "injury" ? [`The officials stop play for the injured player`, "m"] : null;
     case "fga": {
       const kind = e.dunk ? "dunk" : e.layup ? "layup" : e.hook ? `${e.d}-ft hook shot` : e.val === 4 ? `${e.d}-ft four` : e.val === 3 ? `${e.d}-ft three` : `${e.d}-ft jumper`;
@@ -671,7 +722,9 @@ function pbpLine(e) {
     case "tackle":
       if (e.move && !e.moveFail && e.result === "whiff") return [e.move === "hurdle" ? `HURDLE! ${nm(e.on)} leaps right over the diving ${nm(e.pid)}` : `JUKE! ${nm(e.on)} makes ${nm(e.pid)} miss`, "hot"];
       if (e.move && !e.moveFail && e.result === "broken") return [e.move === "stiff" ? `STIFF-ARM! ${nm(e.on)} puts ${nm(e.pid)} on the floor` : `SPIN MOVE! ${nm(e.on)} spins out of ${nm(e.pid)}'s tackle`, "hot"];
-      if (e.result === "flagrant") return [`FLAGRANT ${e.lvl}: ${nm(e.pid)} ${e.tech === "hit" ? "launches into" : "takes a cheap shot at"} ${nm(e.on)}${e.lvl === 2 ? ". He's ejected" : ""}. Two shots and the ball`, "hot"];
+      if (e.result === "flagrant") return [e.targeting ? `TARGETING: ${nm(e.pid)} hits ${nm(e.on)} in the head. He's ejected. Two shots and the ball` : `FLAGRANT ${e.lvl}: ${nm(e.pid)} ${e.tech === "hit" ? "launches into" : "takes a cheap shot at"} ${nm(e.on)}${e.lvl === 2 ? ". He's ejected" : ""}. Two shots and the ball`, "hot"];
+      if (e.result === "nocall") return [`${nm(e.pid)} hits ${nm(e.on)} after the release. No call`, ""];
+      if (e.result === "pileon") return [`${nm(e.pid)} piles on as the third man in. Foul, and they keep the ball`, ""];
       if (e.result === "fumble" && e.drib) return [e.broke ? `${nm(e.on)} breaks ${nm(e.pid)}'s tackle but loses the dribble. Live ball` : `POPPED LOOSE! ${nm(e.pid)} hits ${nm(e.on)} on the dribble. Live ball`, "hot"];
       if (e.result === "down" && !e.gang && e.tech === "hit") return [`BIG HIT! ${nm(e.pid)} levels ${nm(e.on)}. Turnover`, "hot"];
       if (e.result === "down" && !e.gang && e.tech === "dive") return [`${nm(e.pid)} dives at ${nm(e.on)}'s legs and takes him down. Turnover`, "hot"];
@@ -688,7 +741,7 @@ function pbpLine(e) {
       if (e.kind === "moving") return [`Moving screen on ${nm(e.pid)}. Offensive foul, turnover <span class="m">(${e.pf} PF)</span>`, "m"];
       if (e.kind === "intentional") return [`${nm(e.pid)} fouls ${nm(e.on)} on purpose to stop the clock <span class="m">(${e.pf} PF)</span>`, "m"];
       if (e.kind === "hack") return [`${nm(e.pid)} grabs ${nm(e.on)} away from the ball. Hack-a-${esc(GAME.roster[e.on].short.split(" ").pop())} <span class="m">(${e.pf} PF)</span>`, "m"];
-      if (e.kind === "roughing" || e.kind === "flagrant") return null;
+      if (e.kind === "roughing" || e.kind === "flagrant" || e.kind === "pileon") return null;
       return [`Foul on ${nm(e.pid)} <span class="m">(${e.pf} PF${e.kind === "shooting" ? ", shooting" : ""})</span>`, "m"];
     case "fouledout": return [`${nm(e.pid)} has fouled out`, "hot"];
     case "timeout": return [`Timeout, ${esc(teamOf(e.team).name)}`, "m"];
@@ -848,6 +901,15 @@ function renderStrategy() {
     <tr><td class="pn">Play calls (P&amp;R / iso / post / screens)</td><td>${R[1].calls.pnr || 0} / ${R[1].calls.iso || 0} / ${R[1].calls.post || 0} / ${R[1].calls.offscr || 0}</td><td>${R[0].calls.pnr || 0} / ${R[0].calls.iso || 0} / ${R[0].calls.post || 0} / ${R[0].calls.offscr || 0}</td></tr>
     <tr><td class="pn">Doubles / intentional fouls / hacks</td><td>${R[1].calls.double || 0} / ${f(1, "intentional")} / ${f(1, "hack")}</td><td>${R[0].calls.double || 0} / ${f(0, "intentional")} / ${f(0, "hack")}</td></tr>
     </tbody></table></div>`;
+  // the officials and the head game
+  const fts = R[0].fights.concat(R[1].fights).sort((a, b) => a.tk - b.tk);
+  const heads = [1, 0].flatMap(t => R[t].heat.map(e => [e.tk, `${nm(e.pid)} ${e.lvl > 0 ? "heated up" : "went ice cold"}`]).concat(R[t].mood.map(e => [e.tk, `${nm(e.pid)} ${e.lvl > 0 ? "got fired up" : "was rattled"}`])).concat(R[t].marks.map(e => [e.tk, `${nm(e.pid)} went looking for ${nm(e.on)}`]))).sort((a, b) => a[0] - b[0]);
+  if (crewNames().length || fts.length || heads.length) {
+    h += `<h3>The officials and the head game</h3>`;
+    if (crewNames().length) h += `<p class="crewp"><b>Crew:</b> ${crewNames().map(esc).join(", ")} <span class="m">· ${esc(crewStyle())} · ${whistles(V.tick)} whistles, ${R[0].nocall + R[1].nocall} late hits let go</span></p>`;
+    if (fts.length) h += `<ul class="injl">${fts.map(e => `<li>${e.brawl ? "Brawl" : "Fight"}: ${nm(e.pid)} and ${nm(e.on)}, ${perName(e.per)} ${fmtClock(e.clk)}</li>`).join("")}</ul>`;
+    if (heads.length) h += `<ul class="injl">${heads.slice(0, 10).map(x => `<li>${x[1]}</li>`).join("")}</ul>`;
+  }
   // who got hurt, who got tossed
   const hurt = [1, 0].flatMap(t => R[t].inj.map(e => `<li>${nm(e.pid)} <span class="m">(${esc(teamOf(t).name)})</span>: ${esc(e.kind)}, ${perName(e.per)} ${fmtClock(e.clk)}</li>`).concat(R[t].ejected.map(e => `<li>${nm(e.pid)} <span class="m">(${esc(teamOf(t).name)})</span>: ejected, ${perName(e.per)} ${fmtClock(e.clk)}</li>`)));
   if (hurt.length) h += `<h3>Injuries and ejections</h3><ul class="injl">${hurt.join("")}</ul>`;
@@ -890,7 +952,11 @@ function gameRecap() {
   const hl = E.find(e => e.type === "tackle" && e.move && !e.moveFail && (e.move === "hurdle" || e.move === "stiff") && (e.result === "whiff" || e.result === "broken"));
   if (hl) out.push(`Play of the night: ${nm(hl.on)} ${hl.move === "hurdle" ? "hurdled the diving" : "stiff-armed"} ${nm(hl.pid)} in the ${perLong(hl.per).toLowerCase()}.`.replace("ot.", "overtime."));
   for (const e of E) if (e.type === "injury") out.push(`${nm(e.pid)} (${TN(e.team)}) left with ${/s$/.test(e.kind) ? "" : "a "}${esc(e.kind)}.`);
-  for (const e of E) if (e.type === "ejected") out.push(`${nm(e.pid)} (${TN(e.team)}) was ejected for a flagrant 2.`);
+  for (const e of E) if (e.type === "fight") out.push(`${e.brawl ? "The benches cleared" : "A fight broke out"} in the ${perLong(e.per).toLowerCase()} between ${nm(e.pid)} and ${nm(e.on)}; both were ejected.`.replace("ot.", "overtime."));
+  for (const e of E) if (e.type === "ejected" && e.why !== "fight") out.push(`${nm(e.pid)} (${TN(e.team)}) was ejected for ${e.why === "targeting" ? "targeting" : "a flagrant 2"}.`);
+  const hot = E.filter(e => e.type === "heat" && e.lvl > 0 && e.team === w)[0];
+  if (hot) { const pts = E.filter(e => e.type === "fga" && e.pid === hot.pid && e.made && e.tk >= hot.tk).reduce((a, e) => a + e.val, 0); if (pts >= 8) out.splice(2, 0, `${nm(hot.pid)} got hot in the ${perLong(hot.per).toLowerCase()} and scored ${pts} more after that.`.replace("ot.", "overtime.")); }
+  const rv = (GAME.ctx && GAME.ctx.rev || []).find(i => GAME.roster[i].t === w); if (rv !== undefined) out.splice(2, 0, `It was a revenge game for ${nm(rv)} against his old team.`);
   return out;
 }
 
@@ -920,10 +986,12 @@ function flip(i) {
   $("seed").innerHTML = c.note; V.chHtml = null; updateAll(true); renderChannels();
 }
 function simulate(row, seasonData) {
-  const [gid, day, h, a, seed, hs, as, per, type, hl, al, hc, ac] = row;
+  const [gid, day, h, a, seed, hs, as, per, type, hl, al, hc, ac, ctx] = row;
   const ps = seasonData.players, co = seasonData.coaches || {};
   const tactics = hc !== undefined && co[hc] ? [co[hc].tac, co[ac].tac] : undefined;
-  const game = simulateGame({ id: h }, { id: a }, [hl.map(id => ps[id]), al.map(id => ps[id])], seed, { tactics, season: seasonData.season });
+  const game = simulateGame({ id: h }, { id: a }, [hl.map(id => ps[id]), al.map(id => ps[id])], seed, { tactics, season: seasonData.season, ctx });
+  game.ctx = ctx || null; game.refs = seasonData.refs || {};
+  game.restNames = ctx && ctx.rest ? ctx.rest.flatMap((ids, t) => (Array.isArray(ids) ? ids : []).map(id => ps[id] ? { name: ps[id].first + " " + ps[id].last, t } : null)).filter(Boolean) : [];
   game.coachNames = [co[hc] ? co[hc].name : "", co[ac] ? co[ac].name : ""];
   game.season = seasonData.season;
   const match = game.score[0] === hs && game.score[1] === as;

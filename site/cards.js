@@ -172,7 +172,10 @@ async function vPlayerScreen(id, tab) {
   PC.ps = { id: +id, p, det, reg, post, cards, mode: "pg", which: "reg", rseason: null, ppt: null };
   // how he scored in his most recent season (play types, from the season file)
   const lastY = reg.length ? reg[reg.length - 1].season : null;
-  if (lastY) { try { const sd = await season(lastY); if (sd.ppt && sd.ppt[id]) PC.ps.ppt = { y: lastY, d: sd.ppt[id] }; } catch (e) { /* older data */ } }
+  if (lastY) { try {
+    const sd = await season(lastY); if (sd.ppt && sd.ppt[id]) PC.ps.ppt = { y: lastY, d: sd.ppt[id] };
+    PC.ps.make = sd.players && sd.players[id]; PC.ps.health = sd.health && sd.health[id];
+  } catch (e) { /* older data */ } }
   tab = PS_TABS.some(t => t[0] === tab) ? tab : "overview";
   const team = p.team ? TB[p.team] : TB[(reg[reg.length - 1] || {}).team] || null;
   const c1 = team ? team.c1 : "#59606b", c2 = team ? team.c2 : "#23272e";
@@ -234,6 +237,16 @@ function psOverview() {
     const order = ["mvp", "fmvp", "champ", "dpoy", "roy", "sniper"];
     h += `<h3>Trophy case</h3><div class="trophies">${order.filter(a => c[a]).map(a => `<div class="tro ${a}"><b>${c[a].length > 1 ? c[a].length + "×" : ""}</b><span>${AWS[a]}</span><small>${c[a].join(", ")}</small></div>`).join("")}${p.hof ? `<div class="tro hof"><b>HOF</b><span>Hall of Fame</span><small>Class of ${p.hof}</small></div>` : ""}</div>`;
   }
+  // his makeup (scouts' read on the hidden ratings) and his health history
+  const mk = PC.ps.make, tags = [];
+  if (mk && mk.temper !== undefined) {
+    if (mk.clutch >= 0.4) tags.push(["Clutch", "rises late in close games"]); else if (mk.clutch <= -0.4) tags.push(["Shrinks late", "tight in crunch time"]);
+    if (mk.streak >= 0.55) tags.push(["Streaky", "gets hot (and cold)"]);
+    if (mk.tough >= 0.75) tags.push(["Tough", "big hits make him angry"]); else if (mk.tough <= 0.3) tags.push(["Rattles easily", "big hits get to him"]);
+    if (mk.temper >= 0.72) tags.push(["Hothead", "quick to fight"]); else if (mk.temper <= 0.22) tags.push(["Cool customer", "never takes the bait"]);
+  }
+  const hh = PC.ps.health;
+  if (tags.length || hh) h += `<h3>Makeup and health</h3>${tags.length ? `<p class="idtags">${tags.map(([a, b]) => `<span title="${esc(b)}">${a}</span>`).join("")}</p>` : ""}${hh ? `<p class="m small">${hh.conc ? `${hh.conc} concussion${hh.conc > 1 ? "s" : ""} on record${hh.conc >= 3 ? " (at risk of retiring early)" : ""}` : ""}${hh.conc && hh.chronic.length ? " · " : ""}${hh.chronic.length ? "plays through a " + hh.chronic.map(esc).join(" and a ") : ""}</p>` : ""}`;
   // how he scores
   if (PC.ps.ppt) {
     const d = PC.ps.ppt.d, ks = Object.keys(d).filter(k => BB.PT_LABEL[k]).sort((a, b) => d[b][1] - d[a][1]), tot = ks.reduce((a, k) => a + d[k][1], 0);
