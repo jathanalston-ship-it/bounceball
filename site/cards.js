@@ -77,6 +77,11 @@ function pcEarned(c) {
     skyscrapers: () => `Stands ${pcFt(c.value)}. His best season, ${y}.`, pocket: () => `Stands ${pcFt(c.value)}. His best season, ${y}.`,
     immortals: () => `#${c.rank} all-time in career Game Score. His best season, ${y}.`
   };
+  const HOL = { opening: "on Opening Night", halloween: "on Halloween", thanksgiving: "on Thanksgiving", christmas: "on Christmas Day", newyear: "on New Year's Eve", valentine: "on Valentine's Day", leapday: "on Leap Day", piday: "on Pi Day", stpatricks: "on St. Patrick's Day", aprilfools: "on April Fools' Day", friday13: "on Friday the 13th" };
+  const when = ex.date ? new Date(ex.date + "T12:00:00Z").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" }) : "";
+  if (HOL[c.col]) return `${c.value}${vs} ${HOL[c.col]}${when ? `, ${when}` : ""}. The best game of the day.${watch}`;
+  if (c.col === "dunktober") return `${c.value} dunks${vs} on ${when}, #${c.rank} in October ${y}.${watch}`;
+  if (c.col === "game7") return `Led the winners${vs} in Game 7 of the ${ex.finals ? "Finals" : "round " + ex.round + " series"}${when ? `, ${when}` : ""}${ex.line ? ` (${ex.line})` : ""}.${watch}`;
   return F[c.col] ? F[c.col]() : `${C.name}, ${y}.`;
 }
 
@@ -478,6 +483,13 @@ function pcHome(all) {
   h += `<h3>Rarest cards ever</h3><div class="cgrid feat">${featured.map((c, i) => pcTile(c, i, `${c.season}`, "home")).join("")}</div>`;
   h += `<h3>Rarity</h3><div class="ladder">${CC.TIERS.map((t, i) => { const nx = CC.TIERS[i + 1]; const n = all.filter(c => c.tier.key === t.key).length; return `<div class="rung t-${t.key}"><span class="gem t-${t.key}"></span><b>${t.name}</b><small>${t.min}${nx ? "–" + (nx.min - 1) : "+"}</small><small class="m">${n} cards</small></div>`; }).join("")}</div>`;
   const my = MY.load(), owned = Object.keys(my.owned).length;
+  // what's next on the real calendar
+  const now = new Date(), yr = now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1, today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const next = CC.holidaysOf(yr).concat(CC.holidaysOf(yr + 1)).filter(([t, k]) => t >= today && byCol[CC.COLLECTIONS.find(c => c.hol === k) ? CC.COLLECTIONS.find(c => c.hol === k).key : ""]).sort((a, b) => a[0] - b[0])[0];
+  if (next) {
+    const HC = CC.COLLECTIONS.find(c => c.hol === next[1]), list = byCol[HC.key] || [], top = list.slice().sort((a, b) => b.ovr - a.ovr)[0], days = Math.round((next[0] - today) / 864e5);
+    h = h.replace(`<h3>Rarest cards ever</h3>`, `<a class="holi" href="#cards-${HC.key}"><span class="mini">${CART.front(top)}</span><div><small>${days === 0 ? "Today" : days === 1 ? "Tomorrow" : `In ${days} days`} · ${new Date(next[0]).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" })}</small><b>${esc(HC.name)}</b><p>${list.length} cards from every ${esc(HC.name.toLowerCase().includes("day") ? HC.name : HC.name + " game")} in league history. Best: ${esc(top.name)} ${top.season} (${top.ovr}).</p></div></a><h3>Rarest cards ever</h3>`);
+  }
   h = h.replace(`<h3>Rarest cards ever</h3>`, `<div class="packcta"><a class="btn" href="#cards-packs">Open packs</a><a class="btn ghost" href="#cards-mine">My collection · ${owned}/${all.length}</a></div><h3>Rarest cards ever</h3>`);
   for (const [grp, title] of Object.entries(CC.GROUP_NAMES)) {
     h += `<h3>${title}</h3><div class="colgrid">`;
@@ -512,6 +524,7 @@ function pcPackList(all) {
     { key: "premium", name: "Premium Pack", sub: "Last card Ruby or better", c1: "#b3122b", c2: "#3a0e4f", icon: "mvp", n: 5, guarantee: 81 },
     { key: "leaders", name: "Leaders Pack", sub: "Season leaders only", c1: "#0f8a57", c2: "#06341f", icon: "posterized", n: 5, groups: ["leaders"] },
     { key: "feats", name: "Moments Pack", sub: "Moments, feats, playoffs", c1: "#d9480f", c2: "#3b0d02", icon: "moments", n: 4, groups: ["feats"] },
+    { key: "holiday", name: "Holiday Pack", sub: "Holidays, Dunktober, Game 7", c1: "#147a45", c2: "#7a0f1f", icon: "christmas", n: 4, groups: ["holidays"] },
     { key: "legends", name: "Legends Pack", sub: "Legacies & awards · Amethyst+ last", c1: "#7a2bff", c2: "#140632", icon: "immortals", n: 4, groups: ["legacy", "awards"], guarantee: 84 },
     { key: "oddballs", name: "Oddballs Pack", sub: "Built different & eras", c1: "#c99a06", c2: "#3a2a00", icon: "rapsheet", n: 4, groups: ["odd", "eras", "rising"] }
   ];
@@ -584,7 +597,7 @@ function pcMine(all) {
 
 // ---------- 3D tilt + glare on the big cards ----------
 (function () {
-  const set = (el, x, y) => { el.style.setProperty("--ry", ((x - 0.5) * 18).toFixed(1) + "deg"); el.style.setProperty("--rx", ((0.5 - y) * 18).toFixed(1) + "deg"); el.style.setProperty("--gx", (x * 100).toFixed(0) + "%"); el.style.setProperty("--gy", (y * 100).toFixed(0) + "%"); };
+  const set = (el, x, y) => { el.style.setProperty("--ry", ((x - 0.5) * 18).toFixed(1) + "deg"); el.style.setProperty("--rx", ((0.5 - y) * 18).toFixed(1) + "deg"); el.style.setProperty("--px", ((x - 0.5) * 2).toFixed(2)); el.style.setProperty("--py", ((y - 0.5) * 2).toFixed(2)); el.style.setProperty("--gx", (x * 100).toFixed(0) + "%"); el.style.setProperty("--gy", (y * 100).toFixed(0) + "%"); };
   document.addEventListener("pointermove", e => {
     const el = e.target.closest && e.target.closest(".fcard.tilt"); if (!el) return;
     const r = el.getBoundingClientRect(); set(el, Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))); el.classList.add("tilting");
@@ -632,6 +645,9 @@ function pcMine(all) {
 .setr{display:grid;grid-template-columns:1fr 80px 54px;gap:8px;align-items:center;font-size:12.5px;color:var(--ink)}
 .setr .prog{margin:0}
 .boostline{font-size:12.5px}
+.holi{display:flex;gap:12px;align-items:center;margin:10px 0;padding:10px;border-radius:12px;background:linear-gradient(120deg,#3a0f1f,#0f3a24);border:1px solid #5a4a1a;color:var(--ink)}
+.holi .mini{width:84px;flex:none;filter:drop-shadow(0 6px 10px rgba(0,0,0,.5))}.holi small{color:#ffd166;font-weight:700;font-size:11px;letter-spacing:.6px;text-transform:uppercase}
+.holi b{display:block;font:700 20px Oswald,sans-serif}.holi p{margin:4px 0 0;font-size:12.5px;color:#d6dbe3}
 .box.cmp th{white-space:nowrap;font-size:11px}.box.cmp td{font-size:12.5px}.box.cmp sup.up{font-size:8.5px}.setr small{color:var(--mut);text-align:right}.setr.done span{color:#35eaa3;font-weight:700}
 @media (prefers-reduced-motion:reduce){.tear,.pslot,.pslot:before{animation:none!important}}`;
   document.head.appendChild(st);

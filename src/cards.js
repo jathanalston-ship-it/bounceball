@@ -69,6 +69,47 @@ function badges(r) {
   return out.sort((a, b) => rank[a.tier] - rank[b.tier] || b.v - a.v);
 }
 
+// ---------- league calendar ----------
+// Game days are numbered; the calendar spreads them from the third week of October to mid-April
+// and always puts a game day on the holidays below. Playoff games follow every other day.
+const DAY = 86400000;
+const iso = t => new Date(t).toISOString().slice(0, 10);
+function nthWeekday(y, m, wd, n) { const d = new Date(Date.UTC(y, m, 1)); const off = (wd - d.getUTCDay() + 7) % 7; return Date.UTC(y, m, 1 + off + 7 * (n - 1)); }
+function holidaysOf(season) {
+  const y = season, y2 = season + 1, H = [];
+  const add = (t, k) => H.push([t, k]);
+  add(Date.UTC(y, 9, 31), "halloween"); add(nthWeekday(y, 10, 4, 4), "thanksgiving"); add(Date.UTC(y, 11, 25), "christmas"); add(Date.UTC(y, 11, 31), "newyear");
+  add(Date.UTC(y2, 1, 14), "valentine"); if (new Date(Date.UTC(y2, 1, 29)).getUTCMonth() === 1) add(Date.UTC(y2, 1, 29), "leapday");
+  add(Date.UTC(y2, 2, 14), "piday"); add(Date.UTC(y2, 2, 17), "stpatricks"); add(Date.UTC(y2, 3, 1), "aprilfools");
+  for (const [yy, m] of [[y, 9], [y, 10], [y, 11], [y2, 0], [y2, 1], [y2, 2], [y2, 3]]) { const t = Date.UTC(yy, m, 13); if (new Date(t).getUTCDay() === 5) add(t, "friday13"); }
+  return H;
+}
+const calCache = {};
+// returns { date(day) -> "YYYY-MM-DD", holiday(day) -> [keys], start, end }
+function seasonCalendar(season, regDays) {
+  const ck = season + ":" + regDays; if (calCache[ck]) return calCache[ck];
+  let start = Date.UTC(season, 9, 20); while (new Date(start).getUTCDay() !== 2) start += DAY; // a Tuesday in late October
+  const end = Date.UTC(season + 1, 3, 12), span = Math.round((end - start) / DAY), N = Math.max(2, regDays);
+  const slots = Array.from({ length: N }, (_, i) => Math.round(i * span / (N - 1))), fixed = new Set([0, span]);
+  const hol = holidaysOf(season).map(([t, k]) => [Math.round((t - start) / DAY), k]).filter(([o]) => o > 0 && o < span);
+  for (const [o] of hol) {
+    if (slots.includes(o)) { fixed.add(o); continue; }
+    let bi = -1, bd = 1e9; slots.forEach((x, i) => { if (fixed.has(x)) return; const d = Math.abs(x - o); if (d < bd) { bd = d; bi = i; } });
+    if (bi >= 0) { slots[bi] = o; fixed.add(o); }
+  }
+  slots.sort((a, b) => a - b);
+  const byOff = {}; for (const [o, k] of hol) (byOff[o] = byOff[o] || []).push(k);
+  const cal = {
+    start, end, regDays: N,
+    time: day => day < N ? start + slots[day] * DAY : end + (4 + 2 * (day - N)) * DAY,
+    date: day => iso(cal.time(day)),
+    holiday: day => day === 0 ? ["opening"] : day < N ? byOff[slots[day]] || [] : []
+  };
+  return (calCache[ck] = cal);
+}
+const MON = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+function shortDate(isoDate) { const [y, m, d] = isoDate.split("-").map(Number); return `${MON[m - 1]} ${d}`; }
+
 // ---------- collections ----------
 // kind: base (every season) | leader (top of a stat that season) | award | special
 // boost: ratings raised on the card (each by 2x the card's bump), or "all" (each by the bump)
@@ -90,6 +131,20 @@ const COLLECTIONS = [
   { key: "fifty",       name: "Fifty Club",         kind: "special", group: "feats",   bump: 4, pose: "fadeaway", poses: ["fadeaway", "point"], boost: ["ins", "mid", "thr", "fr"], blurb: "Scored 50 or more in a game that season." },
   { key: "tripledouble", name: "Triple Threat",     kind: "leader",  group: "feats",   custom: true, unit: "triple-doubles", short: "TRIPLE-DBL", pose: "point", boost: ["pas", "reb", "iq"], blurb: "The season's leaders in triple-doubles (any three of points, rebounds, assists, steals, blocks and tackles in double figures)." },
   { key: "postseason",  name: "Postseason Heat",    kind: "leader",  group: "feats",   custom: true, unit: "playoff PPG", short: "PLAYOFF PPG", pose: "fadeaway", poses: ["fadeaway", "celebrate"], boost: ["ins", "mid", "iq"], blurb: "The top scorers of each postseason (four or more playoff games)." },
+  // holidays & events (from each game's star, on the league calendar)
+  { key: "opening",     name: "Opening Night",      kind: "holiday", group: "holidays", hol: "opening", pose: "point", poses: ["point", "celebrate", "fadeaway"], blurb: "The best performance on the first night of the season." },
+  { key: "halloween",   name: "Halloween Haunt",    kind: "holiday", group: "holidays", hol: "halloween", pose: "fadeaway", poses: ["fadeaway", "dunk", "crossover"], frame: "spooky", blurb: "The scariest game played on Halloween." },
+  { key: "thanksgiving", name: "Thanksgiving Feast", kind: "holiday", group: "holidays", hol: "thanksgiving", pose: "celebrate", poses: ["celebrate", "dribble", "fadeaway"], frame: "autumn", blurb: "Who ate on Thanksgiving." },
+  { key: "christmas",   name: "Christmas Day",      kind: "holiday", group: "holidays", hol: "christmas", pose: "celebrate", poses: ["celebrate", "dunk", "point"], frame: "candycane", blurb: "The league's marquee day: the best game played on Christmas." },
+  { key: "newyear",     name: "New Year's Eve",     kind: "holiday", group: "holidays", hol: "newyear", pose: "celebrate", poses: ["celebrate", "fadeaway", "point"], frame: "glitter", blurb: "Rang in the new year with the best game of December 31." },
+  { key: "valentine",   name: "Heartbreakers",      kind: "holiday", group: "holidays", hol: "valentine", pose: "crossover", poses: ["crossover", "fadeaway", "dunk"], frame: "hearts", blurb: "Broke somebody's heart on Valentine's Day." },
+  { key: "leapday",     name: "Leap Day",           kind: "holiday", group: "holidays", hol: "leapday", pose: "dunk", poses: ["dunk", "block", "hangrim"], blurb: "Only in leap years: the best game on February 29." },
+  { key: "piday",       name: "Pi Day",             kind: "holiday", group: "holidays", hol: "piday", pose: "shoot", poses: ["shoot", "fadeaway"], frame: "chalk", blurb: "March 14 (3.14). Math says this was the best game of the day." },
+  { key: "stpatricks",  name: "Luck of the Irish",  kind: "holiday", group: "holidays", hol: "stpatricks", pose: "fadeaway", poses: ["fadeaway", "dribble", "celebrate"], frame: "clover", blurb: "The best game on St. Patrick's Day." },
+  { key: "aprilfools",  name: "April Fools",        kind: "holiday", group: "holidays", hol: "aprilfools", pose: "crossover", poses: ["crossover", "stiffarm", "pass"], frame: "jester", blurb: "No joke: the best game on April 1." },
+  { key: "friday13",    name: "Friday the 13th",    kind: "holiday", group: "holidays", hol: "friday13", pose: "tackle", poses: ["tackle", "block", "guard"], frame: "cracked", blurb: "The unluckiest date on the calendar. One card for the season's best game on any Friday the 13th." },
+  { key: "dunktober",   name: "Dunktober",          kind: "leader",  group: "holidays", custom: true, unit: "dunks in a game", short: "DNK", pose: "dunk", poses: ["dunk", "hangrim"], blurb: "October's three biggest single-game dunk shows each season." },
+  { key: "game7",       name: "Game 7",             kind: "holiday", group: "holidays", pose: "celebrate", poses: ["celebrate", "fadeaway", "point"], frame: "game7", blurb: "The best player on the winning side of every Game 7." },
   // awards
   { key: "mvp",         name: "Most Valuable",      kind: "award",   group: "awards",  award: "mvp",  bump: 6, pose: "trophy",    boost: "all", blurb: "League MVP." },
   { key: "fmvp",        name: "Finals MVP",         kind: "award",   group: "awards",  award: "fmvp", bump: 5, pose: "trophy",    boost: "all", blurb: "Best player on the champion in the Finals." },
@@ -120,7 +175,7 @@ const COLLECTIONS = [
   { key: "ironworkers", name: "Ironworkers",        kind: "special", group: "odd",     bump: 1, pose: "stand", boost: ["sta", "str"], blurb: "Played every game of the season and averaged 30+ minutes." },
   { key: "rapsheet",    name: "Rap Sheet",          kind: "special", group: "odd",     bump: 0, pose: "mugshot", frame: "tape", blurb: "Suspended that season. The league office keeps a file." }
 ];
-const GROUP_NAMES = { leaders: "Season leaders", feats: "Moments & feats", awards: "Awards", rising: "Rising & veterans", legacy: "Legacies", eras: "Eras", odd: "Built different" };
+const GROUP_NAMES = { leaders: "Season leaders", feats: "Moments & feats", holidays: "Holidays & events", awards: "Awards", rising: "Rising & veterans", legacy: "Legacies", eras: "Eras", odd: "Built different" };
 const CBY = Object.fromEntries(COLLECTIONS.map(c => [c.key, c]));
 function leaderBump(rank) { return rank === 1 ? 5 : rank <= 3 ? 4 : rank <= 6 ? 3 : 2; }
 
@@ -169,15 +224,17 @@ const PROFILES = {
   ironworkers: { sta: 1, str: .6, all: .05 }
 };
 const MOMENT_PROFILES = { pts: { ins: .8, mid: .8, thr: .7, ft: .4 }, reb: { reb: 1, vert: .5, str: .5 }, ast: { pas: 1, iq: .7, hands: .5 }, tkl: { tck: 1, str: .7, acc: .5 }, dnk: { vert: 1, ins: 1, bnc: .6 }, fpm: { fr: 1, thr: .6, ft: .4 } };
-const POWER = { moments: 14, fifty: 16, mvp: 14, fmvp: 13, dpoy: 16, roy: 12, champ: 8, dynasty: 12, numberone: 10, younggun: 12, ageless: 12,
+const POWER = { opening: 12, halloween: 13, thanksgiving: 13, christmas: 15, newyear: 13, valentine: 13, leapday: 16, piday: 13, stpatricks: 13, aprilfools: 12, friday13: 13, game7: 16,
+  moments: 14, fifty: 16, mvp: 14, fmvp: 13, dpoy: 16, roy: 12, champ: 8, dynasty: 12, numberone: 10, younggun: 12, ageless: 12,
   prime: 10, franchise: 12, journeyman: 8, hof: 16, immortals: 20, founders: 6, wba: 10, expansion: 8, skyscrapers: 12, pocket: 12, ironworkers: 10 };
 function cardPower(col, rank) { const c = CBY[col]; if (!c) return 0; if (c.kind === "leader") return rank === 1 ? 18 : rank <= 3 ? 14 : rank <= 6 ? 11 : 8; return POWER[col] || 0; }
-function minLift(col, rank) { const c = CBY[col]; if (!c) return 0; return c.kind === "leader" ? Math.max(1, leaderBump(rank) - 1) : Math.max(0, (c.bump || 0) - 1); }
+function minLift(col, rank) { const c = CBY[col]; if (!c) return 0; if (c.kind === "holiday") return 2; return c.kind === "leader" ? Math.max(1, leaderBump(rank) - 1) : Math.max(0, (c.bump || 0) - 1); }
 function seeded(seed) { let h = 2166136261; for (const ch of String(seed)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0; return () => { h ^= h << 13; h >>>= 0; h ^= h >> 17; h ^= h << 5; h >>>= 0; return h / 4294967296; }; }
 // o: { role, ovr (base overall), rank, season, pid, k (moment stat) }
 function cardBuild(col, r, o) {
   const out = Object.assign({}, r), boosts = {};
-  const prof = col === "moments" ? MOMENT_PROFILES[o.k] || MOMENT_PROFILES.pts : PROFILES[col], pw = cardPower(col, o.rank);
+  const gameCard = col === "moments" || col === "dunktober" || (CBY[col] && CBY[col].kind === "holiday");
+  const prof = gameCard ? MOMENT_PROFILES[o.k] || MOMENT_PROFILES.pts : PROFILES[col], pw = cardPower(col, o.rank);
   if (!prof || !pw) return { r: out, ovr: o.ovr, boosts };
   const R = seeded(col + ":" + o.season + ":" + o.pid);
   const sig = prof.sig ? P.RKEYS.slice().sort((a, b) => r[b] - r[a]).slice(0, 3) : [];
@@ -284,12 +341,45 @@ function seasonCards(S, ctx) {
     }
     if (ctx.dynasty && ctx.dynasty[x.id + ":" + S.season]) add("dynasty", x.id, x.team, CBY.dynasty.bump, 0, ctx.dynasty[x.id + ":" + S.season]);
   }
+  // ---- holidays, Dunktober and Game 7 from each game's star ----
+  if (S.pog && S.pog.length) {
+    const PK = S.pogKeys || ["gid", "pid", "gsc10", "pts", "reb", "ast", "stl", "blk", "tkl", "dnk", "fpm", "tpm", "dpid", "ddnk", "wpid", "wgsc10"], pi2 = Object.fromEntries(PK.map((k, i) => [k, i]));
+    const regDays = Math.max(...(S.games || []).filter(g => !g[8]).map(g => g[1])) + 1, cal = seasonCalendar(S.season, regDays);
+    const sideOf = (g, pid) => g[9] && g[9].includes(pid) ? 0 : g[10] && g[10].includes(pid) ? 1 : -1;
+    const teamIn = (g, pid) => { const sd = sideOf(g, pid); return sd < 0 ? teamOf(pid) : g[2 + sd]; };
+    const oppIn = (g, pid) => { const sd = sideOf(g, pid); return sd < 0 ? null : g[3 - sd]; };
+    const lineOf = r => { const p = [`${r[pi2.pts]} PTS`]; const o = [["reb", "REB", 10], ["ast", "AST", 10], ["tkl", "TKL", 5], ["dnk", "DNK", 5], ["blk", "BLK", 5], ["stl", "STL", 5]].map(([k, l, th]) => [r[pi2[k]], l, r[pi2[k]] / th]).filter(x => x[2] >= 1).sort((a, b) => b[2] - a[2])[0]; if (o) p.push(`${o[0]} ${o[1]}`); return p.join(" · "); };
+    const kOf = r => r[pi2.dnk] >= 8 ? "dnk" : r[pi2.tkl] >= 6 ? "tkl" : r[pi2.ast] >= 12 ? "ast" : r[pi2.reb] >= 15 ? "reb" : r[pi2.fpm] >= 5 ? "fpm" : "pts";
+    const best = {};
+    for (const r of S.pog) {
+      const g = gameOf[r[0]]; if (!g || g[8] || r[pi2.pid] < 0) continue;
+      for (const h of cal.holiday(g[1])) if (!best[h] || r[pi2.gsc10] > best[h][pi2.gsc10]) best[h] = r;
+    }
+    for (const c of COLLECTIONS.filter(c => c.kind === "holiday" && c.hol)) {
+      const r = best[c.hol]; if (!r) continue;
+      const g = gameOf[r[0]], pid = r[pi2.pid];
+      add(c.key, pid, teamIn(g, pid), 2, 0, lineOf(r), { k: kOf(r), g: r[0], o: oppIn(g, pid), d: g[1], date: cal.date(g[1]) });
+    }
+    // Dunktober: October's biggest single-game dunk shows
+    const oct = S.pog.filter(r => { const g = gameOf[r[0]]; return g && !g[8] && r[pi2.ddnk] > 0 && new Date(cal.time(g[1])).getUTCMonth() === 9; })
+      .sort((a, b) => b[pi2.ddnk] - a[pi2.ddnk] || a[0] - b[0]);
+    const seenD = new Set(); let dr = 0;
+    for (const r of oct) { const pid = r[pi2.dpid]; if (seenD.has(pid)) continue; seenD.add(pid); dr++; const g = gameOf[r[0]]; add("dunktober", pid, teamIn(g, pid), leaderBump(dr), dr, r[pi2.ddnk], { k: "dnk", g: r[0], o: oppIn(g, pid), d: g[1], date: cal.date(g[1]) }); if (dr === 3) break; }
+    // Game 7: the winning side's best player in every seventh game
+    const rounds = S.playoffs && S.playoffs.series ? Math.max(...S.playoffs.series.map(x => x.round)) : 0;
+    for (const sr of (S.playoffs && S.playoffs.series) || []) {
+      if (!sr.games || sr.games.length !== 7) continue;
+      const gid = sr.games[6], r = S.pog.find(x => x[0] === gid), g = gameOf[gid]; if (!r || !g || r[pi2.wpid] < 0) continue;
+      const pid = r[pi2.wpid], line = pid === r[pi2.pid] ? lineOf(r) : null;
+      add("game7", pid, teamIn(g, pid), 2, 0, sr.round === rounds ? "FINALS" : `ROUND ${sr.round}`, { k: line ? kOf(r) : "pts", g: gid, o: oppIn(g, pid), d: g[1], date: cal.date(g[1]), line, round: sr.round, finals: sr.round === rounds });
+    }
+  }
   const rap = {};
   for (const e of S.blotter || []) if (e.who === "player" && (e.kind === "susp" || e.kind === "arrest") && e.games > 0 && !rap[e.id]) { rap[e.id] = 1; add("rapsheet", e.id, e.team, 0, 0, e.text); }
   return out;
 }
 
-const API = { TIERS, tierFor, POS, GROUPS, groupScores, BADGES, BADGE_TIERS, badges, COLLECTIONS, GROUP_NAMES, CBY, leaderBump, PROFILES, cardPower, cardBuild, cardRatings, seasonCards };
+const API = { seasonCalendar, holidaysOf, shortDate, TIERS, tierFor, POS, GROUPS, groupScores, BADGES, BADGE_TIERS, badges, COLLECTIONS, GROUP_NAMES, CBY, leaderBump, PROFILES, cardPower, cardBuild, cardRatings, seasonCards };
 if (NODE) module.exports = Object.assign({}, API);
 else window.BB = Object.assign(window.BB || {}, { CARDS: API });
 })();

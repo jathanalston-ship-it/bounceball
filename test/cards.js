@@ -57,5 +57,28 @@ ok(C.cardBuild("posterized", r60, Object.assign({}, o, { rank: 1 })).r.vert > C.
 ok(JSON.stringify(C.cardBuild("posterized", r60, o)) === JSON.stringify(dunk), "builds are deterministic");
 ok(C.cardBuild("rookie", r60, o).ovr === 62 && C.cardBuild("base", r60, o).r.vert === 60, "rookie and base cards keep the season's ratings");
 ok(C.seasonCards(Object.assign({}, S, { season: 1954 }), ctx).filter(c => c[0] === "founders").length === 60, "founders in the first season");
+// league calendar: game days in order, Opening Night on day 0, every holiday on a game day
+for (const [yr, n] of [[1955, 83], [1987, 83], [2015, 83], [1999, 60]]) {
+  const cal = C.seasonCalendar(yr, n), dates = Array.from({ length: n }, (_, d) => cal.date(d)), hol = {};
+  for (let d = 0; d < n; d++) for (const k of cal.holiday(d)) hol[k] = dates[d];
+  ok(dates.every((x, i) => !i || x > dates[i - 1]), yr + ": game dates strictly increase");
+  ok(hol.opening === dates[0] && hol.christmas === yr + "-12-25" && hol.halloween === yr + "-10-31" && hol.valentine === (yr + 1) + "-02-14", yr + ": holidays land on game days");
+  ok(!!hol.leapday === (new Date(Date.UTC(yr + 1, 1, 29)).getUTCMonth() === 1), yr + ": leap day only in leap years");
+  ok(Object.entries(hol).filter(([k]) => k === "friday13").every(([, d]) => new Date(d + "T12:00:00Z").getUTCDay() === 5), yr + ": Friday the 13th is a Friday");
+}
+// holiday cards come from the star of the best game played on that day
+{
+  const cal = C.seasonCalendar(1960, 42), xd = Array.from({ length: 42 }, (_, d) => d).find(d => cal.holiday(d).includes("christmas"));
+  const S2 = Object.assign({}, S, { games: [[500, xd, "AKR", "TOL", 1, 90, 80, 4, 0, [6, 12], [7, 13]], [501, 41, "TOL", "GRY", 1, 0, 0, 4, 0, [], []]],
+    pogKeys: ["gid", "pid", "gsc10", "pts", "reb", "ast", "stl", "blk", "tkl", "dnk", "fpm", "tpm", "dpid", "ddnk", "wpid", "wgsc10"], pog: [[500, 12, 412, 41, 12, 3, 1, 0, 0, 2, 0, 1, 12, 2, 12, 412], [501, 13, 200, 20, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 13, 200]] });
+  const xm = C.seasonCards(S2, ctx).filter(c => c[0] === "christmas");
+  ok(xm.length === 1 && xm[0][2] === 12 && xm[0][3] === "AKR" && xm[0][7] === "41 PTS · 12 REB" && xm[0][9].o === "TOL" && xm[0][9].date === "1960-12-25", "Christmas card for the day's best game");
+}
+// every drawn card pose has a pose in the photo booth (the 3D model posed for the card)
+{
+  const fs = require("fs"), path = require("path"), keys = (file, name) => { const src = fs.readFileSync(path.join(__dirname, "..", "site", file), "utf8"), i = src.indexOf(`const ${name} = {`), j = src.indexOf("\n};", i); return [...src.slice(i, j).matchAll(/^\s+([a-z0-9]+):\s+\{/gm)].map(m => m[1]); };
+  const drawn = keys("cardart.js", "POSES"), shot = new Set(keys("broadcast3d.js", "CPOSE"));
+  ok(drawn.length > 15 && drawn.every(k => shot.has(k)), "photo poses for every card pose: missing " + drawn.filter(k => !shot.has(k)).join(", "));
+}
 console.log(`${cards.length} cards from a fake season, ${bad} problems`);
 process.exit(bad ? 1 : 0);

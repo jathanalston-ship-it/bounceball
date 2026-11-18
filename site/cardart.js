@@ -108,7 +108,7 @@ function figure(poseKey, o) {
   const ink = `url(#${o.id}-ink)`, inkBack = "#0b0e13", edge = mix("#2a3446", o.acc || "#ffffff", 0.25);
   const shorts = mix(o.c1, "#000000", 0.12), shortsBack = mix(o.c1, "#000000", 0.4), trim = o.c2;
   const era = o.season || 2000, sleeve = era >= 1995 && !p.armsFront && R() < 0.28, kneeSl = era >= 1980 && R() < 0.22, wrist = !p.armsFront && R() < 0.35;
-  const hair = hairFor(R, era), shoeCol = o.shoe || "#f4f4f4";
+  let hair = hairFor(R, era); if (o.hat === "clover") hair = "band"; const shoeCol = o.shoe || "#f4f4f4";
   const sty = (fill, st) => `fill="${fill}"${st ? ` stroke="${st}" stroke-width="${f1(0.9 * s)}" stroke-linejoin="round"` : ""}`;
   // ---- limbs ----
   const arm = (S, E, A, ang, fill, st, front) => {
@@ -169,7 +169,12 @@ function figure(poseKey, o) {
   head += `<ellipse cx="${f1(ear[0])}" cy="${f1(ear[1])}" rx="${f1(2.2 * s)}" ry="${f1(3.2 * s)}" fill="${ink}" stroke="${edge}" stroke-width=".6"/>`;
   if (hair === "hightop") head += `<path d="${poly([add(add(Hc, q, -hr * 0.82), u, hr * 0.35), add(add(Hc, q, hr * 0.82), u, hr * 0.35), add(add(Hc, q, hr * 0.8), u, hr * 1.55), add(add(Hc, q, -hr * 0.8), u, hr * 1.55)])}" fill="${inkBack}" stroke="${edge}" stroke-width=".7"/>`;
   if (hair === "crew" || hair === "flat") head += `<path d="M${P2(add(add(Hc, q, -hr * 0.86), u, hr * 0.1))} Q${P2(add(Hc, u, hr * (hair === "flat" ? 1.16 : 1.3)))} ${P2(add(add(Hc, q, hr * 0.86), u, hr * 0.1))}" fill="${inkBack}"/>`;
-  if (hair === "band") head += `<path d="M${P2(add(add(Hc, q, -hr * 0.9), u, hr * 0.3))} Q${P2(add(Hc, u, hr * 0.62))} ${P2(add(add(Hc, q, hr * 0.9), u, hr * 0.3))}" stroke="${trim}" stroke-width="${f1(3.6 * s)}" fill="none"/>`;
+  if (hair === "band") head += `<path d="M${P2(add(add(Hc, q, -hr * 0.9), u, hr * 0.3))} Q${P2(add(Hc, u, hr * 0.62))} ${P2(add(add(Hc, q, hr * 0.9), u, hr * 0.3))}" stroke="${o.hat === "clover" ? "#2f9e44" : trim}" stroke-width="${f1(3.6 * s)}" fill="none"/>`;
+  if (o.hat === "santa") {
+    const bl = add(add(Hc, q, -hr * 1.0), u, hr * 0.42), br = add(add(Hc, q, hr * 1.0), u, hr * 0.42), tip = add(add(Hc, u, hr * 2.0), q, face * hr * 1.6);
+    head += `<path d="M${P2(bl)} Q${P2(add(Hc, u, hr * 1.9))} ${P2(tip)} Q${P2(add(add(Hc, u, hr * 1.2), q, face * hr * 0.6))} ${P2(br)}Z" fill="#d7263d" stroke="#7a0f1f" stroke-width="${f1(.8 * s)}"/>`;
+    head += `<path d="M${P2(bl)} Q${P2(add(Hc, u, hr * 0.75))} ${P2(br)}" stroke="#ffffff" stroke-width="${f1(5 * s)}" stroke-linecap="round" fill="none"/><circle cx="${f1(tip[0])}" cy="${f1(tip[1])}" r="${f1(3.4 * s)}" fill="#ffffff"/>`;
+  }
   const neck = `<path d="${capsule(add(N, u, -3 * s), add(N, u, L.neck + 3 * s), 5.6 * k, 5.0 * k)}" fill="${ink}"/>`;
   // ---- ball & props ----
   let ball = "";
@@ -211,7 +216,7 @@ function figure(poseKey, o) {
 <linearGradient id="${o.id}-jer" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${mix(o.c1, "#ffffff", 0.28)}"/><stop offset=".5" stop-color="${o.c1}"/><stop offset="1" stop-color="${mix(o.c1, "#000000", 0.42)}"/></linearGradient>`;
   let svg = `<g filter="url(#${o.id}-rim)">${body}</g>` + ball + prop;
   // keep raised hands, heads and trophies inside the card
-  const minY = Math.min(Hc[1] - hr * (hair === "hightop" ? 1.6 : hair === "afro" ? 1.45 : 1), AL[1], AR[1]) - (p.ball === "release" ? 35 * s : p.ball === "top" ? 18 * s : p.trophy ? 46 * s : p.finger ? 16 * s : 7 * s);
+  const minY = Math.min(Hc[1] - hr * (o.hat === "santa" ? 2.3 : hair === "hightop" ? 1.6 : hair === "afro" ? 1.45 : 1), AL[1], AR[1]) - (p.ball === "release" ? 35 * s : p.ball === "top" ? 18 * s : p.trophy ? 46 * s : p.finger ? 16 * s : 7 * s);
   const lim = o.top || 30;
   if (p.armsFront) {
     const dy = (o.headTop || 64) - (Hc[1] - hr * (hair === "hightop" ? 1.55 : hair === "afro" ? 1.4 : 1.05));
@@ -572,6 +577,100 @@ const ART = {
     s += `<circle cx="132" cy="110" r="62" fill="none" stroke="url(#goldg)" stroke-width="3" opacity=".6"/><circle cx="132" cy="110" r="70" fill="none" stroke="#ffe9a8" stroke-width=".8" opacity=".4"/>`;
     return s + halo(g, 132, 160, 140) + sparkles(g.R, 10, "#fff3c2") + `<rect x="0" y="${g.floor}" width="${W}" height="${H - g.floor}" fill="rgba(10,0,30,.5)"/>`;
   },
+  opening(g) {
+    let s = bg(g, "#05060c", mix(g.c1, "#000", .6), "#ffffff") + crowd(g, "#000", 196, .55);
+    for (let i = 0; i < 6; i++) { const x = 20 + i * 42, col = [g.acc, "#ffffff", mix(g.c1, "#fff", .3)][i % 3]; s += spot(x, -10, 125 + (i - 2.5) * 30, 26, col, .16, g.id); }
+    let bulbs = ""; for (let x = 18; x < 234; x += 9) bulbs += `<circle cx="${x}" cy="150" r="2.2" fill="#ffd166" opacity="${f1(.5 + g.R() * .5)}"/>`;
+    s += `<g opacity=".75" transform="translate(0 -46)"><rect x="76" y="120" width="160" height="36" rx="4" fill="rgba(5,7,10,.7)" stroke="#ffd166" stroke-width="1.4"/>${bulbs.replace(/cx="(\d+)"/g, (m, x) => +x < 80 ? 'cx="-20"' : m)}<text x="156" y="144" font-family="${FONT}" font-weight="700" font-size="15" fill="#ffd166" text-anchor="middle" letter-spacing="3">OPENING NIGHT</text></g>`;
+    return s + halo(g, 132, 175, 125) + floor(g, "rgba(0,0,0,.55)") + courtLines(g, "#ffffff", .14);
+  },
+  halloween(g) {
+    let s = bg(g, "#1a0b2e", "#4a1a05", "#ff8a1a") + `<circle cx="168" cy="78" r="44" fill="#fff4d6" opacity=".9"/><circle cx="168" cy="78" r="58" fill="#fff4d6" opacity=".18" filter="url(#${g.id}-blur)"/>`;
+    for (let i = 0; i < 7; i++) { const x = 20 + g.R() * 210, y = 30 + g.R() * 120, k = .5 + g.R() * .7; s += `<path transform="translate(${f1(x)} ${f1(y)}) scale(${f1(k)})" d="M0,0 Q-6,-6 -14,-2 Q-10,-1 -9,3 Q-5,0 0,4 Q5,0 9,3 Q10,-1 14,-2 Q6,-6 0,0Z" fill="#0b0613"/>`; }
+    s += `<path d="M14,14 L60,14 M14,14 L14,60 M14,14 L48,48 M14,30 Q24,24 30,14 M14,44 Q34,36 44,14 M30,30 Q34,22 38,20" stroke="#d9c7ff" stroke-width=".8" fill="none" opacity=".5"/>`;
+    const pk = (x, k) => `<g transform="translate(${x} ${g.floor - 2}) scale(${k})"><ellipse cx="0" cy="-10" rx="16" ry="12" fill="#ff7a1a"/><ellipse cx="-7" cy="-10" rx="6" ry="12" fill="#e2580e" opacity=".6"/><ellipse cx="7" cy="-10" rx="6" ry="12" fill="#e2580e" opacity=".6"/><rect x="-2" y="-25" width="4" height="6" fill="#3a6b1a"/><path d="M-8,-13 l3,-4 l3,4Z M2,-13 l3,-4 l3,4Z M-8,-6 Q0,-1 8,-6 L5,-4 L2,-6 L0,-4 L-2,-6 L-5,-4Z" fill="#ffe066"/></g>`;
+    s += halo(g, 132, 170, 120) + `<rect x="0" y="${g.floor - 30}" width="${W}" height="60" fill="#d9c7ff" opacity=".08" filter="url(#${g.id}-blur)"/>` + floor(g, "rgba(10,0,20,.55)") + pk(36, 1) + pk(214, .8);
+    return s;
+  },
+  thanksgiving(g) {
+    let s = bg(g, "#f2a65a", "#5a2a0a", "#ffd166") + `<circle cx="132" cy="${g.floor - 30}" r="80" fill="#ffcf7a" opacity=".55"/>`;
+    const leaf = (x, y, k, r, c) => `<path transform="translate(${f1(x)} ${f1(y)}) rotate(${r}) scale(${f1(k)})" d="M0,-10 L2,-4 L7,-6 L5,-1 L10,1 L4,3 L5,8 L0,5 L-5,8 L-4,3 L-10,1 L-5,-1 L-7,-6 L-2,-4Z M0,5 L0,12" fill="${c}" stroke="${c}" stroke-width=".6"/>`;
+    for (let i = 0; i < 22; i++) s += leaf(g.R() * W, g.R() * 300, .7 + g.R() * .9, Math.floor(g.R() * 360), ["#c2410c", "#e9a23b", "#8a2b06", "#d9480f"][i % 4]);
+    s += `<g opacity=".3" fill="#5a2a0a">${[0, 1, 2, 3, 4].map(i => `<rect x="0" y="${g.floor - 50 + i * 10}" width="${W}" height="${2 + i}"/>`).join("")}</g>`;
+    return s + halo(g, 132, 170, 120) + floor(g, "rgba(60,20,0,.5)");
+  },
+  christmas(g) {
+    let s = bg(g, "#06122a", "#0b3a2a", "#ffffff");
+    s += `<path d="M196,${g.floor} L232,${g.floor} L214,${g.floor - 120}Z" fill="#0f5a34" opacity=".9"/><path d="M200,${g.floor - 40} L228,${g.floor - 40} L214,${g.floor - 140}Z" fill="#147a45" opacity=".9"/>` + star4(214, g.floor - 146, 7, "#ffd166", 1);
+    for (let i = 0; i < 8; i++) s += `<circle cx="${f1(200 + g.R() * 28)}" cy="${f1(g.floor - 20 - g.R() * 100)}" r="2.6" fill="${["#ff3f60", "#ffd166", "#7ad7ff"][i % 3]}"/>`;
+    let wire = `M0,22`; for (let x = 0; x <= W; x += 25) wire += ` Q${x + 12},34 ${x + 25},22`; s += `<path d="${wire}" stroke="#1b2a1b" stroke-width="1.4" fill="none"/>`;
+    for (let x = 12; x < W; x += 25) { const c = ["#ff3f60", "#ffd166", "#35eaa3", "#7ad7ff"][(x / 25 | 0) % 4]; s += `<ellipse cx="${x}" cy="31" rx="3" ry="4.6" fill="${c}"/><ellipse cx="${x}" cy="31" rx="7" ry="8" fill="${c}" opacity=".3" filter="url(#${g.id}-blur)"/>`; }
+    s += halo(g, 132, 170, 120) + `<path d="M0,${g.floor - 6} Q60,${g.floor - 16} 125,${g.floor - 8} T250,${g.floor - 10} V${H} H0Z" fill="#eef6ff" opacity=".85"/>`;
+    let snow = ""; for (let i = 0; i < 60; i++) snow += `<circle cx="${f1(g.R() * W)}" cy="${f1(g.R() * H)}" r="${f1(.6 + g.R() * 1.8)}" fill="#fff" opacity="${f1(.5 + g.R() * .5)}"/>`;
+    return { bg: s, fg: snow };
+  },
+  newyear(g) {
+    let s = bg(g, "#05061a", "#1a0f3a", "#ffd166");
+    for (let b = 0; b < 4; b++) { const cx = 30 + g.R() * 190, cy = 26 + g.R() * 110, col = ["#ffd166", "#ff5ec4", "#7ad7ff", "#35eaa3"][b], n = 18, rr = 18 + g.R() * 18; for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2; s += `<line x1="${f1(cx + Math.cos(a) * rr * .3)}" y1="${f1(cy + Math.sin(a) * rr * .3)}" x2="${f1(cx + Math.cos(a) * rr)}" y2="${f1(cy + Math.sin(a) * rr)}" stroke="${col}" stroke-width="1.3" stroke-linecap="round" opacity=".85"/><circle cx="${f1(cx + Math.cos(a) * rr * 1.08)}" cy="${f1(cy + Math.sin(a) * rr * 1.08)}" r="1.2" fill="${col}"/>`; } }
+    s += `<g transform="translate(132 210)" opacity=".22"><circle r="48" fill="none" stroke="#ffd166" stroke-width="4"/>${Array.from({ length: 12 }, (_, i) => `<line x1="0" y1="-42" x2="0" y2="-36" stroke="#ffd166" stroke-width="3" transform="rotate(${i * 30})"/>`).join("")}<line x1="0" y1="0" x2="0" y2="-34" stroke="#ffd166" stroke-width="4"/><line x1="0" y1="0" x2="0" y2="-26" stroke="#ffd166" stroke-width="5" transform="rotate(-2)"/></g>`;
+    return { bg: s + halo(g, 132, 170, 120) + floor(g), fg: confetti(g.R, 40, ["#ffd166", "#ffffff", "#c58bff"], 280) };
+  },
+  valentine(g) {
+    let s = bg(g, "#ff7aa8", "#5a0a2a", "#ffd3e2");
+    const heart = (x, y, k, c, o, br) => `<path transform="translate(${f1(x)} ${f1(y)}) scale(${f1(k)})" d="M0,6 C-12,-2 -10,-12 -4,-12 C-1,-12 0,-9 0,-8 C0,-9 1,-12 4,-12 C10,-12 12,-2 0,6Z" fill="${c}" opacity="${o}"/>${br ? `<path transform="translate(${f1(x)} ${f1(y)}) scale(${f1(k)})" d="M0,-8 L-2,-3 L2,0 L-1,4" stroke="#5a0a2a" stroke-width="1.4" fill="none"/>` : ""}`;
+    s += heart(132, 150, 9, "#ff3f7a", .3, true);
+    for (let i = 0; i < 16; i++) s += heart(g.R() * W, g.R() * 260, .6 + g.R() * 1.2, ["#ffffff", "#ff3f7a", "#ffd3e2"][i % 3], f1(.4 + g.R() * .5));
+    return s + halo(g, 132, 165, 120) + floor(g, "rgba(90,10,42,.45)");
+  },
+  leapday(g) {
+    let s = bg(g, "#0a3a2a", "#062018", "#9dff9a") + word("29", 150, 250, 210, "#9dff9a", .14);
+    s += `<g transform="translate(196 66) rotate(8)" opacity=".85"><rect x="-26" y="-28" width="52" height="58" rx="4" fill="#f4f4f4"/><rect x="-26" y="-28" width="52" height="16" rx="4" fill="#d7263d"/><text y="-16" font-family="${FONT}" font-weight="700" font-size="11" fill="#fff" text-anchor="middle">FEB</text><text y="20" font-family="${FONT}" font-weight="700" font-size="28" fill="#111" text-anchor="middle">29</text></g>`;
+    for (let i = 0; i < 5; i++) s += `<ellipse cx="${f1(20 + g.R() * 210)}" cy="${f1(g.floor + 6 + g.R() * 20)}" rx="${f1(14 + g.R() * 10)}" ry="${f1(4 + g.R() * 2)}" fill="#3a8a3a" opacity=".6"/>`;
+    s += `<path d="M30,${g.floor - 20} Q90,40 220,${g.floor - 30}" stroke="#9dff9a" stroke-width="2" stroke-dasharray="6 6" fill="none" opacity=".45"/>`;
+    return s + halo(g, 132, 165, 120) + floor(g, "rgba(0,20,10,.5)");
+  },
+  piday(g) {
+    let s = bg(g, "#1d3b2a", "#10241a", "#e6f4ea");
+    const chalk = (t, x, y, sz, r) => `<text x="${x}" y="${y}" font-family="'Segoe Print','Comic Sans MS',${FONT}" font-size="${sz}" fill="#f4f7f2" opacity=".55" transform="rotate(${r || 0} ${x} ${y})">${xe(t)}</text>`;
+    s += chalk("π = 3.14159…", 24, 44, 15, -4) + chalk("A = πr²", 150, 70, 14, 3) + chalk("C = 2πr", 30, 140, 13, -2) + chalk("4 > 3 > 2", 160, 150, 12, 4) + chalk("e^iπ + 1 = 0", 36, 196, 12, -3);
+    s += `<circle cx="180" cy="112" r="28" fill="none" stroke="#f4f7f2" stroke-width="1.6" opacity=".5"/><line x1="180" y1="112" x2="206" y2="102" stroke="#f4f7f2" stroke-width="1.4" opacity=".5"/>` + word("π", 140, 255, 190, "#f4f7f2", .1);
+    return s + halo(g, 132, 165, 120, ) + floor(g, "rgba(0,0,0,.35)", "rgba(244,247,242,.3)");
+  },
+  stpatricks(g) {
+    let s = bg(g, "#0f6b3a", "#062a16", "#9dff9a");
+    s += [["#ff3f60", 0], ["#ff9e5e", 6], ["#ffd166", 12], ["#35eaa3", 18], ["#5aa5ff", 24], ["#b779ff", 30]].map(([c, o]) => `<path d="M-30,${g.floor} A170,170 0 0 1 290,${g.floor}" transform="translate(0 ${o})" stroke="${c}" stroke-width="6" fill="none" opacity=".45"/>`).join("");
+    const clover = (x, y, k, o) => `<g transform="translate(${f1(x)} ${f1(y)}) scale(${f1(k)})" opacity="${o}" fill="#35eaa3">${[0, 90, 180, 270].map(a => `<path transform="rotate(${a})" d="M0,0 C-6,-4 -6,-12 0,-10 C6,-12 6,-4 0,0Z"/>`).join("")}<path d="M0,0 Q2,8 6,12" stroke="#35eaa3" stroke-width="1.6" fill="none"/></g>`;
+    for (let i = 0; i < 12; i++) s += clover(g.R() * W, g.R() * 230, .6 + g.R() * .9, f1(.35 + g.R() * .4));
+    s += `<g transform="translate(206 ${g.floor - 4})"><path d="M-18,-16 Q-20,4 0,4 Q20,4 18,-16Z" fill="#1b1d21"/><ellipse cy="-16" rx="18" ry="5" fill="#2a2d33"/>${[-10, -4, 2, 8].map(x => `<circle cx="${x}" cy="-18" r="3.4" fill="url(#goldg)"/>`).join("")}</g>`;
+    return s + halo(g, 132, 165, 120) + floor(g, "rgba(0,30,10,.5)");
+  },
+  aprilfools(g) {
+    let s = bg(g, "#2a1a5a", "#120a2a", "#ffd166");
+    s += `<pattern id="${g.id}-har" width="28" height="40" patternUnits="userSpaceOnUse"><path d="M14,0 L28,20 L14,40 L0,20Z" fill="#d7263d" opacity=".45"/><path d="M0,0 L14,0 L0,20Z M28,0 L14,0 L28,20Z M0,40 L14,40 L0,20Z M28,40 L14,40 L28,20Z" fill="#ffd166" opacity=".25"/></pattern><rect width="${W}" height="${H}" fill="url(#${g.id}-har)"/>`;
+    s += `<g transform="translate(125 130) rotate(180)" opacity=".2">${word("SURPRISE", 0, 0, 40, "#ffffff", 1)}</g>`;
+    return { bg: s + halo(g, 132, 165, 120) + floor(g), fg: `<g transform="translate(190 120) rotate(14)" opacity=".85"><rect x="-38" y="-14" width="76" height="28" rx="3" fill="none" stroke="#ffd166" stroke-width="2.6"/><text y="6" font-family="${FONT}" font-weight="700" font-size="15" fill="#ffd166" text-anchor="middle" letter-spacing="2">NO JOKE</text></g>` };
+  },
+  friday13(g) {
+    let s = bg(g, "#05060a", "#1a1d2a", "#9fb3c8") + word("13", 150, 250, 230, "#9fb3c8", .1);
+    s += `<path d="M150,0 L138,52 L156,56 L132,128 L148,130 L118,206" stroke="#e6f0ff" stroke-width="2.4" fill="none" opacity=".75"/><path d="M150,0 L138,52 L156,56 L132,128 L148,130 L118,206" stroke="#9fd3ff" stroke-width="8" fill="none" opacity=".2" filter="url(#${g.id}-blur)"/>`;
+    s += `<g transform="translate(206 ${g.floor - 2})" fill="#000"><ellipse cx="0" cy="-12" rx="12" ry="10"/><circle cx="8" cy="-26" r="7"/><path d="M3,-31 L5,-38 L9,-32Z M10,-32 L14,-38 L14,-30Z"/><path d="M-12,-12 Q-26,-20 -20,-34" stroke="#000" stroke-width="3" fill="none"/><circle cx="6" cy="-27" r="1.2" fill="#ffd166"/><circle cx="11" cy="-27" r="1.2" fill="#ffd166"/></g>`;
+    return s + halo(g, 132, 165, 120) + floor(g, "rgba(0,0,0,.55)");
+  },
+  dunktober(g) {
+    let s = bg(g, "#1a0a00", "#3a1400", "#ff7a1a");
+    s += `<path d="M-20,${H} L270,0 L270,${H}Z" fill="#ff7a1a" opacity=".2"/>` + rays(178, 84, 20, "#ff7a1a", .12, 8) + rimSVG(162, 92, 1.08, true);
+    const leaf = (x, y, k, r, c) => `<path transform="translate(${f1(x)} ${f1(y)}) rotate(${r}) scale(${f1(k)})" d="M0,-10 L2,-4 L7,-6 L5,-1 L10,1 L4,3 L5,8 L0,5 L-5,8 L-4,3 L-10,1 L-5,-1 L-7,-6 L-2,-4Z" fill="${c}"/>`;
+    for (let i = 0; i < 14; i++) s += leaf(g.R() * W, g.R() * 280, .6 + g.R() * .8, Math.floor(g.R() * 360), ["#ff7a1a", "#ffd166", "#c2410c"][i % 3]);
+    s += word("DUNKTOBER", 125, 214, 36, "#ffd166", .22, -8);
+    return s + halo(g, 132, 165, 125) + floor(g, "rgba(0,0,0,.55)");
+  },
+  game7(g) {
+    let s = bg(g, "#0a0204", "#3a0610", "#ff3f60") + crowd(g, "#000", 190, .6);
+    s += `<defs><linearGradient id="${g.id}-c7" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".5" stop-color="#ff8aa0"/><stop offset=".52" stop-color="#5a0a14"/><stop offset="1" stop-color="#ff3f60"/></linearGradient></defs>`;
+    s += word("7", 150, 270, 300, `url(#${g.id}-c7)`, .3) + spot(132, -10, 132, 80, "#ffffff", .18, g.id);
+    s += `<g transform="translate(46 160)" opacity=".7"><rect x="-26" y="-12" width="52" height="24" rx="3" fill="#000" stroke="#ff3f60"/><text y="7" font-family="'Courier New',monospace" font-weight="700" font-size="17" fill="#ff3f60" text-anchor="middle">0:00</text></g>`;
+    return { bg: s + halo(g, 132, 165, 125) + floor(g, "rgba(0,0,0,.6)"), fg: confetti(g.R, 26, ["#ff3f60", "#ffffff", g.c1], 240) };
+  },
   rapsheet(g) {
     let s = bg(g, "#cfd2d7", "#8e939b", "#ffffff");
     for (let i = 0; i <= 10; i++) { const y = g.floor - i * 24; s += `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#2b2f36" stroke-width="${i % 2 ? .8 : 1.6}" opacity=".5"/>`; if (i % 2 === 0) s += `<text x="8" y="${y - 3}" font-family="${FONT}" font-size="10" fill="#2b2f36" opacity=".7">${5 + i / 4 | 0}'${(i % 4) * 3}"</text><text x="242" y="${y - 3}" font-family="${FONT}" font-size="10" fill="#2b2f36" opacity=".7" text-anchor="end">${5 + i / 4 | 0}'${(i % 4) * 3}"</text>`; }
@@ -624,6 +723,21 @@ Object.assign(ICON, {
   pocket: `<path d="M0,-11 Q6,-4 5,5 H-5 Q-6,-4 0,-11Z M-5,2 L-9,8 L-5,6Z M5,2 L9,8 L5,6Z" fill="currentColor"/><path d="M-2,6 Q0,13 2,6" fill="currentColor" opacity=".6"/>`,
   immortals: `${"<path d='M0,-11 L2.4,-3.3 L10.5,-3.4 L4,1.3 L6.5,9 L0,4.3 L-6.5,9 L-4,1.3 L-10.5,-3.4 L-2.4,-3.3Z' fill='currentColor'/>"}<circle r="12" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="2 2"/>`
 });
+Object.assign(ICON, {
+  opening: `<path d="M-10,9 L-6,-9 H6 L10,9Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M-3,-9 L-8,-2 M3,-9 L8,-2" stroke="currentColor" stroke-width="1.4"/>${[-6, -2, 2, 6].map(x => `<circle cx="${x}" cy="5" r="1.4" fill="currentColor"/>`).join("")}`,
+  halloween: `<ellipse cy="2" rx="10" ry="8" fill="currentColor"/><rect x="-1.5" y="-10" width="3" height="5" fill="currentColor"/><path d="M-5,0 l2,-3 l2,3Z M1,0 l2,-3 l2,3Z M-5,5 Q0,9 5,5" fill="#0b0d11" stroke="#0b0d11" stroke-width=".8"/>`,
+  thanksgiving: `<path d="M0,-11 L2,-4 L8,-7 L5,-1 L11,1 L4,3 L6,9 L0,5 L-6,9 L-4,3 L-11,1 L-5,-1 L-8,-7 L-2,-4Z" fill="currentColor"/>`,
+  christmas: `<path d="M0,-11 L8,1 H4 L10,9 H-10 L-4,1 H-8Z" fill="currentColor"/><rect x="-2" y="9" width="4" height="3" fill="currentColor"/>`,
+  newyear: `<path d="M-6,-10 H6 L2,0 V7 H5 V9 H-5 V7 H-2 V0Z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="7" cy="-8" r="1.4" fill="currentColor"/><circle cx="-8" cy="-4" r="1" fill="currentColor"/>`,
+  valentine: `<path d="M0,9 C-14,0 -12,-11 -5,-11 C-2,-11 0,-8 0,-7 C0,-8 2,-11 5,-11 C12,-11 14,0 0,9Z" fill="currentColor"/><path d="M0,-7 L-2,-2 L2,1 L-1,6" stroke="#0b0d11" stroke-width="1.4" fill="none"/>`,
+  leapday: `<text y="5" font-family="${FONT}" font-weight="700" font-size="13" text-anchor="middle" fill="currentColor">29</text><rect x="-10" y="-10" width="20" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/>`,
+  piday: `<text y="7" font-family="Georgia,serif" font-weight="700" font-size="22" text-anchor="middle" fill="currentColor">π</text>`,
+  stpatricks: `${[0, 90, 180, 270].map(a => `<path transform="rotate(${a})" d="M0,0 C-6,-4 -6,-11 0,-9 C6,-11 6,-4 0,0Z" fill="currentColor"/>`).join("")}`,
+  aprilfools: `<path d="M-10,-6 L-4,4 L0,-8 L4,4 L10,-6 L8,8 H-8Z" fill="currentColor"/><circle cx="-10" cy="-8" r="2" fill="currentColor"/><circle cx="0" cy="-10" r="2" fill="currentColor"/><circle cx="10" cy="-8" r="2" fill="currentColor"/>`,
+  friday13: `<text y="6" font-family="${FONT}" font-weight="700" font-size="16" text-anchor="middle" fill="currentColor">13</text>`,
+  dunktober: `<rect x="-9" y="-11" width="18" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/><ellipse cy="1" rx="6" ry="1.8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M-6,4 L5,12 M-2,10 L6,6" stroke="currentColor" stroke-width="1.3"/>`,
+  game7: `<text y="8" font-family="${FONT}" font-weight="700" font-size="22" text-anchor="middle" fill="currentColor">7</text>`
+});
 const ABBR = { base: "", rookie: "RC", founders: "1954", wba: "WBA", posterized: "SLAM", swat: "SWAT", wrecking: "HIT", escape: "ESC", fouralarm: "4PT", splash: "3PT", dimes: "AST", boards: "REB", pickpockets: "STL", buckets: "PTS", mvp: "MVP", fmvp: "FMVP", dpoy: "DPOY", roy: "ROY", champ: "RING", ironworkers: "82", prime: "PRIME", hof: "HOF", rapsheet: "FILE" };
 
 // ---------- frame materials ----------
@@ -664,6 +778,16 @@ function frameOverlay(kind, id, T, R) {
   }
   if (kind === "vintage") return `<g ${band}><rect width="${W}" height="${H}" fill="#efe2c4" opacity=".92"/>${halftone(id + "-vht", "#8a6a3e", .25, 4)}</g><path d="${chamf(6, 6, W - 12, H - 12, 14)}" fill="none" stroke="#7a1f1f" stroke-width="1.6" opacity=".8"/>`;
   if (kind === "tape") return `<g ${band}>${stripes(45, 7, "#f5c400", .9)}</g>`;
+  if (kind === "candycane") return `<g ${band}><rect width="${W}" height="${H}" fill="#ffffff"/>${stripes(45, 8, "#d7263d", 1)}</g><path d="${chamf(5, 5, W - 10, H - 10, 15)}" fill="none" stroke="#147a45" stroke-width="2"/>`;
+  if (kind === "spooky") { let d = ""; for (let x = 14; x < W - 10; x += 12 + R() * 14) d += `<path d="M${f1(x)},9 v${f1(4 + R() * 14)} a3,3 0 0 1 -6,0 v${f1(-(4 + R() * 6))}Z" fill="#7cff4a" opacity=".85"/>`; return `<g ${band}><rect width="${W}" height="${H}" fill="#2a0e4f"/>${stripes(-45, 6, "#ff7a1a", .5)}</g>${d}`; }
+  if (kind === "autumn") { let l = ""; for (let i = 0; i < 40; i++) l += `<circle cx="${f1(R() * W)}" cy="${f1(R() * H)}" r="${f1(2 + R() * 4)}" fill="${["#c2410c", "#e9a23b", "#8a2b06"][i % 3]}"/>`; return `<g ${band}><rect width="${W}" height="${H}" fill="#5a2a0a"/>${l}</g>`; }
+  if (kind === "glitter") { let l = ""; for (let i = 0; i < 160; i++) l += `<circle cx="${f1(R() * W)}" cy="${f1(R() * H)}" r="${f1(.4 + R() * 1.2)}" fill="${R() < .5 ? "#fff6c2" : "#ffd166"}"/>`; return `<g ${band}><rect width="${W}" height="${H}" fill="#3a2a00"/>${l}</g><path d="${chamf(5, 5, W - 10, H - 10, 15)}" fill="none" stroke="url(#goldg)" stroke-width="2.4"/>`; }
+  if (kind === "hearts") { let l = ""; for (let y = 4; y < H; y += 14) for (let x = (y / 14 % 2) * 7; x < W; x += 14) l += `<path transform="translate(${x} ${y}) scale(.45)" d="M0,6 C-12,-2 -10,-12 -4,-12 C-1,-12 0,-9 0,-8 C0,-9 1,-12 4,-12 C10,-12 12,-2 0,6Z" fill="#ff3f7a"/>`; return `<g ${band}><rect width="${W}" height="${H}" fill="#ffd3e2"/>${l}</g>`; }
+  if (kind === "chalk") return `<g ${band}><rect width="${W}" height="${H}" fill="#7a4a24"/>${stripes(0, 2, "#5a3416", .5)}</g><path d="${chamf(8, 8, W - 16, H - 16, 13)}" fill="none" stroke="#3a2210" stroke-width="2"/>`;
+  if (kind === "clover") { let l = ""; for (let i = 0; i < 30; i++) l += `<g transform="translate(${f1(R() * W)} ${f1(R() * H)}) scale(.35)">${[0, 90, 180, 270].map(a => `<path transform="rotate(${a})" d="M0,0 C-6,-4 -6,-12 0,-10 C6,-12 6,-4 0,0Z" fill="#35eaa3"/>`).join("")}</g>`; return `<g ${band}><rect width="${W}" height="${H}" fill="#0f6b3a"/>${l}</g><path d="${chamf(5, 5, W - 10, H - 10, 15)}" fill="none" stroke="url(#goldg)" stroke-width="2"/>`; }
+  if (kind === "jester") { let l = ""; for (let y = -10; y < H; y += 20) for (let x = 0; x < W; x += 14) l += `<path d="M${x + 7},${y} L${x + 14},${y + 10} L${x + 7},${y + 20} L${x},${y + 10}Z" fill="${((x / 14) + (y + 10) / 20) % 2 ? "#d7263d" : "#ffd166"}"/>`; return `<g ${band}>${l}</g>`; }
+  if (kind === "cracked") { let l = ""; for (let i = 0; i < 14; i++) { let x = R() * W, y = R() * H, d = `M${f1(x)},${f1(y)}`; for (let k = 0; k < 4; k++) { x += (R() - .5) * 30; y += (R() - .5) * 30; d += ` L${f1(x)},${f1(y)}`; } l += `<path d="${d}" stroke="#cfd8e3" stroke-width=".8" fill="none"/>`; } return `<g ${band}><rect width="${W}" height="${H}" fill="#0b0d13"/>${l}</g>`; }
+  if (kind === "game7") return `<g ${band}><rect width="${W}" height="${H}" fill="#2a0610"/>${stripes(-45, 3, "#ff3f60", .35)}</g><path d="${chamf(5, 5, W - 10, H - 10, 15)}" fill="none" stroke="#ff3f60" stroke-width="2"/>`;
   return "";
 }
 // ---------- foils ----------
@@ -749,7 +873,13 @@ const CSS = `.cardsvg .holo{animation:cardholo 5s ease-in-out infinite alternate
 @keyframes cardopal{to{filter:hue-rotate(360deg)}}
 .ctile .cardsvg .holo,.ctile .cardsvg .ember,.ctile .cardsvg .glint,.ctile .cardsvg .opalshift,.colt .cardsvg *{animation:none!important}
 .ctile:hover .cardsvg .holo{animation:cardholo 5s ease-in-out infinite alternate!important}
-@media (prefers-reduced-motion:reduce){.cardsvg *{animation:none!important}}`;
+.cardsvg .lay-bg,.cardsvg .lay-fig,.cardsvg .lay-fg{transform-origin:125px 175px;transition:transform .25s ease-out}
+.fcard.tilting .cardsvg .lay-bg{transform:translate(calc(var(--px,0) * -7px),calc(var(--py,0) * -7px)) scale(1.05)}
+.fcard.tilting .cardsvg .lay-fig{transform:translate(calc(var(--px,0) * 5px),calc(var(--py,0) * 4px))}
+.fcard.tilting .cardsvg .lay-fg{transform:translate(calc(var(--px,0) * 9px),calc(var(--py,0) * 8px))}
+.fcard.tilting .cardsvg .lay-bg,.fcard.tilting .cardsvg .lay-fig,.fcard.tilting .cardsvg .lay-fg{transition:transform .06s linear}
+.cardsvg .photo.fadein{animation:phin .35s ease-out both}@keyframes phin{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.cardsvg *{animation:none!important}.cardsvg .lay-bg,.cardsvg .lay-fig,.cardsvg .lay-fg{transform:none!important}}`;
 let installed = false;
 function install() {
   if (installed || typeof document === "undefined") return; installed = true;
@@ -779,6 +909,123 @@ function rimFilter(id, acc, fill) {
 <feMerge><feMergeNode in="aura"/><feMergeNode in="SourceGraphic"/><feMergeNode in="rim1"/><feMergeNode in="rim2"/></feMerge></filter>`;
 }
 
+// ---------- player photos ----------
+// Rendered on demand by the broadcast's photo booth (Broadcast3D.photo), kept as blob URLs in memory
+// and in IndexedDB between visits. Cards ask only once they are on screen (or about to be).
+const PH = { mem: new Map(), spec: new Map(), lay: new Map(), q: [], qs: new Set(), busy: false, off: false, fails: 0, ok: undefined, io: null, db: undefined };
+const PV = 1; // bump to re-shoot every photo
+function photoOK() {
+  if (PH.ok === undefined) {
+    let off = false; try { off = localStorage.getItem("ubl-photos") === "off"; } catch (e) { /* storage blocked */ }
+    PH.ok = !off && typeof window !== "undefined" && typeof document !== "undefined" && !!(window.Broadcast3D && window.Broadcast3D.photo) && window.Broadcast3D.supported() && typeof IntersectionObserver !== "undefined";
+    if (PH.ok) photoWatch();
+  }
+  return PH.ok && !PH.off;
+}
+function photoKey(c, pose, hat) { return [PV, c.pid, c.season, c.teamId || "", c.num, c.ht || "", c.wt || "", c.c1, pose, hat || ""].join("|"); }
+function photoSpec(c, pose, hat) {
+  const tm = (BB.TEAMS || []).find(t => t.id === c.teamId) || { id: "UBL", city: "UBL", name: "UBL", c1: c.c1, c2: c.c2 };
+  return { r: { id: c.pid, ht: c.ht, wt: c.wt, num: c.num, name: c.name }, season: c.season, tm, c1: c.c1, c2: c.c2, pose, hat, rim: lum(c.c2) > 0.22 ? c.c2 : mix(c.c1, "#ffffff", 0.3) };
+}
+function photoGet(key) { const ph = PH.mem.get(key); if (ph) { PH.mem.delete(key); PH.mem.set(key, ph); } return ph; }
+function photoWatch() {
+  PH.io = new IntersectionObserver(es => { for (const e of es) if (e.isIntersecting) { PH.io.unobserve(e.target); photoWant(e.target.getAttribute("data-ph")); } }, { rootMargin: "400px" });
+  const look = n => { if (n.nodeType !== 1) return; if (n.matches("svg.cardsvg[data-ph]")) PH.io.observe(n); else if (n.querySelector) n.querySelectorAll("svg.cardsvg[data-ph]").forEach(e => PH.io.observe(e)); };
+  new MutationObserver(ms => { for (const m of ms) m.addedNodes.forEach(look); }).observe(document.body, { childList: true, subtree: true });
+  document.querySelectorAll("svg.cardsvg[data-ph]").forEach(e => PH.io.observe(e));
+}
+function photoWant(key) {
+  if (!key) return;
+  if (PH.mem.has(key)) return photoApply(key);
+  if (!PH.qs.has(key)) { PH.qs.add(key); PH.q.push(key); }
+  photoPump();
+}
+const waiting = key => [...document.querySelectorAll("svg.cardsvg[data-ph]")].filter(el => el.getAttribute("data-ph") === key);
+function photoApply(key) {
+  const ph = photoGet(key); if (!ph) return;
+  for (const el of waiting(key)) {
+    const cid = el.getAttribute("data-cid"), lo = PH.lay.get(cid), g = el.querySelector(".lay-fig"); el.removeAttribute("data-ph");
+    if (!lo || !g) continue;
+    PH.lay.delete(cid);
+    const old = g.querySelector(".vec"); g.insertAdjacentHTML("beforeend", photoLayer(ph, lo, true));
+    if (old) { old.style.transition = "opacity .3s"; old.style.opacity = "0"; setTimeout(() => old.remove(), 350); }
+  }
+}
+function idb() {
+  if (PH.db !== undefined) return PH.db;
+  PH.db = new Promise(res => {
+    try {
+      const rq = indexedDB.open("ubl-photos", 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore("p");
+      rq.onsuccess = () => { const db = rq.result; try { const st = db.transaction("p", "readwrite").objectStore("p"), n = st.count(); n.onsuccess = () => { if (n.result > 2500) st.clear(); }; } catch (e) { /* fine */ } res(db); };
+      rq.onerror = () => res(null);
+    } catch (e) { res(null); }
+  });
+  return PH.db;
+}
+async function idbGet(k) { const db = await idb(); if (!db) return null; return new Promise(res => { try { const rq = db.transaction("p").objectStore("p").get(k); rq.onsuccess = () => res(rq.result || null); rq.onerror = () => res(null); } catch (e) { res(null); } }); }
+async function idbPut(k, v) { const db = await idb(); if (!db) return; try { db.transaction("p", "readwrite").objectStore("p").put(v, k); } catch (e) { /* full or blocked: memory only */ } }
+async function photoPump() {
+  if (PH.busy) return; PH.busy = true;
+  try {
+    while (PH.q.length && !PH.off) {
+      const key = PH.q.shift(); PH.qs.delete(key);
+      if (PH.mem.has(key)) { photoApply(key); continue; }
+      if (!waiting(key).length) continue; // scrolled away or closed: ask again when it's back
+      let rec = await idbGet(key);
+      if (!rec || !rec.blob) {
+        const spec = PH.spec.get(key); if (!spec) continue;
+        try { rec = await window.Broadcast3D.photo(spec); }
+        catch (e) { console.warn("card photo", e); if (++PH.fails >= 3) PH.off = true; continue; }
+        if (!rec || !rec.blob) continue;
+        idbPut(key, rec);
+      }
+      PH.mem.set(key, { url: URL.createObjectURL(rec.blob), w: rec.w, h: rec.h, ppf: rec.ppf, a: rec.a });
+      if (PH.mem.size > 900) { const [k0, v0] = PH.mem.entries().next().value; URL.revokeObjectURL(v0.url); PH.mem.delete(k0); }
+      photoApply(key);
+      await new Promise(r => window.requestIdleCallback ? requestIdleCallback(r, { timeout: 250 }) : setTimeout(r, 16)); // shoot when the page is idle
+    }
+  } finally { PH.busy = false; }
+}
+// the photo pops off the card: a dark contour, a soft glow in the tier color, a touch more contrast
+function photoFilter(id, acc) {
+  return `<filter id="${id}-phf" x="-25%" y="-12%" width="150%" height="124%" color-interpolation-filters="sRGB">
+<feMorphology in="SourceAlpha" operator="dilate" radius="1.2" result="d"/><feGaussianBlur in="d" stdDeviation="1.1" result="db"/><feFlood flood-color="#04060a" flood-opacity=".8"/><feComposite in2="db" operator="in" result="edge"/>
+<feGaussianBlur in="SourceAlpha" stdDeviation="7" result="g0"/><feFlood flood-color="${acc}" flood-opacity=".38"/><feComposite in2="g0" operator="in" result="aura"/>
+<feComponentTransfer in="SourceGraphic" result="pc"><feFuncR type="linear" slope="1.1" intercept="-.04"/><feFuncG type="linear" slope="1.1" intercept="-.04"/><feFuncB type="linear" slope="1.1" intercept="-.04"/></feComponentTransfer>
+<feMerge><feMergeNode in="aura"/><feMergeNode in="edge"/><feMergeNode in="pc"/></feMerge></filter>`;
+}
+// place the cutout on the card: feet on the floor (or a hand on the rim), held inside the frame
+function photoLayer(ph, o, fade) {
+  const a = ph.a, p = POSES[o.pose] || POSES.stand, upf = o.portrait ? 47.5 : 31;
+  let k = upf / ph.ppf, x0, y0;
+  if (o.portrait) { x0 = o.cx - a.pelvis[0] * k; y0 = 62 - (a.head[1] - a.head[2] * 1.25) * k; }
+  else if (o.anchor) { const hn = a.rim || a.hR; x0 = o.anchor.x - hn[0] * k; y0 = o.anchor.y - hn[1] * k; }
+  else {
+    x0 = o.cx - a.floor[0] * k; y0 = o.floor - a.floor[1] * k;
+    const lim = 26;
+    if (y0 < lim) {
+      const air = Math.max(0, (a.floor[1] - a.feet[1]) * k), dy = Math.min(air, lim - y0); y0 += dy;
+      if (y0 < lim) { const kk = (o.floor - lim) / (o.floor - y0); x0 = o.cx + (x0 - o.cx) * kk; y0 = o.floor + (y0 - o.floor) * kk; k *= kk; }
+    }
+  }
+  const X = q => x0 + q[0] * k, Y = q => y0 + q[1] * k, s = upf / 28, w = ph.w * k, h = ph.h * k;
+  const img = (extra, op, dx) => `<image href="${ph.url}" x="${f1(x0 + (dx || 0))}" y="${f1(y0)}" width="${f1(w)}" height="${f1(h)}" preserveAspectRatio="none"${op ? ` opacity="${op}"` : ""}${extra || ""}/>`;
+  let out = "";
+  if (!o.portrait) { const air = (a.floor[1] - a.feet[1]) * k > 8; out += `<ellipse cx="${f1(X(a.floor))}" cy="${o.floor + 2}" rx="${f1((air ? 26 : 42) * s / 1.1)}" ry="${f1((air ? 3.5 : 6) * s / 1.1)}" fill="#000" opacity="${air ? .3 : .5}" filter="url(#${o.id}-soft)"/>`; }
+  if (o.col === "escape") out += [34, 18].map((dx, i) => img("", f1(.14 + i * .12), -dx)).join("");
+  out += img(` class="ph" filter="url(#${o.id}-phf)"`);
+  // props drawn over the photo
+  const hL = [X(a.hL), Y(a.hL)], hR = [X(a.hR), Y(a.hR)];
+  if (p.ball === "pass") out += `<g opacity=".6">${[0, 1, 2].map(i => `<line x1="${f1(hR[0] + 16 * s)}" y1="${f1(hR[1] - 5 + i * 5)}" x2="${f1(hR[0] + (36 + i * 6) * s)}" y2="${f1(hR[1] - 5 + i * 5)}" stroke="#fff" stroke-width="2" stroke-linecap="round"/>`).join("")}</g>` + ballSVG(hR[0] + 54 * s, hR[1], 8.8 * s);
+  if (p.ball === "swat") out += `<g opacity=".75">${[0, 1, 2].map(i => `<line x1="${f1(hL[0] + 8 + i * 5)}" y1="${f1(hL[1] - 2 + i * 6)}" x2="${f1(hL[0] + 30 + i * 9)}" y2="${f1(hL[1] + 14 + i * 7)}" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>`).join("")}</g>` + ballSVG(hL[0] - 12 * s, hL[1] - 12 * s, 8.8 * s);
+  if (p.ball === "poke") { const bx = hR[0] + 14 * s, by = hR[1] + 4 * s; out += ballSVG(bx, by, 8.8 * s) + `<g stroke="#fff" stroke-width="2" stroke-linecap="round">${[[-14, -6], [-6, -16], [6, -15]].map(([dx, dy]) => `<line x1="${f1(bx + dx * .6)}" y1="${f1(by + dy * .6)}" x2="${f1(bx + dx)}" y2="${f1(by + dy)}"/>`).join("")}</g>`; }
+  if (p.trophy) out += trophySVG((hL[0] + hR[0]) / 2, Math.min(hL[1], hR[1]) - 4 * s, s * 1.05);
+  if (p.placard) { const ch = [X(a.chest), Y(a.chest) + 22 * s]; out += `<g><rect x="${f1(ch[0] - 31 * s)}" y="${f1(ch[1] - 13 * s)}" width="${f1(62 * s)}" height="${f1(28 * s)}" rx="1.5" fill="#101215" stroke="#d7dbe0" stroke-width="1.6"/><text x="${f1(ch[0])}" y="${f1(ch[1] - 2 * s)}" font-family="${FONT}" font-size="${f1(8 * s)}" fill="#e9edf3" text-anchor="middle" letter-spacing="1.2">UBL POLICE DEPT</text><text x="${f1(ch[0])}" y="${f1(ch[1] + 9 * s)}" font-family="${FONT}" font-weight="700" font-size="${f1(9 * s)}" fill="#ffffff" text-anchor="middle" letter-spacing=".5">${xe(o.placard || "")}</text></g>`; }
+  if (o.col === "aprilfools") out = `<g transform="translate(250 0) scale(-1 1)">${out}</g>`;
+  return `<g class="photo${fade ? " fadein" : ""}">${out}</g>`;
+}
+
 // c: { col, season, pid, team, ovr, rank, value, num, name, role, ht, wt, c1, c2, teamId, tier, serial }
 function front(c) {
   install();
@@ -792,20 +1039,30 @@ function front(c) {
     : c.col === "moments" && c.extra ? MPOSE[c.extra.k] || "fadeaway" : c.col === "rapsheet" ? "mugshot" : C.poses ? C.poses[Math.floor(pv * C.poses.length)] : C.pose || "stand";
   const hangRim = pose === "hangrim" && (c.col === "posterized" || c.col === "moments");
   const portrait = POSES[pose] && POSES[pose].armsFront;
+  const cx = pose === "tackle" ? 92 : pose === "steal" ? 112 : 134, anchor = pose === "dunk" ? { hand: "R", x: 180, y: 80 } : hangRim ? { hand: "R", x: 184, y: 90 } : null;
+  const placard = c.col === "rapsheet" ? `${c.season}-${String(c.pid).padStart(5, "0")}` : "", hat = c.col === "christmas" ? "santa" : c.col === "stpatricks" ? "clover" : null;
   const fig = figure(pose, { ht: c.ht || 78, wt: c.wt || 210, c1: c.c1, c2: c.c2, num: c.num, id, R, season: c.season, acc: T.acc, portrait,
-    cx: pose === "tackle" ? 92 : pose === "steal" ? 112 : 134, floor: portrait ? 430 : g.floor, scale: portrait ? 1.72 : 1.12, headTop: 62,
-    anchor: pose === "dunk" ? { hand: "R", x: 180, y: 80 } : hangRim ? { hand: "R", x: 184, y: 90 } : null, shoe: R() < 0.5 ? "#f4f4f4" : (lum(c.c2) < 0.15 ? "#1b1d21" : c.c2),
-    placard: c.col === "rapsheet" ? `${c.season}-${String(c.pid).padStart(5, "0")}` : "" });
+    cx, floor: portrait ? 430 : g.floor, scale: portrait ? 1.72 : 1.12, headTop: 62,
+    anchor, shoe: R() < 0.5 ? "#f4f4f4" : (lum(c.c2) < 0.15 ? "#1b1d21" : c.c2), placard, hat });
+  if (c.col === "aprilfools") fig.svg = `<g transform="translate(250 0) scale(-1 1)">${fig.svg}</g>`;
   const ghosts = c.col === "escape" ? [34, 18].map((dx, i) => `<g opacity="${.14 + i * .12}" transform="translate(${-dx} 0)">${fig.svg.replace(/filter="url\([^)]*-rim\)"/g, "")}</g>`).join("") : "";
+  // the player's photo (his 3D model from the broadcast, posed for this card); the drawn figure stands in until it's ready
+  let figLayer = `<g class="vec">${ghosts}${fig.svg}</g>`, phAttr = "";
+  if (photoOK()) {
+    const key = photoKey(c, pose, hat), lo = { id, pose, portrait, cx, floor: g.floor, anchor, placard, col: c.col }, ph = photoGet(key);
+    if (ph) figLayer = photoLayer(ph, lo);
+    else { PH.spec.set(key, photoSpec(c, pose, hat)); PH.lay.set(id, lo); if (PH.lay.size > 4000) for (const k of [...PH.lay.keys()].slice(0, 1500)) PH.lay.delete(k); phAttr = ` data-ph="${xe(key)}" data-cid="${id}"`; }
+  }
   const last = (c.name.split(" ").slice(1).join(" ") || c.name).toUpperCase(), first = c.name.split(" ")[0].toUpperCase();
   const lastFit = last.length > 11 ? ` textLength="${Math.min(204, last.length * 16.5)}" lengthAdjust="spacingAndGlyphs"` : "";
   const unit = (C.short || C.unit || "").toUpperCase();
   const val = C.kind === "leader" && c.value !== null && c.value !== undefined ? `${c.value} ${unit}` : "";
   const ft = h => `${Math.floor(h / 12)}'${h % 12}"`, ex = c.extra || {};
-  const ribbon = C.kind === "leader" ? (c.rank === 1 ? "LEAGUE LEADER" + (val ? " · " + val : "") : `#${c.rank}` + (val ? " · " + val : ""))
+  const ribbon = C.kind === "leader" ? (c.col === "dunktober" ? `${ex.date ? BB.CARDS.shortDate(ex.date) + " · " : ""}${c.value} DUNKS${ex.o ? " VS " + ex.o : ""}` : c.rank === 1 ? "LEAGUE LEADER" + (val ? " · " + val : "") : `#${c.rank}` + (val ? " · " + val : ""))
+    : C.kind === "holiday" && c.col !== "game7" ? `${ex.date ? BB.CARDS.shortDate(ex.date) + " · " : ""}${c.value || ""}${ex.o ? " VS " + ex.o : ""}`
     : ({ moments: () => `${c.value}${ex.o ? " VS " + ex.o : ""}`, fifty: () => `${c.value}${ex.o ? " VS " + ex.o : ""}`, immortals: () => `ALL-TIME #${c.rank}`, hof: () => c.value ? `CLASS OF ${c.value}` : "",
       numberone: () => `#1 PICK · ${c.value || c.season - 1}`, franchise: () => `${c.value} SEASONS`, journeyman: () => `${c.value} TEAMS`, younggun: () => `AGE ${c.value}`, ageless: () => `AGE ${c.value}`,
-      skyscrapers: () => ft(c.value), pocket: () => ft(c.value), dynasty: () => `${c.value} STRAIGHT TITLES`, ironworkers: () => `${c.value} GAMES`, mvp: () => "MVP", fmvp: () => "FINALS MVP", dpoy: () => "DEFENSIVE POY", roy: () => "ROOKIE OF THE YEAR", champ: () => "CHAMPION" }[c.col] || (() => ""))().toUpperCase();
+      skyscrapers: () => ft(c.value), pocket: () => ft(c.value), game7: () => `GAME 7 · ${c.value || ""}${ex.o ? " VS " + ex.o : ""}`, dynasty: () => `${c.value} STRAIGHT TITLES`, ironworkers: () => `${c.value} GAMES`, mvp: () => "MVP", fmvp: () => "FINALS MVP", dpoy: () => "DEFENSIVE POY", roy: () => "ROOKIE OF THE YEAR", champ: () => "CHAMPION" }[c.col] || (() => ""))().toUpperCase();
   const subTxt = (c.col === "base" ? (BB.ROLES[c.role] ? BB.ROLES[c.role].name + " · " + c.season : String(c.season)) : C.name + " · " + c.season).toUpperCase();
   const subFit = subTxt.length > 30 ? ` textLength="190" lengthAdjust="spacingAndGlyphs"` : "";
   const ribW = Math.min(196, Math.max(96, ribbon.length * 7 + 24)), ribFit = ribbon.length * 7 + 24 > 196 ? ` textLength="180" lengthAdjust="spacingAndGlyphs"` : "";
@@ -824,9 +1081,9 @@ function front(c) {
     const ink = c.col === "hof" || c.col === "immortals" ? "url(#goldg)" : light ? "#1a2a6c" : "#ffffff";
     sig = `<g transform="translate(${f1(214 - sg.w * k)} ${c.col === "moments" ? 172 : 214}) rotate(-9) scale(${f1(k * 100) / 100})" fill="none" stroke-linecap="round" stroke-linejoin="round">${light ? "" : `<path d="${sg.d}" stroke="#000" stroke-width="4" opacity=".45"/>`}<path d="${sg.d}" stroke="${ink}" stroke-width="1.9"/></g>`;
   }
-  return `<svg class="cardsvg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${xe(c.name)} ${c.season} ${xe(C.name)} card, ${c.ovr} overall, ${c.tier.name}">
+  return `<svg class="cardsvg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img"${phAttr} aria-label="${xe(c.name)} ${c.season} ${xe(C.name)} card, ${c.ovr} overall, ${c.tier.name}">
 <defs>
- ${frameDefs(id, T, R)}${rimFilter(id, T.acc, mix(c.c1, "#ffffff", 0.35))}${fig.defs}
+ ${frameDefs(id, T, R)}${rimFilter(id, T.acc, mix(c.c1, "#ffffff", 0.35))}${fig.defs}${PH.ok ? photoFilter(id, T.acc) : ""}
  <linearGradient id="${id}-plate" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset=".42" stop-color="#05070a" stop-opacity=".78"/><stop offset="1" stop-color="#05070a" stop-opacity=".97"/></linearGradient>
  <radialGradient id="${id}-vig" cx=".5" cy=".45" r=".72"><stop offset=".6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".5"/></radialGradient>
  <linearGradient id="${id}-holo" x1="0" y1="0" x2="1" y2=".4">${(T.molten ? ["#ff3d00", "#ffb347", "#ff3d00", "#2a0904", "#ff6a1f", "#ffd166", "#ff3d00"] : ["#ff5ec4", "#7ad7ff", "#9dff9a", "#fff27a", "#ff9e5e", "#c58bff", "#ff5ec4"]).map((s, i, a) => `<stop offset="${f1(i / (a.length - 1))}" stop-color="${s}"/>`).join("")}</linearGradient>
@@ -838,15 +1095,15 @@ ${material(id, T, R)}
 ${frameOverlay(C.frame, id, T, R)}
 <path d="${OUTER}" fill="none" stroke="#000" stroke-opacity=".6" stroke-width="1.4"/>
 <g clip-path="url(#${id}-clip)">
- ${art.bg}
- ${ghosts}${fig.svg}
- ${art.fg}
+ <g class="lay-bg">${art.bg}</g>
+ ${foil(c.tier.key, id, R)}${holo}
+ <g class="lay-fig">${figLayer}</g>
+ <g class="lay-fg">${art.fg}</g>
  ${embers}
  <rect width="${W}" height="${H}" fill="url(#${id}-vig)"/>
- ${foil(c.tier.key, id, R)}
  <rect x="0" y="214" width="${W}" height="136" fill="url(#${id}-plate)"/>
  ${sig}
- ${holo}${glints}
+ ${glints}
  <rect width="${W}" height="${H}" fill="url(#${id}-sheen)"/>
 </g>
 <path d="${INNER}" fill="none" stroke="#000" stroke-opacity=".7" stroke-width="2.4"/>
@@ -916,5 +1173,5 @@ ${gemSVG(T, c.tier.key, 125, 336)}
 }
 const SHORT = { spd: "SPD", acc: "ACC", str: "STR", vert: "VRT", bnc: "BNC", sta: "STA", hands: "HND", sec: "SEC", brk: "BRK", tck: "TCK", ins: "FIN", mid: "MID", thr: "3PT", fr: "4PT", ft: "FT", pas: "PAS", iq: "IQ", perD: "DEF", rim: "RIM", reb: "REB" };
 function valColor(v) { return v >= 90 ? "#c58bff" : v >= 80 ? "#35eaa3" : v >= 70 ? "#f6cf55" : v >= 60 ? "#ff9e5e" : "#ff5a6a"; }
-return { front, back, packSVG, mystery, valColor, TP, POSES, figure, mix, lum, rngOf, ABBR, ICON, W, H };
+return { front, back, packSVG, mystery, valColor, TP, POSES, figure, mix, lum, rngOf, ABBR, ICON, W, H, photos: PH };
 })();
