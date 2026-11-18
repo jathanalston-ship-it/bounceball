@@ -90,7 +90,7 @@ function staffTeam(S, info, rng) {
   FO.hireGM(S, info.id, rng, "founding", (type, d) => log(S, type, d));
 }
 function newLeague(masterSeed, startSeason) {
-  const S = { masterSeed: String(masterSeed), season: startSeason || 1954, nextPid: 1, nextCid: 1, nextOid: 1, players: {}, teams: {}, coaches: {}, owners: {}, active: [], picks: [], offTx: [], champions: [], hofClasses: [], cur: null, leagueVersion: LEAGUE_VERSION, engineVersion: E.ENGINE_VERSION };
+  const S = { masterSeed: String(masterSeed), season: startSeason || 1954, firstSeason: startSeason || 1954, nextPid: 1, nextCid: 1, nextOid: 1, players: {}, teams: {}, coaches: {}, owners: {}, active: [], picks: [], offTx: [], champions: [], hofClasses: [], cur: null, leagueVersion: LEAGUE_VERSION, engineVersion: E.ENGINE_VERSION };
   const rng = rngFor(S, "init");
   B.initLeague(S); FO.initLeague(S); R.init(S); S.offNews = [];
   for (const info of T.TEAMS.filter(t => t.joined <= S.season)) { addTeam(S, info); generateRoster(S, info.id, rng, -1); staffTeam(S, info, rng); }
@@ -373,7 +373,7 @@ function allStarSpec(S) {
   const sp = { gid, season: S.season, day: cur.day, type: 2, home: h, away: a, seed: gameSeed(S, "allstar"), h: ids(hs), a: ids(aw), hc, ac, fat: [0, 0], b2b: [0, 0], mi: [0, 0], rest: [[], []], host };
   const crew = dealCrews(S, 1, "as")[0]; for (const id of crew) cur.refsUsed[id] = 1;
   const ctx = { crew, ref: Object.assign(crewTend(S, crew), { h: 0 }) }, n = sp.h.length + sp.a.length, chem = {};
-  for (let i = 0; i < n; i++) chem[i] = 0.62; // they've never played together
+  for (let i = 0; i < n; i++) chem[i] = 0.75; // they've never played together (but they know each other's games)
   ctx.chem = chem;
   const all = sp.h.concat(sp.a), at = {}; all.forEach((id, i) => at[id] = i);
   const gr = []; for (const k in S.grudges || {}) { const [x, y] = k.split(">").map(Number); if (at[x] !== undefined && at[y] !== undefined && (at[x] < sp.h.length) !== (at[y] < sp.h.length)) gr.push([at[x], at[y], S.grudges[k]]); }
@@ -602,7 +602,7 @@ function applyAllStar(S, sp, r, rng) {
     const I = E.INJURIES[k], p = S.players[id]; if (!p || !p.team) continue;
     const hh = p.health || (p.health = { conc: 0, chronic: [] }); let out = rng.int(I[2], I[3]);
     if (I[0] === "concussion") { hh.conc++; out = Math.round(out * (1 + 0.35 * (hh.conc - 1))); }
-    if (!(p.injury && p.injury.out > 0)) { p.injury = { name: I[0], out }; cur.injuries.push([sp.gid, id, p.team, I[0], out]); news(S, "injury", `{p:${id}} is hurt in the All-Star game (${I[0]}, out ${out} games)`, { pid: id }); }
+    if (out > 0 && !(p.injury && p.injury.out > 0)) { p.injury = { name: I[0], out }; cur.injuries.push([sp.gid, id, p.team, I[0], out]); news(S, "injury", `{p:${id}} is hurt in the All-Star game (${I[0]}, out ${out} game${out === 1 ? "" : "s"})`, { pid: id }); }
     chronicCheck(S, p, I[0], rng);
   }
   for (const f of r.fights || []) { (cur.fights = cur.fights || []).push([sp.gid, f.a, f.b, f.brawl ? 1 : 0, f.join, f.why]); addGrudge(S, f.a, f.b, 0.8); addGrudge(S, f.b, f.a, 0.8); }

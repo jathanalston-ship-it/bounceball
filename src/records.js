@@ -29,7 +29,7 @@ function liveList(S, k) {
 function dayLists(S) { const L = {}; for (const k of RSTATS) L[k] = liveList(S, k); return L; }
 const key = c => c[0] + ":" + c[1] + ":" + c[3] + ":" + c[4];
 function chasesFor(S, ids, L, gamesLeft) {
-  const out = [], done = S.records.done, history = S.season >= 1964; // the all-time list means something once the league has some
+  const out = [], done = S.records.done, history = S.season - (S.firstSeason || 1954) >= 10; // the all-time list means something once the league has some
   const add = c => { if (!done[key(c)]) out.push(c); };
   for (const id of ids) {
     const p = S.players[id]; if (!p) continue;
@@ -38,7 +38,7 @@ function chasesFor(S, ids, L, gamesLeft) {
       const list = L[k], rank = list.findIndex(x => x[0] === id);
       // the legend just above him in the top five (or the record), once he has a career worth the name
       const above = rank > 0 ? list[rank - 1] : rank < 0 && list.length >= 5 ? list[4] : null, r = rank < 0 ? 5 : rank;
-      if (history && above && above[0] !== id && r <= 5 && c >= first * 0.5 && above[1] - c + 1 <= reach && above[1] - c + 1 > 0 && (r === 1 || S.players[above[0]].retired)) {
+      if (history && above && above[0] !== id && r <= 5 && c >= first * 0.5 && above[1] - c + 1 <= reach && above[1] - c + 1 > 0 && S.players[above[0]].retired) { // (passing a legend; active stars leapfrogging each other isn't news)
         add([id, k, above[1] - c + 1, r === 1 ? "record" : "pass", above[0], r]);
         continue;
       }
@@ -49,7 +49,7 @@ function chasesFor(S, ids, L, gamesLeft) {
     if (gamesLeft <= 12 && S.cur && S.cur.stats[id]) for (const k of ["pts", "tkl", "fpm", "dnk", "ast", "reb"]) {
       const rec = S.records.season[k][0]; if (!rec) continue;
       const s = val(S.cur.stats[id], k), need = rec[2] - s + 1;
-      if (history && need > 0 && need <= REACH[k] * 1.1 && rec[0] !== id) add([id, k, need, "season", rec[0], rec[1]]);
+      if (history && rec[2] > 0 && need > 0 && need <= REACH[k] * 1.1 && rec[0] !== id) add([id, k, need, "season", rec[0], rec[1]]);
     }
   }
   return out;
@@ -78,7 +78,7 @@ function seasonEnd(S, cur) {
   init(S);
   for (const k of RSTATS) {
     S.records.career[k] = liveList(S, k).map(([id, v]) => [id, v]);
-    const sl = S.records.season[k].concat(Object.entries(cur.stats).filter(([, s]) => s.gp).map(([id, s]) => [+id, S.season, val(s, k)]));
+    const sl = S.records.season[k].concat(Object.entries(cur.stats).filter(([, s]) => s.gp && val(s, k) > 0).map(([id, s]) => [+id, S.season, val(s, k)]));
     S.records.season[k] = sl.sort((a, b) => b[2] - a[2] || a[1] - b[1]).slice(0, N);
   }
   return S.records;
@@ -101,21 +101,19 @@ function legend(S, rng, snapshot, P) {
   const w = pool.map(p => 1 + (p.drive - 50) / 40 + (p.ego || 0.4));
   let x = rng.next() * w.reduce((a, b) => a + b, 0), p = pool[0];
   for (let i = 0; i < pool.length; i++) { x -= w[i]; if (x <= 0) { p = pool[i]; break; } }
-  const keys = P.ROLES[p.role].sig.slice(0, 3).concat(["iq"]), v = snapshot[p.id];
-  const boost = rng.int(5, 8);
+  const keys = P.ROLES[p.role].sig.slice(0, 4).concat(["iq", "sta"]), v = snapshot[p.id];
+  const boost = rng.int(7, 10);
   for (const k of keys) v.r[k] = Math.min(P.rmax(S.season) + 3, v.r[k] + boost);
   return { pid: p.id, keys, boost, top: G };
 }
 // mid-season: someone on a record pace makes the papers
 function paceWatch(S, news) {
-  const cur = S.cur; if (!S.records || S.season < 1962) return;
+  const cur = S.cur; if (!S.records || S.season - (S.firstSeason || 1954) < 8) return;
   for (const k of ["pts", "tkl", "fpm", "dnk", "ast"]) {
     const rec = S.records.season[k][0]; if (!rec) continue;
-    for (const [id, s] of Object.entries(cur.stats)) {
-      if (!s.gp || s.gp < 25) continue;
-      const pace = val(s, k) / s.gp * 82;
-      if (pace > rec[2] * 1.02 && !(cur.paced = cur.paced || {})[id + k]) { cur.paced[id + k] = 1; news("pace", `{p:${id}} is on pace to break the single-season ${RNAME[k]} record (${rec[2]}, {p:${rec[0]}})`, { pid: +id, k }); }
-    }
+    let best = null, bp = rec[2] * 1.02; // the one man most clearly on pace
+    for (const [id, s] of Object.entries(cur.stats)) { if (!s.gp || s.gp < 25) continue; const pace = val(s, k) / s.gp * 82; if (pace > bp) { bp = pace; best = id; } }
+    if (best && !(cur.paced = cur.paced || {})[best + k]) { cur.paced[best + k] = 1; news("pace", `{p:${best}} is on pace to break the single-season ${RNAME[k]} record (${rec[2]}, {p:${rec[0]}})`, { pid: +best, k }); }
   }
 }
 
