@@ -14,3 +14,4 @@ jobs:
       - run: node test/longrun-dry.js 1
       - run: node test/stats.js 12
       - run: node test/cards.js
+      - run: node test/cardeco.js
