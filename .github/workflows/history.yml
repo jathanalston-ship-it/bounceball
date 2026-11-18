@@ -1,0 +1,52 @@
+name: Simulate league history
+
+# Run from the Actions tab. Plays every season through the real game engine and commits
+# the results to data/. Resumable: if it stops at the time budget, run it again and it
+# picks up from data/state.json.
+on:
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: "Master seed (same seed = same history)"
+        default: "canon-1"
+      to:
+        description: "Last season to simulate"
+        default: "2025"
+      fresh:
+        description: "Delete existing data and start over"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: history
+  cancel-in-progress: false
+
+jobs:
+  simulate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Start over
+        if: ${{ inputs.fresh }}
+        run: rm -rf data
+      - name: Simulate (pauses cleanly before the 6-hour job limit)
+        run: node scripts/sim-history.js --seed "${{ inputs.seed }}" --to "${{ inputs.to }}" --out data --workers "$(nproc)" --max-minutes 320
+      - name: Build viewer indexes
+        run: node scripts/build-index.js data
+      - name: Verify replays match the record
+        run: node test/determinism.js data "$(node -e 'const l=require("./data/league.json");console.log(l.seasons[l.seasons.length-1])')"
+      - name: Commit results
+        run: |
+          git config user.name "bounceball-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          LAST=$(node -e 'const l=require("./data/league.json");console.log(l.seasons[l.seasons.length-1])')
+          git commit -m "History: seed ${{ inputs.seed }}, through ${LAST}" || echo "nothing to commit"
+          git push

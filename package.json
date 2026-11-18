@@ -1,0 +1,12 @@
+{
+  "name": "bounceball",
+  "version": "0.4.0",
+  "private": true,
+  "description": "The United Bounceball League: a simulated sports league with 70+ years of played history",
+  "scripts": {
+    "test": "node test/engine-sanity.js && node test/longrun-dry.js 1 && node test/cards.js",
+    "history": "node scripts/sim-history.js --seed canon-1 --to 2025 --out data",
+    "index": "node scripts/build-index.js data"
+  },
+  "engines": { "node": ">=18" }
+}
