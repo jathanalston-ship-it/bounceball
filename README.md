@@ -38,6 +38,8 @@ four-point line), and expanded to 24 teams by 2009. Team identities are in `src/
 | League | `src/league.js` | 82-game balanced schedule for any team count, depth charts, injuries (mostly from tackles), playoffs, awards, Hall of Fame, draft with lottery, re-signing, free agency, trades (rebuilding teams sell veterans to contenders at the deadline), waivers with dead money, expansion drafts and the 1979 merger. |
 | History runner | `scripts/sim-history.js` | Plays seasons in parallel worker threads and checkpoints after every season (`data/state.json`), so a run can stop and resume. |
 | Broadcast | `site/broadcast3d.js` | 3D TV broadcast of any game: stylized players built from each player's height and weight, animated from the action the engine recorded for them (dribbling, calling a play, jump shots, dunks, tackles, lying on the rubber, getting up, boxing out, screens, a goalie walling off the rim, celebrations); arena with a crowd that stands up on big plays; auto camera director (sideline, behind the basket, free throws, timeout wide shots); automatic slow-motion instant replays (gang tackles, fumbles, alley-oops); scorebug, lower thirds and callouts; a gameplan card at tip-off and halftime, play-call tags and adjustment lower-thirds; synthesized crowd, organ, whistle, buzzer, swish and clank. |
+| Player cards | `src/cards.js`, `site/cardart.js`, `site/cards.js` | 2K-style cards. Every player gets a base card for every season (his ratings as the season tipped off), plus collection cards: season leaders (Posterized for dunks, Swat Team, Wrecking Crew for tackles, Escape Artists, Four Alarm, Splash Zone, Dime Store, Board Room, Pickpockets, Bucket Brigade), awards (Most Valuable, Finals MVP, Lockdown, Rookie of the Year, Ring Bearers) and specials (Rookie Card, Founders, WBA Originals, Ironworkers, Prime, Hall of Fame, Rap Sheet). Collection cards boost the ratings they're about; the card's overall sets its rarity (Rubber → Bronze → Silver → Gold → Emerald → Sapphire → Ruby → Amethyst → Diamond → Opal → Vulcanized). Card art is drawn in SVG from the card itself: a posed figure built from the player's height and weight in his team's colors, on a background for the collection and era. Tap a card to flip it; the card viewer lists every rating with the boost. |
+| Player screen | `site/cards.js` | Tap any player: hero card, bio (with his offensive and defensive archetypes), last season with league ranks, then tabs: Overview (trophy case, overall by season, career totals, career and playoff single-game highs that link to the game replay, badges), Stats (per game, totals, per 36, shooting splits, advanced, bounceball stats, season highs; regular season or playoffs; top-10 league ranks highlighted), Attributes (any season's ratings, group radar vs. career peak, changes from the year before, badges, every rating for every season), Cards (his binder) and Career (draft, trades, signings, injuries, blotter, awards). Names in a game's box score open that player's cards. |
 | Viewer | `site/` | Standings, playoffs, leaders, history, Hall of Fame, police blotter, coaches (with philosophies), teams, players (with archetypes), transactions, single-game replays with play-by-play, box score and a **Strategy** tab (both gameplans, adjustments, points by play type, tackling, play calls, personnel), and **three-game TV mode**: a day's best three games air on one clock and you flip between channels. |
 
 ## Gameplans and players
@@ -83,6 +85,15 @@ type, homeLineup, awayLineup, homeCoach, awayCoach]`. The viewer replays any gam
 If the engine changes, old seasons must replay on the engine version they were played with
 (`engineVersion` is stored in every season file).
 
+### Derived indexes
+
+`scripts/build-index.js` (run by the history workflow after every run) reads the season files and writes
+`data/index/`: `player-seasons.json` (stat lines), `players/<id % 32>.json` (each player's ratings by season,
+league ranks, single-game highs, career timeline and earned cards) and `cards.json` (every collection card).
+Season files also carry made dunks (`dnk`) in the stat lines and each player's single-game highs (`highs`,
+`phighs`, with the game id), counted from the play log without touching any random number, so they don't
+change a single game.
+
 ### Era adjustment
 
 Development noise compounds over careers, so without correction the league slowly inflates. Each
@@ -111,6 +122,7 @@ Locally: `node scripts/sim-history.js --seed canon-1 --to 2025 --out data --work
 - `node test/strategy-ab.js off 40`: paired A/B balance check of offensive systems (`def` for schemes, `hit` for tackle policies).
 - `node test/determinism.js data 1987`: stored games from a season replay to the recorded score.
 - `node test/longrun-dry.js`: 72-year economy check (ratings, payroll, rosters, parity).
+- `node test/cards.js`: card rules (rarity tiers, boosts, which cards a season hands out).
 
 ## Roadmap
 
