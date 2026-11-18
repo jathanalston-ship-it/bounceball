@@ -396,7 +396,7 @@ function buildFigure(o) {
   for (const b of [neck, head, ...eyes]) b.rotation.order = "YXZ"; // turn, then nod: a proper look-at
   P.add(root); P.updateMatrixWorld(true);
   const look = o.look || {}, body = new GB(), cloth = new GB(), hairG = new GB(), skin = col(o.skin), seg = 18;
-  const inkC = skin.clone().lerp(col("#141a2a"), 0.6), tightsC = col(o.tightsC || "#141414"), kneeC = col(o.kneeC || "#161616"), tSeed = ((o.id || 1) % 97) * 0.37;
+  const inkC = skin.clone().lerp(col("#1a2238"), 0.45), tightsC = col(o.tightsC || "#141414"), kneeC = col(o.kneeC || "#161616"), tSeed = ((o.id || 1) % 97) * 0.37;
   const inked = (k, t, u, fore) => { // tattoo sleeves and armbands, painted on the skin
     const T = look.tat; if (!T || (T !== 2 && k !== 1)) return false;
     if (T === 3) return !fore && t > 0.36 && t < 0.5 && Math.sin(u * TAU * 6 + t * 40) > -0.2;
