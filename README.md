@@ -94,6 +94,22 @@ Season files also carry made dunks (`dnk`) in the stat lines and each player's s
 `phighs`, with the game id), counted from the play log without touching any random number, so they don't
 change a single game.
 
+### Card collections
+
+39 collections, built by `src/cards.js` from the season files (`index/cards.json`):
+
+- **Season leaders**: Posterized (dunks), Swat Team, Wrecking Crew (tackles), Escape Artists (broken tackles), Four Alarm, Splash Zone, Dime Store, Board Room, Pickpockets, Bucket Brigade.
+- **Moments & feats**: Moments (each season's best single game in points, rebounds, assists, tackles, dunks and fours, linked to the replay), Fifty Club, Triple Threat, Postseason Heat.
+- **Awards**: Most Valuable, Finals MVP, Lockdown, Rookie of the Year, Ring Bearers, Dynasty (three titles in a row).
+- **Rising & veterans**: Rookie Card, Number One (first overall picks), Young Guns, Breakout (biggest overall jumps), Bench Mob, Ageless.
+- **Legacies**: Prime, Franchise Icons (ten seasons with one team), Journeymen (six teams), Hall of Fame, Immortals (the 12 best careers by total Game Score).
+- **Eras**: Founders, WBA Originals, Expansion Class.
+- **Built different**: Skyscrapers (7'3"+), Pocket Rockets (6'0" and under), Ironworkers, Rap Sheet.
+
+Cards at Ruby (81+) and above, plus Hall of Fame, Immortals, MVP, Finals MVP, Number One and Franchise Icons cards, carry an autograph. Moments, Hall of Fame, Immortals, Founders and Rap Sheet have their own frames (film strip, marble, nebula, vintage card stock, hazard tape), and Diamond cards get a cracked-ice foil. Big cards tilt with a moving glare.
+
+**Packs**: the Cards page has free packs (Standard, Premium with a Ruby-or-better last card, Leaders, Moments, Legends, Oddballs and one per decade). Each card rolls its rarity tier first, then a card from that tier, so the odds are fixed whatever the pool. Pulled cards build **My collection** (set progress for every collection, owned and missing filters), stored in the browser.
+
 ### Era adjustment
 
 Development noise compounds over careers, so without correction the league slowly inflates. Each

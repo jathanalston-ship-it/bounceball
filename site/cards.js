@@ -28,6 +28,7 @@ const pcPct = (a, b, d) => b ? (a / b * 100).toFixed(d === undefined ? 1 : d) : 
 const pcAvg = (a, b, d) => b ? (a / b).toFixed(d === undefined ? 1 : d) : "–";
 
 // ---------- card objects ----------
+function pcAll(ix) { return PC.allCards || (PC.allCards = ix.cards.map(r => Object.assign(pcCard(r[0], r[1], r[2], r[3], r[4], r[6], r[7], r[8], undefined, r[5]), { extra: r[9] }))); }
 function pcCard(col, season, pid, team, ovr, rank, value, num, wt, base) {
   const p = D.pl[pid] || {}, t = TB[team] || { c1: "#59606b", c2: "#23272e" };
   return { col, season, pid, team, teamId: team || "FA", ovr, base: base === undefined ? ovr : base, rank: rank || 0, value, serial: PC.serials ? PC.serials[col + ":" + season + ":" + pid] : undefined, num: num === undefined ? p.num : num, name: p.name || "#" + pid, role: p.role || "WING", ht: p.ht || 78, wt: wt || p.wt || 210, c1: t.c1, c2: t.c2, tier: CC.tierFor(ovr) };
@@ -39,7 +40,7 @@ function pcPlayerCards(p, det) {
   const out = [];
   if (det) {
     for (const s of det.s) out.push(Object.assign(pcCard("base", s[0], p.id, s[1], s[3], 0, null, s[2], s[4]), { r: pcR(s) }));
-    for (const c of det.cards) { const s = det.s.find(x => x[0] === c[1]); out.push(Object.assign(pcCard(c[0], c[1], c[2], c[3], c[4], c[6], c[7], c[8], s ? s[4] : undefined, c[5]), { r: s ? pcR(s) : null })); }
+    for (const c of det.cards) { const s = det.s.find(x => x[0] === c[1]); out.push(Object.assign(pcCard(c[0], c[1], c[2], c[3], c[4], c[6], c[7], c[8], s ? s[4] : undefined, c[5]), { r: s ? pcR(s) : null, extra: c[9] })); }
   }
   if (p.r && !p.retired) out.push(Object.assign(pcCard("base", D.lg.nextSeason, p.id, p.team, p.ovr, 0, null, p.num), { r: p.r, upcoming: true }));
   return out.sort((a, b) => b.season - a.season || (a.col === "base") - (b.col === "base") || b.ovr - a.ovr || COL_ORDER[a.col] - COL_ORDER[b.col]);
@@ -57,7 +58,24 @@ function pcEarned(c) {
   if (c.col === "founders") return `Played in the league's first season, ${y}.`;
   if (c.col === "wba") return `Came over from the WBA in the ${y} merger.`;
   if (c.col === "rookie") return `His first season in the league, ${y}.`;
-  return `${C.name}, ${y}.`;
+  const ex = c.extra || {}, vs = ex.o && TB[ex.o] ? ` against the ${TB[ex.o].name}` : "", day = ex.d !== null && ex.d !== undefined ? ` on day ${ex.d + 1}` : "";
+  const watch = ex.g !== undefined && ex.g !== null && ex.g >= 0 ? ` <a href="#watch-${y}-${ex.g}">Watch the game ▶</a>` : "";
+  const nm = TB[c.team] ? TB[c.team].name : c.team;
+  const F = {
+    moments: () => `${c.value}${vs}${day}, the best single game of ${y}.${watch}`,
+    fifty: () => `Dropped ${c.value}${vs}${day}, ${y}.${watch}`,
+    tripledouble: () => `${c.value} triple-doubles in ${y}, #${c.rank} in the league.`,
+    postseason: () => `${c.value} points per game in the ${y} playoffs, #${c.rank}.`,
+    bench: () => `${c.value} points per game off the bench in ${y}, #${c.rank}.`,
+    breakout: () => `His overall jumped ${c.value} going into ${y}, #${c.rank} in the league.`,
+    younggun: () => `Age ${c.value}, playing big minutes in ${y}.`, ageless: () => `Age ${c.value} and still in the rotation in ${y}.`,
+    numberone: () => `The first overall pick in the ${c.value} draft, in his rookie season.`,
+    franchise: () => `${c.value} seasons with the ${nm}. This was his best.`, journeyman: () => `Played for ${c.value} teams. ${y} was his last season.`,
+    expansion: () => `On the first roster the ${nm} ever had, ${y}.`, dynasty: () => `${c.value} titles in a row, ${y}.`,
+    skyscrapers: () => `Stands ${pcFt(c.value)}. His best season, ${y}.`, pocket: () => `Stands ${pcFt(c.value)}. His best season, ${y}.`,
+    immortals: () => `#${c.rank} all-time in career Game Score. His best season, ${y}.`
+  };
+  return F[c.col] ? F[c.col]() : `${C.name}, ${y}.`;
 }
 
 // offensive / defensive archetype (engine v0.4+) from a season's ratings
@@ -68,7 +86,7 @@ function pcFlip(c, cls) {
   const r = c.r ? CC.cardRatings(c.col, c.r, pcBump(c)) : null;
   if (r && c.arch === undefined) { const a = pcArch(c.r, D.pl[c.pid], c.season); c.arch = a ? a.offName + " / " + a.defName : ""; }
   if (c.line === undefined) c.line = pcLine(c);
-  return `<div class="fcard ${cls || ""}" onclick="this.classList.toggle('flip')" title="Tap to flip"><div class="fc-in"><div class="fc-f">${CART.front(c)}</div><div class="fc-b">${r ? CART.back(c, r) : CART.front(c)}</div></div></div>`;
+  return `<div class="fcard tilt ${cls || ""}" onclick="this.classList.toggle('flip')" title="Tap to flip"><div class="fc-in"><div class="fc-f">${CART.front(c)}</div><div class="fc-b">${r ? CART.back(c, r) : CART.front(c)}</div></div><div class="glare"></div></div>`;
 }
 // the season's per-game line for the card back; the last number follows the collection
 function pcLine(c) {
@@ -80,7 +98,8 @@ function pcLine(c) {
   return [["PTS", pg(s.pts)], ["REB", pg(s.oreb + s.dreb)], ["AST", pg(s.ast)], ["TKL", pg(s.tkl)], [extra[0], extra[1] === undefined ? "–" : pg(extra[1])]];
 }
 function pcTile(c, i, label, key) {
-  return `<button class="ctile t-${c.tier.key}" onclick="pcOpen(${i},'${key || "main"}')" aria-label="${esc(c.name)} ${c.season} ${esc((CC.CBY[c.col] || {}).name || "")}">${CART.front(c)}${label ? `<span class="ctl">${label}</span>` : ""}</button>`;
+  const own = c.col !== "base" && MY.load().owned[pcKey(c)];
+  return `<button class="ctile t-${c.tier.key}${own ? " own" : ""}" onclick="pcOpen(${i},'${key || "main"}')" aria-label="${esc(c.name)} ${c.season} ${esc((CC.CBY[c.col] || {}).name || "")}">${CART.front(c)}${own ? `<span class="owned" title="In your collection">✓${own > 1 ? " ×" + own : ""}</span>` : ""}${label ? `<span class="ctl">${label}</span>` : ""}</button>`;
 }
 function pcSetList(list, key) { PC.lists[key || "main"] = list; PC.list = list; }
 // open the card viewer on one player's cards from a season (used by the broadcast box score)
@@ -132,7 +151,7 @@ function pcClose() { const m = $("cmodal"); if (m) { m.hidden = true; m.innerHTM
   bt.addEventListener("keydown", e => { const a = e.target.closest(".plq"); if (a && e.key === "Enter") open(a); });
 })();
 document.addEventListener("keydown", e => { const m = $("cmodal"); if (!m || m.hidden) return; if (e.key === "Escape") pcClose(); if (e.key === "ArrowLeft") pcStep(-1); if (e.key === "ArrowRight") pcStep(1); });
-window.addEventListener("hashchange", pcClose);
+window.addEventListener("hashchange", () => { pcClose(); const m = $("packmodal"); if (m && !m.hidden) { m.hidden = true; m.innerHTML = ""; document.body.classList.remove("noscroll"); } });
 
 // ---------- player screen ----------
 const PS_TABS = [["overview", "Overview"], ["stats", "Stats"], ["ratings", "Attributes"], ["cards", "Cards"], ["career", "Career"]];
@@ -397,8 +416,10 @@ function psCareer() {
 async function vCards(col, season) {
   const ix = await pcIndex();
   if (!ix) return `<h2>Cards</h2><p>Card collections need the card index. Run <code>node scripts/build-index.js data</code> (the history workflow does this) and reload.</p>`;
-  const all = ix.cards.map(r => pcCard(r[0], r[1], r[2], r[3], r[4], r[6], r[7], r[8], undefined, r[5]));
+  const all = pcAll(ix);
   if (!col) return pcHome(all);
+  if (col === "packs") return pcPacks(all);
+  if (col === "mine") return pcMine(all);
   const C = CC.CBY[col]; if (!C) return `<p>Unknown collection.</p>`;
   if (PC.lastCol !== col) { PC.lastCol = col; PC.tierF = null; }
   let list = all.filter(c => c.col === col);
@@ -407,11 +428,14 @@ async function vCards(col, season) {
   const sort = PC.sort || "ovr";
   list.sort(sort === "new" ? (a, b) => b.season - a.season || b.ovr - a.ovr : sort === "old" ? (a, b) => a.season - b.season || b.ovr - a.ovr : (a, b) => b.ovr - a.ovr || b.season - a.season);
   if (PC.tierF) list = list.filter(c => c.tier.key === PC.tierF);
+  const my = MY.load(), ownedN = list.filter(c => my.owned[pcKey(c)]).length;
+  if (PC.ownF === "own") list = list.filter(c => my.owned[pcKey(c)]); else if (PC.ownF === "miss") list = list.filter(c => !my.owned[pcKey(c)]);
   const byTier = {}; for (const c of all.filter(c => c.col === col && (!season || c.season === +season))) byTier[c.tier.key] = (byTier[c.tier.key] || 0) + 1;
   PC.colList = list; PC.shown = Math.min(list.length, 40); pcSetList(list, "col");
   let h = `<p><a href="#cards">← All collections</a></p><div class="vh"><h2>${esc(C.name)}</h2><div class="row"><select class="sp" onchange="location.hash='cards-${col}'+(this.value?'-'+this.value:'')"><option value="">All seasons</option>${seasons.map(y => `<option ${+season === y ? "selected" : ""}>${y}</option>`).join("")}</select><select class="sp" onchange="PC.sort=this.value;route()"><option value="ovr" ${sort === "ovr" ? "selected" : ""}>Best first</option><option value="new" ${sort === "new" ? "selected" : ""}>Newest</option><option value="old" ${sort === "old" ? "selected" : ""}>Oldest</option></select></div></div>`;
   h += `<p class="m">${esc(C.blurb)} ${C.kind === "leader" ? `Cards go to the top of the league each season (3 players when there were six teams, 10 with 24). Boost: +5 for the leader, +4 for 2nd–3rd, +3 for 4th–6th, +2 after that.` : C.bump ? `Card boost: +${C.bump}${C.boost === "all" ? " to every rating" : ""}.` : "No boost."}</p>`;
   h += `<div class="chips"><button class="tchip ${!PC.tierF ? "on" : ""}" onclick="PC.tierF=null;route()">All <b>${Object.values(byTier).reduce((a, b) => a + b, 0)}</b></button>${CC.TIERS.slice().reverse().filter(t => byTier[t.key]).map(t => `<button class="tchip ${PC.tierF === t.key ? "on" : ""}" onclick="PC.tierF='${t.key}';route()"><span class="gem t-${t.key}"></span>${t.name} <b>${byTier[t.key]}</b></button>`).join("")}</div>`;
+  if (Object.keys(my.owned).length) h += `<div class="seg" style="margin-bottom:6px">${[["", "All"], ["own", `Owned (${ownedN})`], ["miss", "Missing"]].map(([k, n]) => `<button class="${(PC.ownF || "") === k ? "on" : ""}" onclick="PC.ownF='${k}';route()">${n}</button>`).join("")}</div>`;
   h += `<div class="cgrid" id="cgrid">${list.slice(0, PC.shown).map((c, i) => pcTile(c, i, `${c.season}${c.rank ? " · #" + c.rank : ""}`, "col")).join("")}</div>`;
   if (list.length > PC.shown) h += `<p class="more"><button onclick="pcMore()">Show more (${list.length - PC.shown} left)</button></p>`;
   if (!list.length) h += `<p class="m">No cards match.</p>`;
@@ -431,14 +455,160 @@ function pcHome(all) {
   let h = `<h2>Cards</h2><p class="m">Every season hands out cards. Each one carries the player's ratings as that season began; collection cards add a boost, and the overall sets the rarity. Every player also has a base card for every season on his player page.</p>`;
   h += `<h3>Rarest cards ever</h3><div class="cgrid feat">${featured.map((c, i) => pcTile(c, i, `${c.season}`, "home")).join("")}</div>`;
   h += `<h3>Rarity</h3><div class="ladder">${CC.TIERS.map((t, i) => { const nx = CC.TIERS[i + 1]; const n = all.filter(c => c.tier.key === t.key).length; return `<div class="rung t-${t.key}"><span class="gem t-${t.key}"></span><b>${t.name}</b><small>${t.min}${nx ? "–" + (nx.min - 1) : "+"}</small><small class="m">${n} cards</small></div>`; }).join("")}</div>`;
-  const groups = [["leader", "Season leaders"], ["award", "Awards"], ["special", "Specials"]];
-  for (const [kind, title] of groups) {
+  const my = MY.load(), owned = Object.keys(my.owned).length;
+  h = h.replace(`<h3>Rarest cards ever</h3>`, `<div class="packcta"><a class="btn" href="#cards-packs">Open packs</a><a class="btn ghost" href="#cards-mine">My collection · ${owned}/${all.length}</a></div><h3>Rarest cards ever</h3>`);
+  for (const [grp, title] of Object.entries(CC.GROUP_NAMES)) {
     h += `<h3>${title}</h3><div class="colgrid">`;
-    for (const C of CC.COLLECTIONS.filter(c => c.kind === kind)) {
+    for (const C of CC.COLLECTIONS.filter(c => c.group === grp)) {
       const list = byCol[C.key] || []; const best = list.slice().sort((a, b) => b.ovr - a.ovr)[0];
-      h += `<a class="colt" href="#cards-${C.key}">${best ? `<span class="mini">${CART.front(best)}</span>` : `<span class="mini empty"></span>`}<div><b>${esc(C.name)}</b><small>${list.length} card${list.length === 1 ? "" : "s"}${best ? ` · best ${esc(best.name)} ${best.season} (${best.ovr})` : ""}</small><p>${esc(C.blurb)}</p></div></a>`;
+      const have = list.filter(c => my.owned[pcKey(c)]).length;
+      h += `<a class="colt" href="#cards-${C.key}">${best ? `<span class="mini">${CART.front(best)}</span>` : `<span class="mini empty"></span>`}<div><b>${esc(C.name)}</b><small>${list.length} card${list.length === 1 ? "" : "s"}${best ? ` · best ${esc(best.name)} ${best.season} (${best.ovr})` : ""}</small><p>${esc(C.blurb)}</p>${have ? `<i class="prog"><em style="width:${(have / list.length * 100).toFixed(1)}%"></em></i><small>You own ${have} of ${list.length}</small>` : ""}</div></a>`;
     }
     h += `</div>`;
   }
   return h;
 }
+
+// ---------- my collection (kept in this browser only) ----------
+const pcKey = c => c.col + ":" + c.season + ":" + c.pid;
+const MY = {
+  k: "ubl-cards-v1", d: null,
+  load() { if (this.d) return this.d; try { this.d = JSON.parse(localStorage.getItem(this.k)); } catch (e) { this.d = null; } if (!this.d || !this.d.owned) this.d = { owned: {}, packs: 0, cards: 0 }; return this.d; },
+  save() { try { localStorage.setItem(this.k, JSON.stringify(this.d)); } catch (e) { /* storage blocked: keep it for this visit */ } },
+  add(c) { const d = this.load(), k = pcKey(c), isNew = !d.owned[k]; d.owned[k] = (d.owned[k] || 0) + 1; d.cards++; return isNew; },
+  reset() { this.d = { owned: {}, packs: 0, cards: 0 }; this.save(); }
+};
+
+// ---------- packs ----------
+// Each slot rolls a rarity tier first (weights below), then a card from that tier, so the odds
+// stay the same no matter how many cards a tier holds.
+const TIER_W = { rubber: 30, bronze: 26, silver: 22, gold: 18, emerald: 12, sapphire: 8, ruby: 4.5, amethyst: 2.5, diamond: 1.2, opal: 0.45, vulcan: 0.15 };
+function pcPackList(all) {
+  const seasons = [...new Set(all.map(c => c.season))].sort((a, b) => a - b), decades = [...new Set(seasons.map(y => Math.floor(y / 10) * 10))];
+  const P = [
+    { key: "standard", name: "Standard Pack", sub: "Any collection, any era", c1: "#2563c9", c2: "#13285a", icon: "base", n: 5 },
+    { key: "premium", name: "Premium Pack", sub: "Last card Ruby or better", c1: "#b3122b", c2: "#3a0e4f", icon: "mvp", n: 5, guarantee: 81 },
+    { key: "leaders", name: "Leaders Pack", sub: "Season leaders only", c1: "#0f8a57", c2: "#06341f", icon: "posterized", n: 5, groups: ["leaders"] },
+    { key: "feats", name: "Moments Pack", sub: "Moments, feats, playoffs", c1: "#d9480f", c2: "#3b0d02", icon: "moments", n: 4, groups: ["feats"] },
+    { key: "legends", name: "Legends Pack", sub: "Legacies & awards · Amethyst+ last", c1: "#7a2bff", c2: "#140632", icon: "immortals", n: 4, groups: ["legacy", "awards"], guarantee: 84 },
+    { key: "oddballs", name: "Oddballs Pack", sub: "Built different & eras", c1: "#c99a06", c2: "#3a2a00", icon: "rapsheet", n: 4, groups: ["odd", "eras", "rising"] }
+  ];
+  for (const d of decades) P.push({ key: "era" + d, name: `${d}s Pack`, sub: `${Math.max(d, seasons[0])}–${Math.min(d + 9, seasons[seasons.length - 1])} only`, c1: ["#8a6a3e", "#2b8a8a", "#c2410c", "#be185d", "#4338ca", "#0f766e", "#334155", "#9333ea"][(d / 10) % 8], c2: "#120d08", icon: d < 1962 ? "founders" : "ageless", n: 5, from: d, to: d + 9 });
+  return P;
+}
+function pcPool(all, pk) { return all.filter(c => (!pk.groups || pk.groups.includes((CC.CBY[c.col] || {}).group)) && (!pk.from || (c.season >= pk.from && c.season <= pk.to))); }
+function pcDraw(pool, minOvr) {
+  const byT = {}; for (const c of pool) if (!minOvr || c.ovr >= minOvr) (byT[c.tier.key] = byT[c.tier.key] || []).push(c);
+  const tiers = Object.keys(byT); if (!tiers.length) return pool[Math.floor(Math.random() * pool.length)];
+  let r = Math.random() * tiers.reduce((s, t) => s + TIER_W[t], 0), t = tiers[0];
+  for (const x of tiers) { r -= TIER_W[x]; if (r <= 0) { t = x; break; } }
+  return byT[t][Math.floor(Math.random() * byT[t].length)];
+}
+function pcPacks(all) {
+  const my = MY.load(), P = pcPackList(all); PC.packs = P;
+  const odds = (() => { const tot = Object.values(TIER_W).reduce((a, b) => a + b, 0); return CC.TIERS.slice().reverse().map(t => `<span class="tchip"><span class="gem t-${t.key}"></span>${t.name} <b>${(TIER_W[t.key] / tot * 100).toFixed(TIER_W[t.key] / tot < 0.01 ? 2 : 1)}%</b></span>`).join(""); })();
+  let h = `<p><a href="#cards">← All collections</a></p><div class="vh"><h2>Packs</h2><a class="btn ghost" href="#cards-mine">My collection →</a></div>`;
+  h += `<p class="m">Free packs, as many as you like. Every card you pull goes into your collection on this device. ${my.packs ? `You've opened ${my.packs} pack${my.packs === 1 ? "" : "s"} and own ${Object.keys(my.owned).length} of ${all.length} cards.` : ""}</p>`;
+  h += `<div class="packs">${P.map((pk, i) => `<button class="packt" onclick="pcOpenPack(${i})"><span class="pk">${CART.packSVG(pk, pk.key)}</span><b>${esc(pk.name)}</b><small>${esc(pk.sub)} · ${pcPool(all, pk).length} cards</small></button>`).join("")}</div>`;
+  h += `<h3>Odds per card</h3><div class="chips">${odds}</div><p class="m small">Packs with a guarantee roll the last card only from cards at or above that overall.</p>`;
+  return h;
+}
+async function pcOpenPack(i) {
+  const all = pcAll(await pcIndex()), pk = PC.packs[i], pool = pcPool(all, pk);
+  const cards = []; for (let k = 0; k < pk.n; k++) cards.push(pcDraw(pool, k === pk.n - 1 && pk.guarantee ? pk.guarantee : 0));
+  cards.sort((a, b) => a.ovr - b.ovr); // best card last, like a real pack
+  const my = MY.load(); my.packs++;
+  const news = cards.map(c => MY.add(c)); MY.save();
+  PC.pull = cards; pcSetList(cards, "pull");
+  let m = $("packmodal");
+  if (!m) { m = document.createElement("div"); m.id = "packmodal"; m.className = "cmodal packm"; document.body.appendChild(m); }
+  m.innerHTML = `<div class="cm-box"><button class="cm-x" onclick="pcClosePack()" aria-label="Close">✕</button>
+    <div class="tearwrap" id="tearwrap" onclick="pcTear()"><div class="tear">${CART.packSVG(pk, pk.key)}</div><p class="m">Tap the pack to open it</p></div>
+    <div class="pull" id="pull" hidden>${cards.map((c, k) => `<div class="pslot t-${c.tier.key}${c.ovr >= 81 ? " rare" : ""}${c.ovr >= 90 ? " ultra" : ""}" style="--d:${k * 0.12}s"><div class="fcard tilt pflip" onclick="pcReveal(this, ${k})"><div class="fc-in"><div class="fc-f">${CART.mystery()}</div><div class="fc-b">${CART.front(c)}</div></div><div class="glare"></div></div>${news[k] ? `<span class="newb">NEW</span>` : ""}<span class="ctl pl">${esc(c.tier.name)} · ${esc((CC.CBY[c.col] || {}).name || "")}</span></div>`).join("")}</div>
+    <div class="pullbar" id="pullbar" hidden><button onclick="pcRevealAll()">Reveal all</button><button onclick="pcOpenPack(${i})">Open another</button><a class="btn ghost" href="#cards-mine" onclick="pcClosePack()">My collection</a></div></div>`;
+  m.hidden = false; document.body.classList.add("noscroll");
+}
+function pcTear() { const w = $("tearwrap"); if (!w || w.classList.contains("go")) return; w.classList.add("go"); setTimeout(() => { w.hidden = true; $("pull").hidden = false; $("pullbar").hidden = false; }, 520); }
+function pcReveal(el, k) {
+  if (!el.classList.contains("flip")) { el.classList.add("flip"); el.closest(".pslot").classList.add("shown"); return; }
+  pcOpen(k, "pull");
+}
+function pcRevealAll() { document.querySelectorAll("#pull .pflip").forEach((el, k) => setTimeout(() => { el.classList.add("flip"); el.closest(".pslot").classList.add("shown"); }, k * 260)); }
+function pcClosePack() { const m = $("packmodal"); if (m) { m.hidden = true; m.innerHTML = ""; } document.body.classList.remove("noscroll"); if (location.hash.startsWith("#cards")) route(); }
+
+function pcMine(all) {
+  const my = MY.load(), byCol = {}; for (const c of all) (byCol[c.col] = byCol[c.col] || []).push(c);
+  const mine = all.filter(c => my.owned[pcKey(c)]).sort((a, b) => b.ovr - a.ovr);
+  let h = `<p><a href="#cards">← All collections</a></p><div class="vh"><h2>My collection</h2><a class="btn" href="#cards-packs">Open packs</a></div>`;
+  if (!mine.length) return h + `<p class="m">Nothing yet. Open a pack and your cards land here. Your collection is saved in this browser only.</p>`;
+  const pct = mine.length / all.length * 100;
+  h += `<div class="kv"><div><b>${mine.length}</b><span>Unique cards</span></div><div><b>${my.cards}</b><span>Cards pulled</span></div><div><b>${my.packs}</b><span>Packs opened</span></div><div><b>${pct.toFixed(1)}%</b><span>Of every card</span></div></div>`;
+  const byTier = {}; for (const c of mine) byTier[c.tier.key] = (byTier[c.tier.key] || 0) + 1;
+  h += `<div class="chips">${CC.TIERS.slice().reverse().filter(t => byTier[t.key]).map(t => `<span class="tchip"><span class="gem t-${t.key}"></span>${t.name} <b>${byTier[t.key]}</b></span>`).join("")}</div>`;
+  const best = mine.slice(0, 8); pcSetList(best, "mine");
+  h += `<h3>Best pulls</h3><div class="cgrid">${best.map((c, i) => pcTile(c, i, `${c.season}`, "mine")).join("")}</div>`;
+  h += `<h3>Sets</h3><div class="sets">`;
+  for (const [grp, title] of Object.entries(CC.GROUP_NAMES)) {
+    h += `<div class="setg"><b>${title}</b>`;
+    for (const C of CC.COLLECTIONS.filter(c => c.group === grp)) {
+      const list = byCol[C.key] || [], have = list.filter(c => my.owned[pcKey(c)]).length; if (!list.length) continue;
+      h += `<a class="setr${have === list.length ? " done" : ""}" href="#cards-${C.key}" onclick="PC.ownF='own'"><span>${esc(C.name)}</span><i class="prog"><em style="width:${(have / list.length * 100).toFixed(1)}%"></em></i><small>${have}/${list.length}</small></a>`;
+    }
+    h += `</div>`;
+  }
+  h += `</div><p class="m small">Saved in this browser only. <button class="linkbtn" onclick="if(this.dataset.sure){MY.reset();route()}else{this.dataset.sure=1;this.textContent='Tap again to erase your collection'}">Reset my collection</button></p>`;
+  return h;
+}
+
+// ---------- 3D tilt + glare on the big cards ----------
+(function () {
+  const set = (el, x, y) => { el.style.setProperty("--ry", ((x - 0.5) * 18).toFixed(1) + "deg"); el.style.setProperty("--rx", ((0.5 - y) * 18).toFixed(1) + "deg"); el.style.setProperty("--gx", (x * 100).toFixed(0) + "%"); el.style.setProperty("--gy", (y * 100).toFixed(0) + "%"); };
+  document.addEventListener("pointermove", e => {
+    const el = e.target.closest && e.target.closest(".fcard.tilt"); if (!el) return;
+    const r = el.getBoundingClientRect(); set(el, Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))); el.classList.add("tilting");
+  }, { passive: true });
+  const off = e => { const el = e.target.closest && e.target.closest(".fcard.tilt"); if (el && !(e.relatedTarget && el.contains(e.relatedTarget))) { el.classList.remove("tilting"); set(el, 0.5, 0.5); } };
+  document.addEventListener("pointerout", off, { passive: true }); document.addEventListener("pointercancel", off, { passive: true });
+  const st = document.createElement("style");
+  st.textContent = `#cmodal{z-index:60}
+.fcard.tilt{transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));transition:transform .25s ease-out;touch-action:pan-y;position:relative}
+.fcard.tilt.tilting{transition:transform .06s linear}
+.fcard .glare{position:absolute;inset:0;border-radius:7%;pointer-events:none;background:radial-gradient(circle at var(--gx,50%) var(--gy,30%),rgba(255,255,255,.42),rgba(255,255,255,0) 48%);mix-blend-mode:overlay;opacity:0;transition:opacity .25s}
+.fcard.tilting .glare{opacity:1}
+.packcta{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px}
+.prog{display:block;height:5px;border-radius:3px;background:#232a35;margin-top:5px;overflow:hidden}.prog em{display:block;height:100%;background:linear-gradient(90deg,var(--gold),#35eaa3)}
+.ctile.own:after{content:"";position:absolute;inset:0 0 18px;border-radius:9%;box-shadow:0 0 0 2px #35eaa3;pointer-events:none}
+.ctile .owned{position:absolute;top:6px;right:6px;background:#35eaa3;color:#062b1b;font:700 10px Inter,sans-serif;border-radius:999px;padding:2px 6px;box-shadow:0 2px 6px rgba(0,0,0,.5)}
+.packs{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin:10px 0}
+@media(max-width:420px){.packs{grid-template-columns:1fr 1fr}}
+.packt{background:none;border:0;padding:0;display:flex;flex-direction:column;gap:3px;color:var(--ink);text-align:left;cursor:pointer}
+.packt .pk{display:block;filter:drop-shadow(0 8px 14px rgba(0,0,0,.5));transition:transform .2s}.packt:hover .pk{transform:translateY(-4px) rotate(-1.5deg)}
+.packt b{font:700 14px Oswald,sans-serif;letter-spacing:.4px}.packt small{color:var(--mut);font-size:11px}
+.packm .cm-box{max-width:900px}
+.tearwrap{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:-20px;cursor:pointer}
+.tear{width:min(62vw,280px);animation:pkwobble 1.6s ease-in-out infinite;filter:drop-shadow(0 16px 30px rgba(0,0,0,.6))}
+@keyframes pkwobble{0%,100%{transform:rotate(-2deg) scale(1)}50%{transform:rotate(2deg) scale(1.03)}}
+.tearwrap.go .tear{animation:pktear .5s ease-in forwards}
+@keyframes pktear{0%{transform:scale(1)}40%{transform:scale(1.12) rotate(-4deg);filter:brightness(1.6) drop-shadow(0 0 40px #fff)}100%{transform:scale(.3) translateY(-60px);opacity:0}}
+.pull[hidden],.pullbar[hidden],.tearwrap[hidden]{display:none!important}
+.pull{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-top:6px}
+@media(max-width:420px){.pull{grid-template-columns:1fr 1fr}}
+.pslot{position:relative;display:flex;flex-direction:column;gap:4px;animation:pkdeal .45s ease-out both;animation-delay:var(--d)}
+@keyframes pkdeal{from{transform:translateY(40px) scale(.8);opacity:0}to{transform:none;opacity:1}}
+.pslot:before{content:"";position:absolute;inset:6% 4% 14%;border-radius:12%;background:var(--t2);filter:blur(16px);opacity:0;transition:opacity .4s}
+.pslot.rare:before{opacity:.55;animation:pkglow 1.2s ease-in-out infinite alternate}.pslot.ultra:before{opacity:.8;filter:blur(22px)}
+.pslot.shown:before{opacity:.35;animation:none}
+@keyframes pkglow{from{transform:scale(.96)}to{transform:scale(1.06)}}
+.pslot .fcard{width:100%}
+.pslot .pl{opacity:0;transition:opacity .3s}.pslot.shown .pl{opacity:1}
+.newb{position:absolute;top:-6px;left:-4px;z-index:3;background:#ff3fa4;color:#fff;font:700 10px Inter,sans-serif;padding:2px 7px;border-radius:999px;opacity:0;transition:opacity .3s;box-shadow:0 2px 8px rgba(0,0,0,.5)}
+.pslot.shown .newb{opacity:1}
+.pullbar{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:16px 0}
+.sets{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px}
+.setg{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:6px}
+.setg>b{font:700 13px Oswald,sans-serif;letter-spacing:1px;text-transform:uppercase}
+.setr{display:grid;grid-template-columns:1fr 80px 54px;gap:8px;align-items:center;font-size:12.5px;color:var(--ink)}
+.setr .prog{margin:0}.setr small{color:var(--mut);text-align:right}.setr.done span{color:#35eaa3;font-weight:700}
+@media (prefers-reduced-motion:reduce){.tear,.pslot,.pslot:before{animation:none!important}}`;
+  document.head.appendChild(st);
+})();

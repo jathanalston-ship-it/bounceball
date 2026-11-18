@@ -73,7 +73,12 @@ const POSES = {
   dribble:   { lean: 14,  arms: [-62, -30, 30, 8],     legs: [-30, -6, 26, 2],    ball: "floor" },
   trophy:    { lean: 0,   arms: [-170, 148, 170, -148], legs: [-8, -3, 8, 3],     ball: null, trophy: true },
   celebrate: { lean: 0,   arms: [-150, -160, 150, 160], legs: [-12, -4, 12, 4],   ball: null, air: 6 },
-  guard:     { lean: 14,  arms: [-82, -108, 82, 108],  legs: [-40, -4, 40, 4],    ball: null }
+  guard:     { lean: 14,  arms: [-82, -108, 82, 108],  legs: [-40, -4, 40, 4],    ball: null },
+  fadeaway:  { lean: -16, arms: [150, 200, 166, 188],  legs: [-14, -40, 22, -6],  ball: "release", air: 30 },
+  hangrim:   { lean: 3,   arms: [172, 176, -172, -176], legs: [8, -14, 20, 2],    ball: null, air: 70 },
+  flex:      { lean: 0,   arms: [-96, 170, 96, -170],  legs: [-9, -3, 9, 3],      ball: null, armsFront: true },
+  point:     { lean: 0,   arms: [-12, -6, 172, 178],   legs: [-8, -3, 8, 3],      ball: null, finger: "R" },
+  crossover: { lean: 12,  arms: [-56, -14, 24, -38],   legs: [-40, -6, 32, 6],    ball: "floor" }
 };
 function hairFor(R, season) {
   const x = R();
@@ -114,6 +119,7 @@ function figure(poseKey, o) {
     g += `<path d="${capsule(lerp(E, A, 0.08), lerp(E, A, 0.45), 6.0 * k, 5.0 * k)}" ${sty(fill)}/>`; // forearm
     const hd = unit(sub(A, E)), Hd = add(A, hd, 3.2 * s);
     g += `<ellipse cx="${f1(Hd[0])}" cy="${f1(Hd[1])}" rx="${f1(4.3 * s)}" ry="${f1(5.4 * s)}" transform="rotate(${f1(Math.atan2(hd[1], hd[0]) * 180 / Math.PI - 90)} ${f1(Hd[0])} ${f1(Hd[1])})" ${sty(fill, st)}/>`;
+    if (p.finger && ((p.finger === "R" && A === AR) || (p.finger === "L" && A === AL))) g += `<path d="${capsule(add(Hd, hd, 3 * s), add(Hd, hd, 10 * s), 1.7 * s, 1.3 * s)}" ${sty(fill, st)}/>`;
     if (front && sleeve) g += `<path d="${capsule(lerp(S, E, 0.05), A, 7.4 * k, 4.6 * k)}" fill="${mix(trim, "#000", 0.15)}" stroke="${mix(trim, "#000", 0.45)}" stroke-width="${f1(0.8 * s)}"/>`;
     if (wrist && front) g += `<path d="${capsule(lerp(E, A, 0.72), lerp(E, A, 0.95), 4.7 * k, 4.3 * k)}" fill="${trim}" stroke="${mix(trim, "#000", 0.4)}" stroke-width=".6"/>`;
     return g;
@@ -205,7 +211,7 @@ function figure(poseKey, o) {
 <linearGradient id="${o.id}-jer" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${mix(o.c1, "#ffffff", 0.28)}"/><stop offset=".5" stop-color="${o.c1}"/><stop offset="1" stop-color="${mix(o.c1, "#000000", 0.42)}"/></linearGradient>`;
   let svg = `<g filter="url(#${o.id}-rim)">${body}</g>` + ball + prop;
   // keep raised hands, heads and trophies inside the card
-  const minY = Math.min(Hc[1] - hr * (hair === "hightop" ? 1.6 : hair === "afro" ? 1.45 : 1), AL[1], AR[1]) - (p.ball === "release" ? 35 * s : p.ball === "top" ? 18 * s : p.trophy ? 46 * s : 7 * s);
+  const minY = Math.min(Hc[1] - hr * (hair === "hightop" ? 1.6 : hair === "afro" ? 1.45 : 1), AL[1], AR[1]) - (p.ball === "release" ? 35 * s : p.ball === "top" ? 18 * s : p.trophy ? 46 * s : p.finger ? 16 * s : 7 * s);
   const lim = o.top || 30;
   if (p.armsFront) {
     const dy = (o.headTop || 64) - (Hc[1] - hr * (hair === "hightop" ? 1.55 : hair === "afro" ? 1.4 : 1.05));
@@ -447,11 +453,130 @@ const ART = {
     s += `<path d="M10,30 L125,6 L240,30Z" fill="url(#goldg)" opacity=".55"/>`;
     return s + halo(g, 132, 168, 120) + floor(g, "rgba(90,70,30,.28)") + word("HALL OF FAME", 132, 132, 28, "#7a5a12", .35);
   },
+  moments(g) {
+    const k = (g.extra && g.extra.k) || "pts", lab = { pts: "POINTS", reb: "REBOUNDS", ast: "ASSISTS", tkl: "TACKLES", dnk: "DUNKS", fpm: "FOURS" }[k];
+    let s = bg(g, "#06080c", mix(g.c1, "#000", .6), "#ffffff") + crowd(g, "#000", 196, .55) + bokeh(g, 22, ["#ffffff", g.acc, mix(g.c1, "#fff", .4)], 170, 6);
+    s += spot(70, -10, 110, 60, "#ffffff", .14, g.id) + spot(190, -10, 150, 60, "#ffffff", .12, g.id);
+    s += `<g opacity=".14">${Array.from({ length: 60 }, (_, i) => `<rect x="0" y="${i * 6}" width="${W}" height="2" fill="#fff"/>`).join("")}</g>`;
+    s += word(String(g.value || "").split(" ")[0], 150, 196, 150, "#ffffff", .1);
+    if (k === "dnk") s += rimSVG(162, 92, 1.08, true);
+    s += halo(g, 132, 165, 125) + floor(g, "rgba(0,0,0,.55)") + courtLines(g, "#ffffff", .12);
+    const opp = g.extra && g.extra.o ? "VS " + g.extra.o : "", day = g.extra && g.extra.d !== null && g.extra.d !== undefined ? "DAY " + (g.extra.d + 1) : "";
+    const bug = `<g transform="translate(22 196)"><rect x="0" y="0" width="104" height="30" rx="3" fill="rgba(5,7,10,.82)" stroke="${g.acc}" stroke-width="1"/><rect x="0" y="0" width="5" height="30" fill="${g.acc}"/><text x="12" y="13" font-family="${FONT}" font-size="9" fill="#cfd6e0" letter-spacing="1.2">${xe(lab)}</text><text x="12" y="25" font-family="${FONT}" font-weight="700" font-size="11" fill="#fff" letter-spacing=".8">${xe([opp, day].filter(Boolean).join(" · "))}</text><circle cx="96" cy="9" r="3" fill="#ff2a4a"/></g>`;
+    return { bg: s, fg: bug };
+  },
+  fifty(g) {
+    let s = bg(g, "#120d02", "#3d2a00", "#ffd56b") + rays(132, 150, 28, "#ffd56b", .08);
+    s += `<defs><linearGradient id="${g.id}-chr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffbe6"/><stop offset=".48" stop-color="#ffd56b"/><stop offset=".5" stop-color="#7a5a12"/><stop offset="1" stop-color="#ffe9a8"/></linearGradient></defs>`;
+    s += word("50", 132, 210, 190, `url(#${g.id}-chr)`, .32) + word("50", 132, 210, 190, "#7a5a12", .5, 0, 1.5);
+    for (let b = 0; b < 3; b++) { const cx = 40 + g.R() * 170, cy = 30 + g.R() * 90, col = ["#ffd56b", "#ff5ec4", "#7ad7ff"][b]; for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2, r = 14 + g.R() * 14; s += `<line x1="${f1(cx + Math.cos(a) * 4)}" y1="${f1(cy + Math.sin(a) * 4)}" x2="${f1(cx + Math.cos(a) * r)}" y2="${f1(cy + Math.sin(a) * r)}" stroke="${col}" stroke-width="1.4" opacity=".7" stroke-linecap="round"/>`; } }
+    return s + halo(g, 132, 165, 125) + sparkles(g.R, 12, "#fff3c2") + floor(g);
+  },
+  tripledouble(g) {
+    let s = bg(g, "#0b0620", "#230b3d", "#c58bff");
+    for (let i = 0; i < 3; i++) s += `<circle cx="132" cy="150" r="${58 + i * 26}" fill="none" stroke="${["#c58bff", "#5eead4", "#ffd166"][i]}" stroke-width="${7 - i * 1.5}" opacity="${.35 - i * .06}" stroke-dasharray="${i === 1 ? "14 8" : "0"}"/>`;
+    s += [["10", 54, 66], ["10", 206, 120], ["10", 58, 206]].map(([t, x, y]) => `<g transform="translate(${x} ${y})"><circle r="17" fill="rgba(5,7,10,.6)" stroke="#c58bff" stroke-width="1.6"/><text y="6" font-family="${FONT}" font-weight="700" font-size="16" fill="#fff" text-anchor="middle">${t}</text></g>`).join("");
+    return s + bokeh(g, 14, ["#c58bff", "#5eead4"], 200, 6) + halo(g, 132, 160, 120) + floor(g);
+  },
+  postseason(g) {
+    let s = bg(g, "#120304", "#4a0a12", "#ff5a3c") + crowd(g, "#000", 198, .5);
+    s += `<g stroke="#ff8a6a" stroke-width="1.6" fill="none" opacity=".45">`; for (let i = 0; i < 8; i++) { const y = 26 + i * 24; s += `<path d="M14,${y} H44 V${y + 12} H58"/><path d="M236,${y} H206 V${y + 12} H192"/>`; } for (let i = 0; i < 4; i++) { const y = 38 + i * 48; s += `<path d="M58,${y} H74 V${y + 24} H86"/><path d="M192,${y} H176 V${y + 24} H164"/>`; } s += `</g>`;
+    s += `<g opacity=".3">${flames(g, H - 40, 70, ["#ff3d00", "#ff7a1a"], 9)}</g>`;
+    return s + halo(g, 132, 165, 125) + floor(g) + word("PLAYOFFS", 125, 320, 34, "#ff8a6a", .18);
+  },
+  dynasty(g) {
+    let s = bg(g, "#1a0b2e", "#3b1a00", "#ffd56b") + rays(132, 140, 26, "#ffd56b", .08);
+    s += `<g transform="translate(132 58)" opacity=".55"><path d="M-40,22 L-46,-14 L-22,6 L0,-26 L22,6 L46,-14 L40,22Z" fill="url(#goldg)" stroke="#7a5a12" stroke-width="1.2"/><rect x="-40" y="22" width="80" height="8" fill="url(#goldg)"/>${[-30, 0, 30].map(x => `<circle cx="${x}" cy="26" r="2.6" fill="#ff3f60"/>`).join("")}</g>`;
+    s += [70, 132, 194].map((x, i) => `<g transform="translate(${x} ${g.floor - 6})" opacity="${.5 + i * .1}">${trophySVG(0, 0, 1.25)}</g>`).join("");
+    return { bg: s + halo(g, 132, 165, 125) + floor(g), fg: confetti(g.R, 36, ["#ffd56b", "#c58bff", "#ffffff"], 260) };
+  },
+  numberone(g) {
+    let s = bg(g, "#05070d", mix(g.c1, "#000", .55), "#ffffff");
+    s += `<defs><linearGradient id="${g.id}-chr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".5" stop-color="${mix(g.c1, "#fff", .4)}"/><stop offset="1" stop-color="${g.c1}"/></linearGradient></defs>`;
+    s += word("1", 150, 270, 300, `url(#${g.id}-chr)`, .28) + spot(132, -10, 132, 70, "#ffffff", .2, g.id);
+    s += `<rect x="40" y="${g.floor - 10}" width="170" height="10" fill="${g.c1}" opacity=".7"/><rect x="40" y="${g.floor - 12}" width="170" height="2" fill="#fff" opacity=".5"/>`;
+    return { bg: s + halo(g, 132, 160, 120) + floor(g), fg: confetti(g.R, 26, [g.c1, g.c2, "#ffffff"], 220) };
+  },
+  younggun(g) {
+    let s = bg(g, "#1a1a1f", "#2b2230", "#ff3fa4");
+    s += `<pattern id="${g.id}-brk" width="30" height="15" patternUnits="userSpaceOnUse"><rect width="30" height="15" fill="#3a2a2a"/><rect x="1" y="1" width="28" height="6" fill="#4a3434"/><rect x="-14" y="8.5" width="28" height="6" fill="#4a3434"/><rect x="16" y="8.5" width="28" height="6" fill="#4a3434"/></pattern><rect width="${W}" height="${g.floor}" fill="url(#${g.id}-brk)" opacity=".7"/>`;
+    for (let i = 0; i < 7; i++) { const x = g.R() * W, y = g.R() * 220, r = 10 + g.R() * 26, c = ["#ff3fa4", "#5eead4", "#ffd166", "#7ad7ff"][i % 4]; s += `<circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(r)}" fill="${c}" opacity=".35" filter="url(#${g.id}-blur)"/>`; for (let k = 0; k < 7; k++) s += `<circle cx="${f1(x + (g.R() - .5) * r * 2.6)}" cy="${f1(y + (g.R() - .5) * r * 2.6)}" r="${f1(1 + g.R() * 2.5)}" fill="${c}" opacity=".6"/>`; }
+    s += `<text x="150" y="128" font-family="'Permanent Marker', 'Comic Sans MS', ${FONT}" font-weight="700" font-size="46" fill="none" stroke="#5eead4" stroke-width="2.4" opacity=".5" transform="rotate(-12 150 128)">YOUNG</text>`;
+    return s + halo(g, 132, 165, 120) + floor(g, "rgba(0,0,0,.5)");
+  },
+  breakout(g) {
+    let s = bg(g, "#05070a", mix(g.c1, "#000", .6), g.acc);
+    s += `<rect x="30" y="30" width="190" height="230" fill="none" stroke="#9aa4b2" stroke-width="4" opacity=".35"/>`;
+    s += `<g stroke="${g.acc}" stroke-width="2" fill="none" opacity=".85">`; for (let i = 0; i < 9; i++) { let x = 132 + (g.R() - .5) * 20, y = 150 + (g.R() - .5) * 20, d = `M${f1(x)},${f1(y)}`; const a = g.R() * Math.PI * 2; for (let k = 0; k < 5; k++) { x += Math.cos(a + (g.R() - .5) * .9) * 22; y += Math.sin(a + (g.R() - .5) * .9) * 22; d += ` L${f1(x)},${f1(y)}`; } s += `<path d="${d}"/>`; } s += `</g>`;
+    s += rays(132, 150, 20, g.acc, .14);
+    for (let i = 0; i < 12; i++) { const x = g.R() * W, y = g.R() * 250, k = 4 + g.R() * 10; s += `<polygon points="${pts([[x, y], [x + k, y + k * .3], [x + k * .4, y + k]])}" fill="#9aa4b2" opacity=".45"/>`; }
+    s += `<g fill="${g.acc}" opacity=".35">${[40, 210].map(x => `<path d="M${x},${g.floor - 30} l-10,0 l10,-18 l10,18 l-10,0 v20 h0Z"/>`).join("")}</g>`;
+    return s + halo(g, 132, 160, 130) + floor(g);
+  },
+  bench(g) {
+    let s = bg(g, "#0c1018", mix(g.c1, "#000", .55), "#ffd166") + crowd(g, "#000", 160, .45);
+    s += `<rect x="-10" y="${g.floor - 34}" width="270" height="12" rx="3" fill="#7a5230"/><rect x="-10" y="${g.floor - 34}" width="270" height="3" fill="#b07a48"/>${[20, 90, 160, 230].map(x => `<rect x="${x}" y="${g.floor - 22}" width="6" height="22" fill="#4a3018"/>`).join("")}`;
+    s += [30, 200].map(x => `<path d="M${x},${g.floor - 34} q8,-14 16,0 l-2,18 h-12z" fill="#f4f4f4" opacity=".6"/>`).join("");
+    s += `<g stroke="#ffd166" stroke-width="2.4" fill="none" opacity=".75" stroke-linejoin="round">${[[40, 40], [200, 70], [60, 150]].map(([x, y]) => `<path d="M${x},${y} l10,14 h-8 l10,16"/>`).join("")}</g>`;
+    return s + halo(g, 132, 165, 120) + floor(g);
+  },
+  ageless(g) {
+    let s = bg(g, "#e8dcc0", "#8a744e", "#fff2c8") + halftone(g.id + "-ht", "#5a4426", .16, 6);
+    s += `<g transform="translate(132 120)" opacity=".28" stroke="#5a4426" fill="none"><circle r="80" stroke-width="3"/><circle r="72" stroke-width="1"/>${Array.from({ length: 12 }, (_, i) => `<line x1="0" y1="-66" x2="0" y2="-58" stroke-width="3" transform="rotate(${i * 30})"/>`).join("")}<line x1="0" y1="0" x2="0" y2="-48" stroke-width="4" transform="rotate(${Math.floor(g.R() * 360)})"/><line x1="0" y1="0" x2="0" y2="-62" stroke-width="2.4" transform="rotate(${Math.floor(g.R() * 360)})"/></g>`;
+    return s + halo(g, 132, 165, 120) + floor(g, "rgba(90,68,38,.35)") + word("AGELESS", 125, 318, 34, "#5a4426", .2);
+  },
+  franchise(g) {
+    let s = bg(g, mix(g.c1, "#000", .55), "#05070a", g.c1) + bokeh(g, 16, ["#ffffff", mix(g.c1, "#fff", .4)], 120, 5);
+    s += `<rect x="0" y="0" width="${W}" height="10" fill="#1a1d22"/>`;
+    s += [[28, 0.9], [76, 1], [174, 1], [222, 0.9]].map(([x, k], i) => `<g transform="translate(${x} 10) scale(${k})"><path d="M-18,0 H18 V64 L0,76 L-18,64Z" fill="${i % 2 ? g.c1 : mix(g.c1, "#000", .25)}" stroke="${g.c2}" stroke-width="2"/><text y="44" font-family="${FONT}" font-weight="700" font-size="22" fill="${g.c2}" text-anchor="middle">${i === 1 || i === 2 ? xe(g.num) : String(10 + Math.floor(g.R() * 80))}</text><rect x="-18" y="6" width="36" height="5" fill="${g.c2}" opacity=".7"/></g>`).join("");
+    return s + halo(g, 132, 165, 125) + floor(g) + courtLines(g, "#ffffff", .1);
+  },
+  journeyman(g) {
+    let s = bg(g, "#e6d8b8", "#a88c5c", "#fff4d6");
+    s += `<g stroke="#8a6d3e" stroke-width=".8" opacity=".3">${Array.from({ length: 10 }, (_, i) => `<line x1="0" y1="${i * 34}" x2="${W}" y2="${i * 34 + 10}"/><line x1="${i * 28}" y1="0" x2="${i * 28 - 10}" y2="${H}"/>`).join("")}</g>`;
+    const pinsXY = Array.from({ length: 7 }, () => [20 + g.R() * 210, 24 + g.R() * 200]);
+    s += `<path d="M${pinsXY.map(P2).join(" L")}" stroke="#b3122b" stroke-width="2" stroke-dasharray="5 4" fill="none" opacity=".7"/>`;
+    s += pinsXY.map(([x, y]) => `<g transform="translate(${f1(x)} ${f1(y)})"><path d="M0,0 C-6,-8 -6,-14 0,-14 C6,-14 6,-8 0,0Z" fill="#b3122b"/><circle cy="-10" r="2.2" fill="#fff"/></g>`).join("");
+    s += `<g transform="translate(196 236) rotate(8)" opacity=".7"><rect x="-26" y="-12" width="52" height="24" rx="3" fill="#f4e7c8" stroke="#6b5229" stroke-width="1.4"/><text y="5" font-family="${FONT}" font-weight="700" font-size="11" fill="#6b5229" text-anchor="middle">${xe(String(g.value || "") + " TEAMS")}</text></g>`;
+    return s + halo(g, 132, 165, 120) + floor(g, "rgba(90,68,38,.3)");
+  },
+  expansion(g) {
+    let s = bg(g, "#0a2a5a", "#061833", "#7ad7ff");
+    s += `<g stroke="#9fd3ff" opacity=".22">${Array.from({ length: 26 }, (_, i) => `<line x1="${i * 10}" y1="0" x2="${i * 10}" y2="${H}" stroke-width="${i % 5 ? .5 : 1.2}"/><line x1="0" y1="${i * 14}" x2="${W}" y2="${i * 14}" stroke-width="${i % 5 ? .5 : 1.2}"/>`).join("")}</g>`;
+    s += `<g stroke="#dff4ff" stroke-width="1.6" fill="none" opacity=".55"><rect x="30" y="${g.floor - 120}" width="190" height="120"/><path d="M30,${g.floor - 120} L125,${g.floor - 170} L220,${g.floor - 120}"/><ellipse cx="125" cy="${g.floor - 60}" rx="60" ry="22"/><line x1="125" y1="${g.floor - 170}" x2="125" y2="${g.floor}" stroke-dasharray="4 4"/></g>`;
+    s += `<text x="40" y="44" font-family="${FONT}" font-size="9" fill="#dff4ff" opacity=".6" letter-spacing="1.5">PLAN NO. ${xe(String(g.season))}-01</text>`;
+    return { bg: s + halo(g, 132, 165, 120) + floor(g, "rgba(0,10,30,.5)"), fg: `<g transform="translate(192 214) rotate(-12)" opacity=".85"><rect x="-26" y="-13" width="52" height="26" fill="none" stroke="#ffd166" stroke-width="2.6"/><text y="7" font-family="${FONT}" font-weight="700" font-size="18" fill="#ffd166" text-anchor="middle" letter-spacing="2">NEW</text></g>` };
+  },
+  skyscrapers(g) {
+    let s = bg(g, "#7fb6e8", "#1b2a4a", "#ffffff");
+    for (let i = 0; i < 4; i++) s += `<ellipse cx="${f1(g.R() * W)}" cy="${f1(20 + g.R() * 80)}" rx="${f1(30 + g.R() * 30)}" ry="${f1(8 + g.R() * 6)}" fill="#fff" opacity=".35" filter="url(#${g.id}-blur)"/>`;
+    const bld = (x, w, h, c) => { let b = `<rect x="${x}" y="${g.floor - h}" width="${w}" height="${h}" fill="${c}"/>`; for (let yy = g.floor - h + 6; yy < g.floor - 4; yy += 9) for (let xx = x + 4; xx < x + w - 4; xx += 7) b += `<rect x="${xx}" y="${yy}" width="3" height="4" fill="#ffe9a8" opacity="${g.R() < .45 ? .8 : .12}"/>`; return b; };
+    s += `<g opacity=".9">${bld(0, 40, 210, "#22314f")}${bld(44, 30, 150, "#2a3a5c")}${bld(186, 34, 230, "#22314f")}${bld(222, 30, 170, "#2a3a5c")}</g>`;
+    s += `<polygon points="200,${g.floor - 230} 203,${g.floor - 262} 206,${g.floor - 230}" fill="#22314f"/>`;
+    return s + halo(g, 132, 165, 120) + floor(g, "rgba(10,20,40,.55)");
+  },
+  pocket(g) {
+    let s = bg(g, "#05061a", "#1a0a3a", "#ff7a1a");
+    for (let i = 0; i < 40; i++) s += star4(g.R() * W, g.R() * 260, .6 + g.R() * 1.8, "#ffffff", .8);
+    s += `<g transform="translate(60 70) rotate(40)"><path d="M0,-22 Q8,-10 8,10 L-8,10 Q-8,-10 0,-22Z" fill="#dfe6ee"/><circle cy="-6" r="3" fill="#7ad7ff"/><path d="M-8,4 L-14,14 L-8,12Z M8,4 L14,14 L8,12Z" fill="#ff3f60"/><path d="M-5,10 Q0,40 5,10Z" fill="#ffb347"/><path d="M-3,10 Q0,26 3,10Z" fill="#fff6c2"/></g>`;
+    s += `<path d="M60,70 Q120,170 220,${g.floor - 10}" stroke="#ffb347" stroke-width="10" fill="none" opacity=".18" filter="url(#${g.id}-blur)"/>`;
+    return s + halo(g, 132, 165, 120) + floor(g);
+  },
+  immortals(g) {
+    let s = bg(g, "#030414", "#140632", "#ffe9a8");
+    const neb = [["#7a2bff", 60, 80, 90], ["#ff3fa4", 190, 130, 80], ["#2bd4ff", 120, 220, 100], ["#ffd166", 150, 60, 60]];
+    s += neb.map(([c, x, y, r]) => `<ellipse cx="${x}" cy="${y}" rx="${r}" ry="${r * .7}" fill="${c}" opacity=".35" filter="url(#${g.id}-neb)"/>`).join("") + `<filter id="${g.id}-neb" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="16"/></filter>`;
+    for (let i = 0; i < 70; i++) s += `<circle cx="${f1(g.R() * W)}" cy="${f1(g.R() * H)}" r="${f1(.4 + g.R() * 1.3)}" fill="#fff" opacity="${f1(.4 + g.R() * .6)}"/>`;
+    const cons = Array.from({ length: 7 }, () => [20 + g.R() * 210, 20 + g.R() * 120]);
+    s += `<path d="M${cons.map(P2).join(" L")}" stroke="#ffe9a8" stroke-width=".8" fill="none" opacity=".55"/>` + cons.map(([x, y]) => star4(x, y, 4, "#fff", .95)).join("");
+    s += `<circle cx="132" cy="110" r="62" fill="none" stroke="url(#goldg)" stroke-width="3" opacity=".6"/><circle cx="132" cy="110" r="70" fill="none" stroke="#ffe9a8" stroke-width=".8" opacity=".4"/>`;
+    return s + halo(g, 132, 160, 140) + sparkles(g.R, 10, "#fff3c2") + `<rect x="0" y="${g.floor}" width="${W}" height="${H - g.floor}" fill="rgba(10,0,30,.5)"/>`;
+  },
   rapsheet(g) {
     let s = bg(g, "#cfd2d7", "#8e939b", "#ffffff");
     for (let i = 0; i <= 10; i++) { const y = g.floor - i * 24; s += `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#2b2f36" stroke-width="${i % 2 ? .8 : 1.6}" opacity=".5"/>`; if (i % 2 === 0) s += `<text x="8" y="${y - 3}" font-family="${FONT}" font-size="10" fill="#2b2f36" opacity=".7">${5 + i / 4 | 0}'${(i % 4) * 3}"</text><text x="242" y="${y - 3}" font-family="${FONT}" font-size="10" fill="#2b2f36" opacity=".7" text-anchor="end">${5 + i / 4 | 0}'${(i % 4) * 3}"</text>`; }
     s += `<rect x="0" y="0" width="${W}" height="${H}" fill="url(#${g.id}-flash)"/><defs><radialGradient id="${g.id}-flash" cx=".5" cy=".35" r=".7"><stop offset="0" stop-color="#fff" stop-opacity=".35"/><stop offset="1" stop-color="#000" stop-opacity=".25"/></radialGradient></defs>`;
-    return { bg: s, fg: `<g transform="translate(184 212) rotate(-14)" opacity=".8"><rect x="-38" y="-14" width="76" height="28" fill="none" stroke="#b3122b" stroke-width="3"/><text y="8" font-family="${FONT}" font-weight="700" font-size="21" fill="#b3122b" text-anchor="middle" letter-spacing="3">FILED</text></g>` };
+    return { bg: s, fg: `<g transform="rotate(-16 125 222)"><rect x="-40" y="213" width="330" height="17" fill="#f5c400" stroke="#111" stroke-width=".6"/><text x="125" y="225.5" font-family="${FONT}" font-weight="700" font-size="9.5" fill="#111" text-anchor="middle" letter-spacing="1.5">POLICE LINE · DO NOT CROSS · POLICE LINE · DO NOT CROSS</text></g><g transform="translate(184 120) rotate(-14)" opacity=".8"><rect x="-38" y="-14" width="76" height="28" fill="none" stroke="#b3122b" stroke-width="3"/><text y="8" font-family="${FONT}" font-weight="700" font-size="21" fill="#b3122b" text-anchor="middle" letter-spacing="3">FILED</text></g>` };
   }
 };
 
@@ -481,6 +606,24 @@ const ICON = {
   hof: `<path d="M-11,-5 L0,-11 L11,-5Z M-9,-4 H9 V-2 H-9Z M-8,-1 H-5 V7 H-8Z M-1.5,-1 H1.5 V7 H-1.5Z M5,-1 H8 V7 H5Z M-10,8 H10 V10 H-10Z" fill="currentColor"/>`,
   rapsheet: `<path d="M0,-11 L2.5,-6 L8,-7 L6,-2 L10,2 L5,4 L5,10 L0,7 L-5,10 L-5,4 L-10,2 L-6,-2 L-8,-7 L-2.5,-6Z" fill="currentColor"/><circle r="2.6" fill="#0b0d11"/>`
 };
+Object.assign(ICON, {
+  moments: `<rect x="-11" y="-8" width="22" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M-3,-4 L5,0 L-3,4Z" fill="currentColor"/>`,
+  fifty: `<text y="5.5" font-family="${FONT}" font-weight="700" font-size="15" text-anchor="middle" fill="currentColor">50</text>`,
+  tripledouble: `<circle r="10" fill="none" stroke="currentColor" stroke-width="1.6"/><circle r="6.5" fill="none" stroke="currentColor" stroke-width="1.6"/><circle r="3" fill="currentColor"/>`,
+  postseason: `<path d="M-11,-9 H-5 V-3 H0 M-11,3 H-5 V-3 M-11,9 H-5 V3 M0,-3 H5 M5,-9 H11 M5,9 H11 M5,-9 V9" stroke="currentColor" stroke-width="1.8" fill="none"/>`,
+  dynasty: `<path d="M-11,7 L-9,-6 L-4,0 L0,-9 L4,0 L9,-6 L11,7Z" fill="currentColor"/><text y="5" font-family="${FONT}" font-weight="700" font-size="7" text-anchor="middle" fill="#0b0d11">III</text>`,
+  numberone: `<text y="6.5" font-family="${FONT}" font-weight="700" font-size="19" text-anchor="middle" fill="currentColor">1</text><circle r="10.5" fill="none" stroke="currentColor" stroke-width="1.4"/>`,
+  younggun: `<path d="M-10,8 L-3,-9 L1,0 L5,-5 L10,8Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="6" cy="-9" r="2" fill="currentColor"/>`,
+  breakout: `<path d="M-9,9 L9,-9 M2,-9 H9 V-2" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round"/><path d="M-10,-4 L-6,-6 M-4,-10 L-6,-6" stroke="currentColor" stroke-width="1.4"/>`,
+  bench: `<rect x="-11" y="-2" width="22" height="4" rx="1" fill="currentColor"/><path d="M-8,2 V9 M8,2 V9" stroke="currentColor" stroke-width="2.4"/><path d="M-2,-11 L2,-6 H-1 L3,-1" stroke="currentColor" stroke-width="1.6" fill="none"/>`,
+  ageless: `<circle r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M0,-6 V0 L5,3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>`,
+  franchise: `<path d="M-8,-11 H8 V6 L0,11 L-8,6Z" fill="currentColor"/><text y="3" font-family="${FONT}" font-weight="700" font-size="9" text-anchor="middle" fill="#0b0d11">#</text>`,
+  journeyman: `<rect x="-10" y="-5" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M-4,-5 V-9 H4 V-5" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M-10,1 H10" stroke="currentColor" stroke-width="1.4"/>`,
+  expansion: `<path d="M-10,9 V-3 L0,-10 L10,-3 V9Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M0,1 V9 M-4,5 H4" stroke="currentColor" stroke-width="2"/>`,
+  skyscrapers: `<path d="M-10,10 V-2 H-4 V-10 H4 V-5 H10 V10Z" fill="currentColor"/>`,
+  pocket: `<path d="M0,-11 Q6,-4 5,5 H-5 Q-6,-4 0,-11Z M-5,2 L-9,8 L-5,6Z M5,2 L9,8 L5,6Z" fill="currentColor"/><path d="M-2,6 Q0,13 2,6" fill="currentColor" opacity=".6"/>`,
+  immortals: `${"<path d='M0,-11 L2.4,-3.3 L10.5,-3.4 L4,1.3 L6.5,9 L0,4.3 L-6.5,9 L-4,1.3 L-10.5,-3.4 L-2.4,-3.3Z' fill='currentColor'/>"}<circle r="12" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="2 2"/>`
+});
 const ABBR = { base: "", rookie: "RC", founders: "1954", wba: "WBA", posterized: "SLAM", swat: "SWAT", wrecking: "HIT", escape: "ESC", fouralarm: "4PT", splash: "3PT", dimes: "AST", boards: "REB", pickpockets: "STL", buckets: "PTS", mvp: "MVP", fmvp: "FMVP", dpoy: "DPOY", roy: "ROY", champ: "RING", ironworkers: "82", prime: "PRIME", hof: "HOF", rapsheet: "FILE" };
 
 // ---------- frame materials ----------
@@ -501,6 +644,93 @@ function gemSVG(T, key, x, y) {
   // brilliant cut
   const c1 = mix(a, "#fff", .55), c2 = a, c3 = mix(a, d, .35), c4 = mix(a, d, .6);
   return `<g transform="translate(${x} ${y})"><path d="M-12,-3 L-7,-9 H7 L12,-3 L0,11Z" fill="${c3}" stroke="${d}" stroke-width=".8"/><path d="M-7,-9 L-4,-3 H4 L7,-9Z" fill="${c1}"/><path d="M-12,-3 L-4,-3 L-7,-9Z" fill="${c2}"/><path d="M12,-3 L4,-3 L7,-9Z" fill="${c2}"/><path d="M-12,-3 L0,11 L-4,-3Z" fill="${c4}"/><path d="M12,-3 L0,11 L4,-3Z" fill="${c2}"/><path d="M-4,-3 L0,11 L4,-3Z" fill="${c3}"/><path d="M-5,-7 L-3,-5" stroke="#fff" stroke-width="1.2" opacity=".9"/>${star4(6, -9, 4, "#fff", .9)}</g>`;
+}
+
+// ---------- collection frames (overlays on the tier frame band) ----------
+function frameOverlay(kind, id, T, R) {
+  const band = `clip-path="url(#${id}-band)"`;
+  if (kind === "film") {
+    let h = `<g ${band}><rect width="${W}" height="${H}" fill="#07080a" opacity=".72"/>`;
+    for (let y = 18; y < H - 18; y += 13) h += `<rect x="2.5" y="${y}" width="5" height="7" rx="1.2" fill="#d9dde3" opacity=".85"/><rect x="${W - 7.5}" y="${y}" width="5" height="7" rx="1.2" fill="#d9dde3" opacity=".85"/>`;
+    return h + `</g>`;
+  }
+  if (kind === "marble") {
+    let v = ""; for (let i = 0; i < 14; i++) { let d = `M${f1(R() * W)},${f1(R() * 20 - 10)}`; for (let k = 0; k < 6; k++) d += ` Q${f1(R() * W)},${f1(k * 60 + 30)} ${f1(R() * W)},${f1(k * 60 + 60)}`; v += `<path d="${d}" stroke="#8c8270" stroke-width="${f1(.5 + R())}" fill="none" opacity=".6"/>`; }
+    return `<g ${band}><rect width="${W}" height="${H}" fill="#f1ece2" opacity=".9"/>${v}</g><path d="${chamf(5, 5, W - 10, H - 10, 15)}" fill="none" stroke="url(#goldg)" stroke-width="2.4"/>`;
+  }
+  if (kind === "cosmic") {
+    let st = ""; for (let i = 0; i < 60; i++) st += `<circle cx="${f1(R() * W)}" cy="${f1(R() * H)}" r="${f1(.3 + R() * 1)}" fill="#fff" opacity="${f1(.4 + R() * .6)}"/>`;
+    return `<g ${band}><rect width="${W}" height="${H}" fill="#0a0420"/><ellipse cx="40" cy="60" rx="70" ry="50" fill="#7a2bff" opacity=".5" filter="url(#${id}-blur)"/><ellipse cx="210" cy="290" rx="70" ry="60" fill="#ff3fa4" opacity=".4" filter="url(#${id}-blur)"/><ellipse cx="220" cy="80" rx="40" ry="60" fill="#2bd4ff" opacity=".35" filter="url(#${id}-blur)"/>${st}</g><path d="${chamf(1.5, 1.5, W - 3, H - 3, 17)}" fill="none" stroke="url(#${id}-holo)" stroke-width="2.6"/>`;
+  }
+  if (kind === "vintage") return `<g ${band}><rect width="${W}" height="${H}" fill="#efe2c4" opacity=".92"/>${halftone(id + "-vht", "#8a6a3e", .25, 4)}</g><path d="${chamf(6, 6, W - 12, H - 12, 14)}" fill="none" stroke="#7a1f1f" stroke-width="1.6" opacity=".8"/>`;
+  if (kind === "tape") return `<g ${band}>${stripes(45, 7, "#f5c400", .9)}</g>`;
+  return "";
+}
+// ---------- foils ----------
+function foil(key, id, R) {
+  if (key === "diamond") { // cracked ice
+    const P = Array.from({ length: 34 }, () => [R() * W, R() * H]); let l = "";
+    P.forEach((a, i) => { P.map((b, j) => [j, Math.hypot(a[0] - b[0], a[1] - b[1])]).filter(x => x[0] !== i).sort((x, y) => x[1] - y[1]).slice(0, 3).forEach(([j]) => { if (j > i) l += `<line x1="${f1(a[0])}" y1="${f1(a[1])}" x2="${f1(P[j][0])}" y2="${f1(P[j][1])}"/>`; }); });
+    return `<g stroke="#ffffff" stroke-width=".9" opacity=".32" style="mix-blend-mode:overlay">${l}</g>`;
+  }
+  if (key === "ruby" || key === "amethyst") return `<g opacity=".08" style="mix-blend-mode:overlay">${stripes(-35, 1.5, "#ffffff", 1)}</g>`;
+  if (key === "opal") { let st = ""; for (let i = 0; i < 40; i++) st += star4(R() * W, R() * H, 1 + R() * 2.4, ["#ff9de2", "#8fd3ff", "#b6ffd0", "#ffe58f"][i % 4], .8); return `<g style="mix-blend-mode:screen" opacity=".7">${st}</g>`; }
+  return "";
+}
+// ---------- autographs: a seeded scribble built from the player's name ----------
+function signature(name, R) {
+  const parts = String(name).split(" "), last = parts.slice(1).join("") || parts[0];
+  let d = `M0,6 C-6,-6 4,-26 10,-20 C14,-14 4,0 -2,4 C6,0 14,-4 18,0 C20,-18 28,-24 30,-14 C31,-6 24,2 22,4 C28,0 32,-2 36,0`, x = 36;
+  for (const ch of last.slice(1, 9).toLowerCase()) {
+    const asc = "bdfhklt".includes(ch), desc = "gjpqyz".includes(ch), w = 5 + R() * 3, h = asc ? 13 + R() * 4 : 5 + R() * 3;
+    if (desc) d += ` C${f1(x + 2)},-6 ${f1(x + w)},-6 ${f1(x + w * .6)},4 C${f1(x + w * .3)},14 ${f1(x + w * 1.2)},12 ${f1(x + w)},0`;
+    else d += ` C${f1(x + 1)},${f1(-h)} ${f1(x + w * .8)},${f1(-h)} ${f1(x + w * .5)},${f1(-h * .3)} C${f1(x + w * .4)},0 ${f1(x + w)},2 ${f1(x + w)},0`;
+    x += w;
+  }
+  d += ` C${f1(x + 8)},-4 ${f1(x + 10)},6 ${f1(x - 6)},8 C${f1(x * .5)},10 10,12 -4,9`;
+  return { d, w: x + 10 };
+}
+
+// ---------- packs ----------
+// p: { name, sub, c1, c2, n }
+function packSVG(p, key) {
+  install();
+  const id = "pk" + (++UID), R = rngOf(key || p.name);
+  const edge = []; for (let x = 0; x <= W; x += 10) edge.push([x, 14 - (x / 10 % 2 ? 5 : 0)]);
+  for (let x = W; x >= 0; x -= 10) edge.push([x, H - 14 + (x / 10 % 2 ? 5 : 0)]);
+  const shape = poly(edge);
+  let rays = ""; for (let i = 0; i < 18; i++) { const a = i / 18 * Math.PI * 2; rays += `<polygon points="${pts([[125, 150], [125 + Math.cos(a) * 300, 150 + Math.sin(a) * 300], [125 + Math.cos(a + .12) * 300, 150 + Math.sin(a + .12) * 300]])}" fill="#fff" opacity=".07"/>`; }
+  return `<svg class="cardsvg pack" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${xe(p.name)} pack">
+<defs><linearGradient id="${id}-f" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${mix(p.c1, "#000", .35)}"/><stop offset=".35" stop-color="${p.c1}"/><stop offset=".5" stop-color="${mix(p.c1, "#fff", .45)}"/><stop offset=".65" stop-color="${p.c1}"/><stop offset="1" stop-color="${mix(p.c2, "#000", .3)}"/></linearGradient>
+<linearGradient id="${id}-holo" x1="0" y1="0" x2="1" y2=".4">${["#ff5ec4", "#7ad7ff", "#9dff9a", "#fff27a", "#ff9e5e", "#c58bff", "#ff5ec4"].map((c, i, a) => `<stop offset="${f1(i / (a.length - 1))}" stop-color="${c}"/>`).join("")}</linearGradient>
+<clipPath id="${id}-c"><path d="${shape}"/></clipPath></defs>
+<g clip-path="url(#${id}-c)"><rect width="${W}" height="${H}" fill="url(#${id}-f)"/>${rays}
+<g style="mix-blend-mode:overlay" opacity=".45"><rect class="holo" x="-250" y="0" width="750" height="${H}" fill="url(#${id}-holo)"/></g>
+${Array.from({ length: 8 }, (_, i) => `<line x1="0" y1="${30 + i * 40}" x2="${W}" y2="${10 + i * 40}" stroke="#fff" stroke-width=".6" opacity=".12"/>`).join("")}
+<rect x="0" y="0" width="${W}" height="30" fill="#000" opacity=".25"/><rect x="0" y="${H - 30}" width="${W}" height="30" fill="#000" opacity=".25"/></g>
+<path d="${shape}" fill="none" stroke="#000" stroke-opacity=".5" stroke-width="1.5"/>
+<g font-family="${FONT}" text-anchor="middle">
+ <g transform="translate(125 112)"><circle r="44" fill="rgba(5,7,10,.55)" stroke="#fff" stroke-opacity=".7" stroke-width="2"/><g transform="scale(2.6)" style="color:#fff">${ICON[p.icon] || ICON.base}</g></g>
+ <text x="125" y="196" font-size="15" fill="#fff" letter-spacing="5" opacity=".85">UBL</text>
+ <text x="125" y="226" font-size="${p.name.length > 14 ? 22 : 28}" font-weight="700" fill="#fff" stroke="rgba(0,0,0,.4)" stroke-width="1" paint-order="stroke">${xe(p.name.toUpperCase())}</text>
+ <text x="125" y="246" font-size="11" fill="#fff" opacity=".85" letter-spacing="1.5">${xe((p.sub || "").toUpperCase())}</text>
+ <g transform="translate(125 286)"><rect x="-38" y="-12" width="76" height="24" rx="12" fill="#fff"/><text y="5" font-size="12" font-weight="700" fill="${mix(p.c1, "#000", .5)}" letter-spacing="1">${p.n || 5} CARDS</text></g>
+</g></svg>`;
+}
+// face-down card (before a pack reveal)
+function mystery() {
+  install();
+  const id = "my" + (++UID);
+  return `<svg class="cardsvg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" aria-label="Face-down card">
+<defs><linearGradient id="${id}-f" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2a2f38"/><stop offset=".5" stop-color="#8a93a3"/><stop offset="1" stop-color="#1b1f26"/></linearGradient>
+<radialGradient id="${id}-g" cx=".5" cy=".45" r=".6"><stop offset="0" stop-color="#f2b134" stop-opacity=".45"/><stop offset="1" stop-color="#05070a" stop-opacity="0"/></radialGradient></defs>
+<path d="${OUTER}" fill="url(#${id}-f)"/><path d="${INNER}" fill="#0b0e13"/><path d="${INNER}" fill="url(#${id}-g)"/>
+<g opacity=".1">${halftone(id + "-ht", "#f2b134", 1, 7)}</g>
+<path d="${chamf(13, 13, W - 26, H - 26, 10)}" fill="none" stroke="#f2b134" stroke-opacity=".5"/>
+<g transform="translate(125 160)"><circle r="54" fill="none" stroke="#f2b134" stroke-width="3"/><circle r="46" fill="#f2b134"/><path d="M-46,0 H46 M0,-46 V46 M-33,-33 Q-12,0 -33,33 M33,-33 Q12,0 33,33" stroke="#0b0e13" stroke-width="3.4" fill="none"/></g>
+<text x="125" y="258" font-family="${FONT}" font-weight="700" font-size="30" fill="#f2b134" text-anchor="middle" letter-spacing="6">UBL</text>
+<text x="125" y="278" font-family="${FONT}" font-size="9" fill="#8a93a3" text-anchor="middle" letter-spacing="2.5">UNITED BOUNCEBALL LEAGUE</text>
+</svg>`;
 }
 
 // ---------- shared defs + runtime styles ----------
@@ -536,6 +766,7 @@ function frameDefs(id, T, R) {
 <linearGradient id="${id}-frv" x1="0" y1="0" x2="0" y2="1">${fr.slice().reverse().map((s, i) => `<stop offset="${f1(i / (fr.length - 1))}" stop-color="${s}"/>`).join("")}</linearGradient>
 <clipPath id="${id}-band"><path d="${OUTER} ${INNER}" clip-rule="evenodd" fill-rule="evenodd"/></clipPath>
 <clipPath id="${id}-clip"><path d="${INNER}"/></clipPath>
+<clipPath id="${id}-oclip"><path d="${OUTER}"/></clipPath>
 <filter id="${id}-blur" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="3"/></filter>
 <filter id="${id}-soft" x="-30%" y="-100%" width="160%" height="300%"><feGaussianBlur stdDeviation="2.5"/></filter>
 ${T.mat === "lava" ? `<filter id="${id}-lava" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".035 .05" numOctaves="3" seed="${Math.floor(R() * 90)}"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 .38  0 0 0 0 .05  0 0 0 -9 5.2"/><feGaussianBlur stdDeviation=".4"/></filter>` : ""}`;
@@ -553,21 +784,28 @@ function front(c) {
   install();
   const id = "cd" + (++UID), T = TP[c.tier.key] || TP.gold, R = rngOf(c.col + ":" + c.season + ":" + c.pid);
   const C = BB.CARDS.CBY[c.col] || BB.CARDS.CBY.base;
-  const g = { id, R, c1: c.c1, c2: c.c2, acc: T.acc, season: c.season, value: c.value, floor: 268 };
+  const g = { id, R, c1: c.c1, c2: c.c2, acc: T.acc, season: c.season, value: c.value, extra: c.extra, num: c.num, floor: 268 };
   let art = (ART[c.col] || ART.base)(g); if (typeof art === "string") art = { bg: art, fg: "" };
   const pv = R();
-  const pose = C.pose === "stand" && c.col !== "ironworkers" ? (pv < 0.45 ? "portrait" : pv < 0.75 ? "akimbo" : "ballhip") : c.col === "rapsheet" ? "mugshot" : C.pose || "stand";
+  const MPOSE = { pts: "fadeaway", reb: "rebound", ast: "pass", tkl: "tackle", dnk: "hangrim", fpm: "shoot" };
+  const pose = C.pose === "stand" && c.col !== "ironworkers" && c.col !== "journeyman" ? (pv < 0.45 ? "portrait" : pv < 0.75 ? "akimbo" : "ballhip")
+    : c.col === "moments" && c.extra ? MPOSE[c.extra.k] || "fadeaway" : c.col === "rapsheet" ? "mugshot" : C.poses ? C.poses[Math.floor(pv * C.poses.length)] : C.pose || "stand";
+  const hangRim = pose === "hangrim" && (c.col === "posterized" || c.col === "moments");
   const portrait = POSES[pose] && POSES[pose].armsFront;
   const fig = figure(pose, { ht: c.ht || 78, wt: c.wt || 210, c1: c.c1, c2: c.c2, num: c.num, id, R, season: c.season, acc: T.acc, portrait,
     cx: pose === "tackle" ? 92 : pose === "steal" ? 112 : 134, floor: portrait ? 430 : g.floor, scale: portrait ? 1.72 : 1.12, headTop: 62,
-    anchor: pose === "dunk" ? { hand: "R", x: 180, y: 80 } : null, shoe: R() < 0.5 ? "#f4f4f4" : (lum(c.c2) < 0.15 ? "#1b1d21" : c.c2),
+    anchor: pose === "dunk" ? { hand: "R", x: 180, y: 80 } : hangRim ? { hand: "R", x: 184, y: 90 } : null, shoe: R() < 0.5 ? "#f4f4f4" : (lum(c.c2) < 0.15 ? "#1b1d21" : c.c2),
     placard: c.col === "rapsheet" ? `${c.season}-${String(c.pid).padStart(5, "0")}` : "" });
   const ghosts = c.col === "escape" ? [34, 18].map((dx, i) => `<g opacity="${.14 + i * .12}" transform="translate(${-dx} 0)">${fig.svg.replace(/filter="url\([^)]*-rim\)"/g, "")}</g>`).join("") : "";
   const last = (c.name.split(" ").slice(1).join(" ") || c.name).toUpperCase(), first = c.name.split(" ")[0].toUpperCase();
   const lastFit = last.length > 11 ? ` textLength="${Math.min(204, last.length * 16.5)}" lengthAdjust="spacingAndGlyphs"` : "";
   const unit = (C.short || C.unit || "").toUpperCase();
   const val = C.kind === "leader" && c.value !== null && c.value !== undefined ? `${c.value} ${unit}` : "";
-  const ribbon = C.kind !== "leader" ? "" : c.rank === 1 ? "LEAGUE LEADER" + (val ? " · " + val : "") : `#${c.rank}` + (val ? " · " + val : "");
+  const ft = h => `${Math.floor(h / 12)}'${h % 12}"`, ex = c.extra || {};
+  const ribbon = C.kind === "leader" ? (c.rank === 1 ? "LEAGUE LEADER" + (val ? " · " + val : "") : `#${c.rank}` + (val ? " · " + val : ""))
+    : ({ moments: () => `${c.value}${ex.o ? " VS " + ex.o : ""}`, fifty: () => `${c.value}${ex.o ? " VS " + ex.o : ""}`, immortals: () => `ALL-TIME #${c.rank}`, hof: () => c.value ? `CLASS OF ${c.value}` : "",
+      numberone: () => `#1 PICK · ${c.value || c.season - 1}`, franchise: () => `${c.value} SEASONS`, journeyman: () => `${c.value} TEAMS`, younggun: () => `AGE ${c.value}`, ageless: () => `AGE ${c.value}`,
+      skyscrapers: () => ft(c.value), pocket: () => ft(c.value), dynasty: () => `${c.value} STRAIGHT TITLES`, ironworkers: () => `${c.value} GAMES`, mvp: () => "MVP", fmvp: () => "FINALS MVP", dpoy: () => "DEFENSIVE POY", roy: () => "ROOKIE OF THE YEAR", champ: () => "CHAMPION" }[c.col] || (() => ""))().toUpperCase();
   const subTxt = (c.col === "base" ? (BB.ROLES[c.role] ? BB.ROLES[c.role].name + " · " + c.season : String(c.season)) : C.name + " · " + c.season).toUpperCase();
   const subFit = subTxt.length > 30 ? ` textLength="190" lengthAdjust="spacingAndGlyphs"` : "";
   const ribW = Math.min(196, Math.max(96, ribbon.length * 7 + 24)), ribFit = ribbon.length * 7 + 24 > 196 ? ` textLength="180" lengthAdjust="spacingAndGlyphs"` : "";
@@ -578,6 +816,14 @@ function front(c) {
   const pos = BB.CARDS.POS[c.role] || "";
   const icon = ICON[c.col] || ICON.base;
   const serial = c.serial ? `No. ${c.serial}` : `#${c.num}`;
+  const signed = c.col !== "rapsheet" && (c.ovr >= 81 || ["hof", "immortals", "mvp", "fmvp", "numberone", "franchise"].includes(c.col));
+  let sig = "";
+  if (signed) {
+    const sg = signature(c.name, rngOf("sig" + c.pid)), k = Math.min(1.25, 92 / sg.w);
+    const light = ["hof", "rapsheet", "founders", "ageless", "journeyman"].includes(c.col) || (c.col === "base" && c.season < 1962);
+    const ink = c.col === "hof" || c.col === "immortals" ? "url(#goldg)" : light ? "#1a2a6c" : "#ffffff";
+    sig = `<g transform="translate(${f1(214 - sg.w * k)} ${c.col === "moments" ? 172 : 214}) rotate(-9) scale(${f1(k * 100) / 100})" fill="none" stroke-linecap="round" stroke-linejoin="round">${light ? "" : `<path d="${sg.d}" stroke="#000" stroke-width="4" opacity=".45"/>`}<path d="${sg.d}" stroke="${ink}" stroke-width="1.9"/></g>`;
+  }
   return `<svg class="cardsvg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${xe(c.name)} ${c.season} ${xe(C.name)} card, ${c.ovr} overall, ${c.tier.name}">
 <defs>
  ${frameDefs(id, T, R)}${rimFilter(id, T.acc, mix(c.c1, "#ffffff", 0.35))}${fig.defs}
@@ -589,6 +835,7 @@ function front(c) {
 <path d="${OUTER}" fill="url(#${id}-fr)"/>
 ${material(id, T, R)}
 <path d="${chamf(3, 3, W - 6, H - 6, 16)}" fill="none" stroke="url(#${id}-frv)" stroke-width="1.6" opacity=".9"/>
+${frameOverlay(C.frame, id, T, R)}
 <path d="${OUTER}" fill="none" stroke="#000" stroke-opacity=".6" stroke-width="1.4"/>
 <g clip-path="url(#${id}-clip)">
  ${art.bg}
@@ -596,7 +843,9 @@ ${material(id, T, R)}
  ${art.fg}
  ${embers}
  <rect width="${W}" height="${H}" fill="url(#${id}-vig)"/>
+ ${foil(c.tier.key, id, R)}
  <rect x="0" y="214" width="${W}" height="136" fill="url(#${id}-plate)"/>
+ ${sig}
  ${holo}${glints}
  <rect width="${W}" height="${H}" fill="url(#${id}-sheen)"/>
 </g>
@@ -666,5 +915,5 @@ ${gemSVG(T, c.tier.key, 125, 336)}
 </svg>`;
 }
 function valColor(v) { return v >= 90 ? "#c58bff" : v >= 80 ? "#35eaa3" : v >= 70 ? "#f6cf55" : v >= 60 ? "#ff9e5e" : "#ff5a6a"; }
-return { front, back, valColor, TP, POSES, figure, mix, lum, rngOf, ABBR, ICON, W, H };
+return { front, back, packSVG, mystery, valColor, TP, POSES, figure, mix, lum, rngOf, ABBR, ICON, W, H };
 })();

@@ -73,30 +73,54 @@ function badges(r) {
 // kind: base (every season) | leader (top of a stat that season) | award | special
 // boost: ratings raised on the card (each by 2x the card's bump), or "all" (each by the bump)
 const COLLECTIONS = [
-  { key: "base",        name: "Base",               kind: "base",   pose: "stand",     blurb: "Every player, every season, rated as the season tipped off." },
-  { key: "rookie",      name: "Rookie Card",        kind: "special", pose: "stand",    blurb: "A player's first season in the league. Everybody who came up through the league gets exactly one." },
-  { key: "founders",    name: "Founders",           kind: "special", bump: 1, pose: "stand", boost: "all", blurb: "Played in the league's first season, 1954, for the six Rust Belt company teams." },
-  { key: "wba",         name: "WBA Originals",      kind: "special", bump: 1, pose: "dribble", boost: "all", blurb: "Came over with the Western Bounceball Association teams in the 1979 merger." },
-  { key: "posterized",  name: "Posterized",         kind: "leader", stat: "dnk", unit: "dunks",          pose: "dunk",      boost: ["vert", "ins", "str"],  blurb: "The season's top dunkers. On a floor that adds a foot to your vertical, somebody has to lead the league in it." },
-  { key: "swat",        name: "Swat Team",          kind: "leader", stat: "blk", unit: "blocks",         pose: "block",     boost: ["rim", "vert", "perD"], blurb: "Blocks and swats, including the legal ones off the rim on twos." },
-  { key: "wrecking",    name: "Wrecking Crew",      kind: "leader", stat: "tkl", unit: "tackles",        pose: "tackle",    boost: ["tck", "str", "acc"],   blurb: "Ball handlers put on the rubber. Every one is a turnover." },
-  { key: "escape",      name: "Escape Artists",     kind: "leader", stat: "btk", unit: "broken tackles", short: "BTK", pose: "stiffarm",  boost: ["brk", "sec", "str"],   blurb: "Hit, wrapped up, and still standing with the ball." },
-  { key: "fouralarm",   name: "Four Alarm",         kind: "leader", stat: "fpm", unit: "fours",          pose: "shoot",     boost: ["fr", "thr", "ft"],     blurb: "Most fours made from 30 feet and beyond." },
-  { key: "splash",      name: "Splash Zone",        kind: "leader", stat: "tpm", unit: "threes",         pose: "shoot",     boost: ["thr", "mid", "ft"],    blurb: "Most threes made." },
-  { key: "dimes",       name: "Dime Store",         kind: "leader", stat: "ast", unit: "assists",        pose: "pass",      boost: ["pas", "iq", "hands"],  blurb: "The season's assist leaders." },
-  { key: "boards",      name: "Board Room",         kind: "leader", stat: "reb", unit: "rebounds",       pose: "rebound",   boost: ["reb", "vert", "str"],  blurb: "The season's rebounding leaders." },
-  { key: "pickpockets", name: "Pickpockets",        kind: "leader", stat: "stl", unit: "steals",         pose: "steal",     boost: ["perD", "hands", "spd"], blurb: "Steals leaders." },
-  { key: "buckets",     name: "Bucket Brigade",     kind: "leader", stat: "ppg", unit: "points per game", short: "PPG", pose: "dribble",  boost: ["ins", "mid", "thr"],   blurb: "The league's top scorers by points per game (60% of games played)." },
-  { key: "mvp",         name: "Most Valuable",      kind: "award",  award: "mvp",  bump: 6, pose: "trophy",    boost: "all", blurb: "League MVP." },
-  { key: "fmvp",        name: "Finals MVP",         kind: "award",  award: "fmvp", bump: 5, pose: "trophy",    boost: "all", blurb: "Best player on the champion in the Finals." },
-  { key: "dpoy",        name: "Lockdown",           kind: "award",  award: "dpoy", bump: 5, pose: "guard",     boost: ["perD", "rim", "tck"], blurb: "Defensive Player of the Year." },
-  { key: "roy",         name: "Rookie of the Year", kind: "award",  award: "roy",  bump: 4, pose: "dribble",   boost: "all", blurb: "The best first-year player." },
-  { key: "champ",       name: "Ring Bearers",       kind: "award",  award: "champ", bump: 2, pose: "celebrate", boost: "all", blurb: "Everyone who played for the champion." },
-  { key: "ironworkers", name: "Ironworkers",        kind: "special", bump: 1, pose: "stand",   boost: ["sta", "str"], blurb: "Played every game of the season and averaged 30+ minutes." },
-  { key: "prime",       name: "Prime",              kind: "special", bump: 2, pose: "dribble", boost: "all", blurb: "A long career's best season (4+ seasons, peaked at 78 or better)." },
-  { key: "hof",         name: "Hall of Fame",       kind: "special", bump: 5, pose: "trophy",  boost: "all", blurb: "Hall of Famers, at the peak of their careers." },
-  { key: "rapsheet",    name: "Rap Sheet",          kind: "special", bump: 0, pose: "mugshot", blurb: "Suspended that season. The league office keeps a file." }
+  { key: "base",        name: "Base",               kind: "base",    group: "base",    pose: "stand",     blurb: "Every player, every season, rated as the season tipped off." },
+  // season leaders
+  { key: "posterized",  name: "Posterized",         kind: "leader",  group: "leaders", stat: "dnk", unit: "dunks",          pose: "dunk",      poses: ["dunk", "dunk", "hangrim"], boost: ["vert", "ins", "str"],  blurb: "The season's top dunkers. On a floor that adds a foot to your vertical, somebody has to lead the league in it." },
+  { key: "swat",        name: "Swat Team",          kind: "leader",  group: "leaders", stat: "blk", unit: "blocks",         pose: "block",     boost: ["rim", "vert", "perD"], blurb: "Blocks and swats, including the legal ones off the rim on twos." },
+  { key: "wrecking",    name: "Wrecking Crew",      kind: "leader",  group: "leaders", stat: "tkl", unit: "tackles",        pose: "tackle",    boost: ["tck", "str", "acc"],   blurb: "Ball handlers put on the rubber. Every one is a turnover." },
+  { key: "escape",      name: "Escape Artists",     kind: "leader",  group: "leaders", stat: "btk", unit: "broken tackles", short: "BTK", pose: "stiffarm", boost: ["brk", "sec", "str"], blurb: "Hit, wrapped up, and still standing with the ball." },
+  { key: "fouralarm",   name: "Four Alarm",         kind: "leader",  group: "leaders", stat: "fpm", unit: "fours",          pose: "shoot",     poses: ["shoot", "fadeaway"], boost: ["fr", "thr", "ft"], blurb: "Most fours made from 30 feet and beyond." },
+  { key: "splash",      name: "Splash Zone",        kind: "leader",  group: "leaders", stat: "tpm", unit: "threes",         pose: "shoot",     poses: ["shoot", "fadeaway"], boost: ["thr", "mid", "ft"], blurb: "Most threes made." },
+  { key: "dimes",       name: "Dime Store",         kind: "leader",  group: "leaders", stat: "ast", unit: "assists",        pose: "pass",      boost: ["pas", "iq", "hands"],  blurb: "The season's assist leaders." },
+  { key: "boards",      name: "Board Room",         kind: "leader",  group: "leaders", stat: "reb", unit: "rebounds",       pose: "rebound",   boost: ["reb", "vert", "str"],  blurb: "The season's rebounding leaders." },
+  { key: "pickpockets", name: "Pickpockets",        kind: "leader",  group: "leaders", stat: "stl", unit: "steals",         pose: "steal",     boost: ["perD", "hands", "spd"], blurb: "Steals leaders." },
+  { key: "buckets",     name: "Bucket Brigade",     kind: "leader",  group: "leaders", stat: "ppg", unit: "points per game", short: "PPG", pose: "dribble", poses: ["dribble", "fadeaway", "crossover"], boost: ["ins", "mid", "thr"], blurb: "The league's top scorers by points per game (60% of games played)." },
+  // moments & feats
+  { key: "moments",     name: "Moments",            kind: "moment",  group: "feats",   bump: 3, pose: "fadeaway", boost: "all", frame: "film", blurb: "The best single game of the season in points, rebounds, assists, tackles, dunks and fours. Every card links to the replay." },
+  { key: "fifty",       name: "Fifty Club",         kind: "special", group: "feats",   bump: 4, pose: "fadeaway", poses: ["fadeaway", "point"], boost: ["ins", "mid", "thr", "fr"], blurb: "Scored 50 or more in a game that season." },
+  { key: "tripledouble", name: "Triple Threat",     kind: "leader",  group: "feats",   custom: true, unit: "triple-doubles", short: "TRIPLE-DBL", pose: "point", boost: ["pas", "reb", "iq"], blurb: "The season's leaders in triple-doubles (any three of points, rebounds, assists, steals, blocks and tackles in double figures)." },
+  { key: "postseason",  name: "Postseason Heat",    kind: "leader",  group: "feats",   custom: true, unit: "playoff PPG", short: "PLAYOFF PPG", pose: "fadeaway", poses: ["fadeaway", "celebrate"], boost: ["ins", "mid", "iq"], blurb: "The top scorers of each postseason (four or more playoff games)." },
+  // awards
+  { key: "mvp",         name: "Most Valuable",      kind: "award",   group: "awards",  award: "mvp",  bump: 6, pose: "trophy",    boost: "all", blurb: "League MVP." },
+  { key: "fmvp",        name: "Finals MVP",         kind: "award",   group: "awards",  award: "fmvp", bump: 5, pose: "trophy",    boost: "all", blurb: "Best player on the champion in the Finals." },
+  { key: "dpoy",        name: "Lockdown",           kind: "award",   group: "awards",  award: "dpoy", bump: 5, pose: "guard",     boost: ["perD", "rim", "tck"], blurb: "Defensive Player of the Year." },
+  { key: "roy",         name: "Rookie of the Year", kind: "award",   group: "awards",  award: "roy",  bump: 4, pose: "dribble",   poses: ["dribble", "crossover"], boost: "all", blurb: "The best first-year player." },
+  { key: "champ",       name: "Ring Bearers",       kind: "award",   group: "awards",  award: "champ", bump: 2, pose: "celebrate", poses: ["celebrate", "point"], boost: "all", blurb: "Everyone who played for the champion." },
+  { key: "dynasty",     name: "Dynasty",            kind: "special", group: "awards",  bump: 4, pose: "celebrate", boost: "all", blurb: "Won three or more titles in a row. A card for the third title and every one after." },
+  // rising & veterans
+  { key: "rookie",      name: "Rookie Card",        kind: "special", group: "rising",  pose: "stand",    blurb: "A player's first season in the league. Everybody who came up through the league gets exactly one." },
+  { key: "numberone",   name: "Number One",         kind: "special", group: "rising",  bump: 3, pose: "point", boost: "all", blurb: "The first overall pick, in his rookie season." },
+  { key: "younggun",    name: "Young Guns",         kind: "special", group: "rising",  bump: 2, pose: "crossover", poses: ["crossover", "dribble"], boost: ["spd", "acc", "vert"], blurb: "21 or younger and already playing 24+ minutes a night." },
+  { key: "breakout",    name: "Breakout",           kind: "leader",  group: "rising",  custom: true, unit: "OVR jump", short: "OVR", pose: "flex", boost: "all", blurb: "The biggest jumps in overall from one season to the next (+5 or more)." },
+  { key: "bench",       name: "Bench Mob",          kind: "leader",  group: "rising",  custom: true, unit: "PPG off the bench", short: "BENCH PPG", pose: "crossover", poses: ["crossover", "fadeaway"], boost: ["ins", "mid", "spd"], blurb: "The best scorers who mostly came off the bench (started under 30% of their games)." },
+  { key: "ageless",     name: "Ageless",            kind: "special", group: "rising",  bump: 2, pose: "point", poses: ["point", "akimbo"], boost: ["iq", "pas", "ft"], blurb: "35 or older and still playing 18+ minutes a night." },
+  // legacies
+  { key: "prime",       name: "Prime",              kind: "special", group: "legacy",  bump: 2, pose: "dribble", boost: "all", blurb: "A long career's best season (4+ seasons, peaked at 78 or better)." },
+  { key: "franchise",   name: "Franchise Icons",    kind: "special", group: "legacy",  bump: 4, pose: "point", poses: ["point", "akimbo"], boost: "all", blurb: "Ten or more seasons with one team, at his best season there." },
+  { key: "journeyman",  name: "Journeymen",         kind: "special", group: "legacy",  bump: 1, pose: "stand", boost: ["iq", "sta"], blurb: "Played for six or more teams. The card is his last season." },
+  { key: "hof",         name: "Hall of Fame",       kind: "special", group: "legacy",  bump: 5, pose: "trophy",  boost: "all", frame: "marble", blurb: "Hall of Famers, at the peak of their careers." },
+  { key: "immortals",   name: "Immortals",          kind: "special", group: "legacy",  bump: 8, pose: "point",   boost: "all", frame: "cosmic", blurb: "The 12 greatest careers in league history by total Game Score, at their peak. The rarest set there is." },
+  // eras
+  { key: "founders",    name: "Founders",           kind: "special", group: "eras",    bump: 1, pose: "stand", boost: "all", frame: "vintage", blurb: "Played in the league's first season, 1954, for the six Rust Belt company teams." },
+  { key: "wba",         name: "WBA Originals",      kind: "special", group: "eras",    bump: 1, pose: "dribble", boost: "all", blurb: "Came over with the Western Bounceball Association teams in the 1979 merger." },
+  { key: "expansion",   name: "Expansion Class",    kind: "special", group: "eras",    bump: 1, pose: "dribble", poses: ["dribble", "akimbo"], boost: "all", blurb: "Played for an expansion team in its first season." },
+  // built different
+  { key: "skyscrapers", name: "Skyscrapers",        kind: "special", group: "odd",     bump: 2, pose: "block", poses: ["block", "rebound"], boost: ["rim", "reb", "ins"], blurb: "7'3\" and up, at their best season." },
+  { key: "pocket",      name: "Pocket Rockets",     kind: "special", group: "odd",     bump: 2, pose: "crossover", boost: ["spd", "acc", "sec"], blurb: "Six feet or shorter, at their best season." },
+  { key: "ironworkers", name: "Ironworkers",        kind: "special", group: "odd",     bump: 1, pose: "stand", boost: ["sta", "str"], blurb: "Played every game of the season and averaged 30+ minutes." },
+  { key: "rapsheet",    name: "Rap Sheet",          kind: "special", group: "odd",     bump: 0, pose: "mugshot", frame: "tape", blurb: "Suspended that season. The league office keeps a file." }
 ];
+const GROUP_NAMES = { leaders: "Season leaders", feats: "Moments & feats", awards: "Awards", rising: "Rising & veterans", legacy: "Legacies", eras: "Eras", odd: "Built different" };
 const CBY = Object.fromEntries(COLLECTIONS.map(c => [c.key, c]));
 function leaderBump(rank) { return rank === 1 ? 5 : rank <= 3 ? 4 : rank <= 6 ? 3 : 2; }
 
@@ -112,7 +136,9 @@ function cardRatings(col, r, bump) {
 // ---------- which cards a season hands out ----------
 // S: a season file. ctx: { players: players.json map, firstSeason: {pid: season}, peak: {pid: season}, hof: {pid: year},
 //   leagueFirst: first season, mergerSeason, mergerTeams: Set of team ids that arrived by merger }
-// Card row: [collection, season, pid, team, cardOvr, baseOvr, rank, value, num]
+// Card row: [collection, season, pid, team, cardOvr, baseOvr, rank, value, num, extra?]
+// ctx also takes (all optional): ovrBy {pid: {season: ovr}}, peakAll {pid: season}, franchise {pid: {team, season, n}},
+//   journey {pid: {season, n}}, expansion Set("TEAM:season"), immortal {pid: rank}, dynasty {"pid:season": titles in a row}
 function seasonCards(S, ctx) {
   const K = S.statKeys, ix = Object.fromEntries(K.map((k, i) => [k, i + 1]));
   const rows = Object.entries(S.stats).map(([id, a]) => {
@@ -123,11 +149,13 @@ function seasonCards(S, ctx) {
   const N = Math.max(3, Math.ceil(S.teams.length * 0.4));
   const snap = id => S.players[id] || S.players[String(id)];
   const out = [];
-  const add = (col, id, team, bump, rank, value) => {
+  const add = (col, id, team, bump, rank, value, extra) => {
     const sp = snap(id); if (!sp) return;
-    out.push([col, S.season, id, team, Math.min(99, sp.ovr + bump), sp.ovr, rank, value, sp.num]);
+    const row = [col, S.season, id, team, Math.min(99, sp.ovr + bump), sp.ovr, rank, value, sp.num];
+    if (extra) row.push(extra);
+    out.push(row);
   };
-  for (const c of COLLECTIONS.filter(c => c.kind === "leader")) {
+  for (const c of COLLECTIONS.filter(c => c.kind === "leader" && !c.custom)) {
     if (c.stat !== "ppg" && c.stat !== "reb" && !(c.stat in ix)) continue; // older data without this stat
     const pool = c.stat === "ppg" ? rows.filter(x => x.gp >= maxgp * 0.6) : rows;
     const top = pool.filter(x => x[c.stat] > 0).sort((a, b) => b[c.stat] - a[c.stat] || b.gp - a.gp).slice(0, N);
@@ -152,12 +180,54 @@ function seasonCards(S, ctx) {
       else add("prime", x.id, x.team, CBY.prime.bump, 0, null);
     }
   }
+  // ---- feats from single-game highs ----
+  const HK = S.highKeys || [], FK = S.featKeys || [], hi = S.highs || {}, hio = HK.length * 2;
+  const gameOf = {}; for (const g of S.games || []) gameOf[g[0]] = g;
+  const opp = (gid, team) => { const g = gameOf[gid]; return g ? (g[2] === team ? g[3] : g[2]) : null; };
+  const teamOf = id => (S.stats[id] || S.pstats[id] || [null])[0];
+  const MOMENT = { pts: "PTS", reb: "REB", ast: "AST", tkl: "TKL", dnk: "DNK", fpm: "4PM" };
+  for (const k of Object.keys(MOMENT)) {
+    const i = HK.indexOf(k); if (i < 0) continue;
+    let best = null;
+    for (const [id, a] of Object.entries(hi)) if (a[2 * i] > 0 && (!best || a[2 * i] > best.v || (a[2 * i] === best.v && a[2 * i + 1] < best.g))) best = { id: +id, v: a[2 * i], g: a[2 * i + 1] };
+    if (best) { const t = teamOf(best.id), g = gameOf[best.g]; add("moments", best.id, t, CBY.moments.bump, 0, `${best.v} ${MOMENT[k]}`, { k, g: best.g, o: opp(best.g, t), d: g ? g[1] : null }); }
+  }
+  const pi = HK.indexOf("pts"), g50 = FK.indexOf("g50"), tdI = FK.indexOf("td");
+  if (pi >= 0 && g50 >= 0) for (const [id, a] of Object.entries(hi)) if (a[hio + g50] > 0) { const t = teamOf(+id); add("fifty", +id, t, CBY.fifty.bump, 0, `${a[2 * pi]} PTS`, { k: "pts", g: a[2 * pi + 1], o: opp(a[2 * pi + 1], t), d: gameOf[a[2 * pi + 1]] ? gameOf[a[2 * pi + 1]][1] : null }); }
+  if (tdI >= 0) Object.entries(hi).filter(([, a]) => a[hio + tdI] > 0).sort((a, b) => b[1][hio + tdI] - a[1][hio + tdI]).slice(0, N)
+    .forEach(([id, a], j) => add("tripledouble", +id, teamOf(+id), leaderBump(j + 1), j + 1, a[hio + tdI]));
+  // postseason scorers
+  Object.entries(S.pstats).map(([id, a]) => ({ id: +id, team: a[0], gp: a[ix.gp], pts: a[ix.pts] })).filter(x => x.gp >= 4)
+    .sort((a, b) => b.pts / b.gp - a.pts / a.gp).slice(0, Math.max(3, Math.ceil(N / 2)))
+    .forEach((x, j) => add("postseason", x.id, x.team, leaderBump(j + 1), j + 1, Math.round(x.pts / x.gp * 10) / 10));
+  // bench scorers
+  rows.filter(x => x.gp >= maxgp * 0.5 && x.gs / x.gp < 0.3).sort((a, b) => b.ppg - a.ppg).slice(0, 3)
+    .forEach((x, j) => add("bench", x.id, x.team, leaderBump(j + 1), j + 1, Math.round(x.ppg * 10) / 10));
+  // breakouts: biggest overall jumps from last season
+  if (ctx.ovrBy) rows.map(x => { const sp = snap(x.id), prev = ctx.ovrBy[x.id] && ctx.ovrBy[x.id][S.season - 1]; return { x, d: sp && prev !== undefined ? sp.ovr - prev : -99 }; })
+    .filter(o => o.d >= 5).sort((a, b) => b.d - a.d).slice(0, N).forEach((o, j) => add("breakout", o.x.id, o.x.team, leaderBump(j + 1), j + 1, "+" + o.d));
+  // ages, draft, careers, bodies
+  for (const x of rows) {
+    const pl = ctx.players[x.id] || {}, age = pl.born ? S.season - pl.born : null, mpg = x.min / x.gp / 60;
+    if (age !== null && age <= 21 && mpg >= 24) add("younggun", x.id, x.team, CBY.younggun.bump, 0, age);
+    if (age !== null && age >= 35 && mpg >= 18) add("ageless", x.id, x.team, CBY.ageless.bump, 0, age);
+    if (pl.draft && pl.draft.round === 1 && pl.draft.pick === 1 && ctx.firstSeason[x.id] === S.season) add("numberone", x.id, x.team, CBY.numberone.bump, 0, pl.draft.season);
+    if (ctx.franchise && ctx.franchise[x.id] && ctx.franchise[x.id].season === S.season && ctx.franchise[x.id].team === x.team) add("franchise", x.id, x.team, CBY.franchise.bump, 0, ctx.franchise[x.id].n);
+    if (ctx.journey && ctx.journey[x.id] && ctx.journey[x.id].season === S.season) add("journeyman", x.id, x.team, CBY.journeyman.bump, 0, ctx.journey[x.id].n);
+    if (ctx.expansion && ctx.expansion.has(x.team + ":" + S.season)) add("expansion", x.id, x.team, CBY.expansion.bump, 0, null);
+    if (ctx.peakAll && ctx.peakAll[x.id] === S.season) {
+      if (pl.ht >= 87) add("skyscrapers", x.id, x.team, CBY.skyscrapers.bump, 0, pl.ht);
+      if (pl.ht && pl.ht <= 72) add("pocket", x.id, x.team, CBY.pocket.bump, 0, pl.ht);
+      if (ctx.immortal && ctx.immortal[x.id]) add("immortals", x.id, x.team, CBY.immortals.bump, ctx.immortal[x.id], null);
+    }
+    if (ctx.dynasty && ctx.dynasty[x.id + ":" + S.season]) add("dynasty", x.id, x.team, CBY.dynasty.bump, 0, ctx.dynasty[x.id + ":" + S.season]);
+  }
   const rap = {};
   for (const e of S.blotter || []) if (e.who === "player" && (e.kind === "susp" || e.kind === "arrest") && e.games > 0 && !rap[e.id]) { rap[e.id] = 1; add("rapsheet", e.id, e.team, 0, 0, e.text); }
   return out;
 }
 
-const API = { TIERS, tierFor, POS, GROUPS, groupScores, BADGES, BADGE_TIERS, badges, COLLECTIONS, CBY, leaderBump, cardRatings, seasonCards };
+const API = { TIERS, tierFor, POS, GROUPS, groupScores, BADGES, BADGE_TIERS, badges, COLLECTIONS, GROUP_NAMES, CBY, leaderBump, cardRatings, seasonCards };
 if (NODE) module.exports = Object.assign({}, API);
 else window.BB = Object.assign(window.BB || {}, { CARDS: API });
 })();
