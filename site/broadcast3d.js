@@ -219,6 +219,13 @@ function knitNormal() {
   return KNIT;
 }
 
+// a rim light from the overhead rigs behind the players, as TV lighting does it
+const RIM = { value: new THREE.Color(0.5, 0.56, 0.7).multiplyScalar(0.5) };
+function rimLight(sh) {
+  sh.uniforms.uRim = RIM;
+  sh.fragmentShader = "uniform vec3 uRim;\n" + sh.fragmentShader.replace("#include <output_fragment>", "float rimF = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 3.0);\n  outgoingLight += uRim * rimF * clamp(normal.y * 0.6 + 0.55, 0.0, 1.0);\n#include <output_fragment>");
+}
+
 // ---------- geometry builder for skinned figures ----------
 class GB {
   constructor() { this.p = []; this.n = []; this.c = []; this.uv = []; this.si = []; this.sw = []; this.idx = []; }
@@ -335,7 +342,7 @@ function eraLook(season, id) {
 
 // ---------- skinned figures (players, referees, coaches) ----------
 // bones: 0 root 1 hips 2 spine 3 chest 4 neck 5 head | 6-8 left shoulder/elbow/wrist | 9-11 right | 12-14 left hip/knee/ankle | 15-17 right
-//        18 jaw 19 eyelids 20-21 eyes | 22-24 left knuckles/fingertips/thumb | 25-27 right
+//        18 jaw 19 eyelids 20-21 eyes | 22-24 left knuckles/fingertips/thumb | 25-27 right | 28-29 brows
 function buildFigure(o) {
   const H = o.H, ws = o.ws, P = new THREE.Group(), B = [];
   const bone = (parent, x, y, z) => { const b = new THREE.Bone(); b.position.set(x, y, z); if (parent) parent.add(b); B.push(b); return b; };
@@ -347,6 +354,7 @@ function buildFigure(o) {
   const jaw = bone(head, 0, 0.032 * H - 0.003 * H, 0.004 * H), lids = bone(head, 0, 0.032 * H + 0.0085 * H, 0.004 * H + 0.0549 * H); // 18 jaw, 19 eyelids
   const eyes = [1, -1].map(s => bone(head, s * 0.02015 * H, 0.032 * H + 0.00845 * H, 0.004 * H + 0.0549 * H)); // 20, 21: the irises orbit these
   const fingers = arms.map((A, k) => { const s = k ? -1 : 1, kn = bone(A.wrist, -s * 0.003 * H, -0.058 * H, 0.002 * H), mid = bone(kn, -s * 0.218 * 0.0176 * H, -0.976 * 0.0176 * H, 0), th = bone(A.wrist, -s * 0.006 * H, -0.024 * H, 0.022 * H); return { kn, mid, th }; });
+  const brows = [1, -1].map(s => bone(head, s * 0.0208 * H, 0.032 * H + 0.02405 * H, 0.004 * H + 0.06045 * H)); // 28, 29
   for (const b of [neck, head, ...eyes]) b.rotation.order = "YXZ"; // turn, then nod: a proper look-at
   P.add(root); P.updateMatrixWorld(true);
   const look = o.look || {}, body = new GB(), cloth = new GB(), skin = col(o.skin), seg = 18;
@@ -452,6 +460,7 @@ function buildFigure(o) {
   // materials and skinned meshes sharing one skeleton
   const skeleton = new THREE.Skeleton(B);
   const bodyMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.58, metalness: 0, envMapIntensity: 0.55, sheen: 0.35, sheenRoughness: 0.5, sheenColor: new THREE.Color(1, 0.8, 0.7) });
+  bodyMat.onBeforeCompile = rimLight;
   const bodyMesh = new THREE.SkinnedMesh(body.build(H), bodyMat);
   P.add(bodyMesh); bodyMesh.bind(skeleton);
   let clothMesh = null;
@@ -459,11 +468,11 @@ function buildFigure(o) {
   if (tm) {
     const cm = new THREE.MeshStandardMaterial({ map: tm.atlas, roughness: 0.8, metalness: 0, envMapIntensity: 0.35, normalMap: knitNormal(), normalScale: new THREE.Vector2(0.3, 0.3) });
     // shorts hems flutter with speed and in the air
-    cm.onBeforeCompile = sh => { sh.uniforms.uTime = flap.uTime; sh.uniforms.uFlap = flap.uFlap; sh.vertexShader = "uniform float uTime, uFlap;\n" + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\n  float hem = 1.0 - smoothstep(0.02, 0.17, uv.y);\n  transformed += objectNormal * hem * uFlap * (0.5 + 0.5 * sin(uTime * 19.0 + position.x * 37.0 + position.z * 23.0 + position.y * 11.0));"); };
+    cm.onBeforeCompile = sh => { rimLight(sh); sh.uniforms.uTime = flap.uTime; sh.uniforms.uFlap = flap.uFlap; sh.vertexShader = "uniform float uTime, uFlap;\n" + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\n  float hem = 1.0 - smoothstep(0.02, 0.17, uv.y);\n  transformed += objectNormal * hem * uFlap * (0.5 + 0.5 * sin(uTime * 19.0 + position.x * 37.0 + position.z * 23.0 + position.y * 11.0));"); };
     clothMesh = new THREE.SkinnedMesh(cloth.build(H), cm); P.add(clothMesh); clothMesh.bind(skeleton);
   }
   const h1 = hash(o.id * 7 + 3), h4 = hash(o.id * 41 + 17);
-  return { root: P, rootBone: root, hips, spine, chest, neck, head, jaw, lids, eyes, fingers, shY: 0.135 * H, arms, legs, H, legLen: 0.515 * H, ankleH: 0.045 * H, tR: 0.1 * H * ws, bodyMat, meshes: [bodyMesh, clothMesh].filter(Boolean),
+  return { root: P, rootBone: root, hips, spine, chest, neck, head, jaw, lids, eyes, fingers, brows, browY: 0.032 * H + 0.02405 * H, shY: 0.135 * H, arms, legs, H, legLen: 0.515 * H, ankleH: 0.045 * H, tR: 0.1 * H * ws, bodyMat, meshes: [bodyMesh, clothMesh].filter(Boolean),
     ph: h1 * 6, dph: hash(o.id * 13 + 5), hand: -1, crossT: 0, lastSide: 0, lastFlip: -999, P: null, celeb: Math.floor(h4 * 5), lastAct: -1, fallDir: -1, land: 0, prevZ: 0, lastSp: 0, lean: 0, flap, bag: tm ? tm.bag || 1.06 : 1, lock: [{ on: false, p: new V3(), w: 0 }, { on: false, p: new V3(), w: 0 }] };
 }
 function buildHead(gb, o, M, H, skin, look) {
@@ -497,7 +506,7 @@ function buildHead(gb, o, M, H, skin, look) {
     const ear = new THREE.SphereGeometry(1, 10, 8); ear.scale(0.085 * r, 0.2 * r, 0.14 * r); place(ear, s * 0.86 * r, 0.02 * r, -0.06 * r, skinD);
     const eye = new THREE.SphereGeometry(0.112 * r, 12, 9); eye.scale(1.15, 0.68, 1); place(eye, s * 0.31 * r, 0.13 * r, 0.845 * r, white);
     const ir = new THREE.SphereGeometry(0.058 * r, 8, 6); ir.scale(1, 0.9, 1); place(ir, s * 0.31 * r, 0.13 * r, 0.915 * r, iris, () => [[s > 0 ? 20 : 21, 1]]);
-    const br = new THREE.SphereGeometry(1, 12, 6); br.scale(0.15 * r, 0.03 * r, 0.045 * r); br.rotateZ(-s * 0.14); br.rotateY(s * 0.25); place(br, s * 0.32 * r, 0.37 * r, 0.93 * r, hairC);
+    const br = new THREE.SphereGeometry(1, 12, 6); br.scale(0.15 * r, 0.03 * r, 0.045 * r); br.rotateZ(-s * 0.14); br.rotateY(s * 0.25); place(br, s * 0.32 * r, 0.37 * r, 0.93 * r, hairC, () => [[s > 0 ? 28 : 29, 1]]);
   }
   const nose = new THREE.SphereGeometry(1, 10, 8); nose.scale(0.1 * r, 0.22 * r, 0.13 * r); place(nose, 0, -0.06 * r, 0.96 * r, skin);
   const tip = new THREE.SphereGeometry(1, 10, 8); tip.scale(0.115 * r, 0.08 * r, 0.085 * r); place(tip, 0, -0.18 * r, 1.01 * r, skin);
@@ -525,8 +534,8 @@ function castShadows(m, on) { m.root.traverse(o => { if (o.isMesh) o.castShadow 
 function disposeFigure(m) { m.root.traverse(o => { if (o.isMesh) { o.geometry.dispose(); if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); }
 
 // ---------- poses ----------
-const KEYS = ["jaw", "lid", "cL", "cR", "pitch", "roll", "drop", "crouch", "spineX", "spineY", "spineZ", "headX", "headY", "aLx", "aLy", "aLz", "eL", "wL", "aRx", "aRy", "aRz", "eR", "wR", "hLx", "hLz", "kL", "fL", "hRx", "hRz", "kR", "fR"];
-function base() { return { jaw: 0.03, lid: -0.75, cL: 0.5, cR: 0.5, pitch: 0, roll: 0, drop: 0, crouch: 0, spineX: 0.04, spineY: 0, spineZ: 0, headX: 0, headY: 0, aLx: 0.06, aLy: 0, aLz: 0.13, eL: -0.25, wL: 0, aRx: 0.06, aRy: 0, aRz: -0.13, eR: -0.25, wR: 0, hLx: -0.03, hLz: 0.04, kL: 0.08, fL: 0, hRx: -0.05, hRz: -0.04, kR: 0.1, fR: 0 }; }
+const KEYS = ["jaw", "lid", "cL", "cR", "brow", "pitch", "roll", "drop", "crouch", "spineX", "spineY", "spineZ", "headX", "headY", "aLx", "aLy", "aLz", "eL", "wL", "aRx", "aRy", "aRz", "eR", "wR", "hLx", "hLz", "kL", "fL", "hRx", "hRz", "kR", "fR"];
+function base() { return { jaw: 0.03, lid: -0.75, cL: 0.5, cR: 0.5, brow: 0, pitch: 0, roll: 0, drop: 0, crouch: 0, spineX: 0.04, spineY: 0, spineZ: 0, headX: 0, headY: 0, aLx: 0.06, aLy: 0, aLz: 0.13, eL: -0.25, wL: 0, aRx: 0.06, aRy: 0, aRz: -0.13, eR: -0.25, wR: 0, hLx: -0.03, hLz: 0.04, kL: 0.08, fL: 0, hRx: -0.05, hRz: -0.04, kR: 0.1, fR: 0 }; }
 function mix(a, b, w) { if (w <= 0) return a; for (const k of KEYS) a[k] = a[k] + (b[k] - a[k]) * w; return a; }
 // a run cycle shaped like a real stride: strike with the leg forward, short stance, toe-off,
 // a high heel recovery in swing; arms and shoulders counter-rotate against the legs
@@ -583,6 +592,7 @@ function poseFor(m, c) {
   let p = locomotion(m, c), fast = false;
   switch (A) {
     case ACT.DRIBBLE: case ACT.CALL: {
+      if (c.chin) { p.aLx = p.aRx = -0.9; p.eL = p.eR = -2.15; p.aLz = 1.0; p.aRz = -1.0; p.crouch = 0.16; p.spineX = 0.28; p.hLz = 0.15; p.hRz = -0.15; p.headX = 0.05; p.jaw = 0.15; p.brow = -0.6; p.cL = p.cR = 0.26; break; } // chinning the rebound
       const d = c.dribble, arm = d.hand > 0 ? "L" : "R", off = d.hand > 0 ? "R" : "L", sg = d.hand > 0 ? 1 : -1;
       const push = Math.max(0, Math.cos(TAU * d.ph));
       p["a" + arm + "x"] = -0.55 - push * 0.25; p["a" + arm + "z"] = sg * 0.32; p["e" + arm] = -0.55 - push * 0.55; p["w" + arm] = -0.5 + push * 0.6;
@@ -602,20 +612,35 @@ function poseFor(m, c) {
       break;
     }
     case ACT.SHOOT: case ACT.FT: {
+      const S = c.shotStyle;
       if (A === ACT.FT && c.ballMode !== 5) { // routine at the line
         const r = t % 3.2;
         if (r < 1.3) { const d = c.dribble; p.aRx = -0.55; p.eR = -0.6 - Math.max(0, Math.cos(TAU * d.ph)) * 0.5; p.aLx = -0.8; p.eL = -0.9; p.crouch = 0.12; p.spineX = 0.3; }
+        else if (S === "under") { p.aLx = p.aRx = -0.3; p.eL = p.eR = -0.25; p.aLz = 0.22; p.aRz = -0.22; p.crouch = 0.2; p.spineX = 0.5; p.hLx = p.hRx = -0.55; p.kL = p.kR = 0.75; p.headX = -0.55; } // granny style, from between the knees
         else { p.aLx = p.aRx = -1.1; p.eL = p.eR = -1.55; p.crouch = 0.08; p.kL = p.kR = 0.35; }
-        break;
+        p.brow = -0.3; break;
       }
       const inAir = c.z > 0.15 || (A === ACT.FT && c.ballMode === 5);
-      if (c.holding && !inAir) { const k = sstep(t / 0.38); p.crouch = 0.2 * Math.sin(k * PI); p.kL = p.kR = 0.25 + 0.75 * Math.sin(k * PI); p.hLx = p.hRx = -0.45 * Math.sin(k * PI); p.aLx = lerp(-0.9, -2.55, k); p.aRx = lerp(-0.9, -2.75, k); p.eL = p.eR = lerp(-1.4, -1.7, k); p.aLz = 0.25; p.aRz = -0.05; p.spineX = 0.05; p.headX = -0.15; }
-      else { const st = m.celeb % 3; p = air(p, c.z, c.vz); p.aRx = -3.0 + st * 0.08; p.eR = -0.12; p.wR = 1.0 + 0.15 * (st % 2); p.aLx = -2.6; p.eL = -0.5; p.aLz = 0.45; p.aRz = -0.05 - 0.1 * st; p.spineX = -0.04; p.headX = -0.35 - 0.05 * st; fast = true; }
+      if (A === ACT.FT && S === "under") { p.aLx = p.aRx = -2.2; p.eL = p.eR = -0.05; p.aLz = 0.2; p.aRz = -0.2; p.wL = p.wR = 0.6; p.kL = p.kR = 0.1; p.spineX = -0.05; p.headX = -0.35; fast = true; }
+      else if (c.holding && !inAir) {
+        const k = sstep(t / 0.38); p.crouch = 0.2 * Math.sin(k * PI); p.kL = p.kR = 0.25 + 0.75 * Math.sin(k * PI); p.hLx = p.hRx = -0.45 * Math.sin(k * PI); p.aLx = lerp(-0.9, -2.55, k); p.aRx = lerp(-0.9, -2.75, k); p.eL = p.eR = lerp(-1.4, -1.7, k); p.aLz = 0.25; p.aRz = -0.05; p.spineX = 0.05; p.headX = -0.15;
+        if (S === "set2") { p.aLx = p.aRx = lerp(-0.9, -1.5, k); p.eL = p.eR = -1.95; p.aLz = 0.38; p.aRz = -0.38; } // both hands at the chest
+        else if (S === "hook") { p.spineY = -0.55; p.aRx = -0.7; p.aRz = -0.9; p.eR = -1.2; p.aLx = -1.2; p.aLz = 0.6; p.eL = -1.3; p.crouch = 0.12; }
+      } else {
+        const st = m.celeb % 3; p = air(p, c.z, c.vz); p.aRx = -3.0 + st * 0.08; p.eR = -0.12; p.wR = 1.0 + 0.15 * (st % 2); p.aLx = -2.6; p.eL = -0.5; p.aLz = 0.45; p.aRz = -0.05 - 0.1 * st; p.spineX = -0.04; p.headX = -0.35 - 0.05 * st; fast = true;
+        if (S === "set2") { p.aLx = p.aRx = -2.65; p.eL = p.eR = -0.12; p.aLz = 0.22; p.aRz = -0.22; p.wL = p.wR = 0.95; p.spineX = 0; p.headX = -0.3; } // the two-hand set shot
+        else if (S === "hook") { const k = sstep(clamp((t - 0.35) / 0.3, 0, 1)); p.aRz = lerp(-1.3, -2.95, k); p.aRx = -0.25; p.eR = -0.35 + 0.25 * k; p.wR = 0.9 * k; p.aLx = -1.5; p.aLz = 0.85; p.eL = -1.2; p.spineY = -0.6; p.hRx = -1.3; p.kR = 1.5; p.hLx = -0.1; p.kL = 0.3; p.headX = -0.4; } // sweeping hook
+        else if (S === "fade") { p.spineX -= 0.35; p.pitch = -0.22; p.hLx = -0.55; p.kL = 0.45; p.hRx = -0.15; p.kR = 0.6; p.headX = -0.15; } // fading away
+        else if (S === "runner") { p.aRx = -2.55; p.eR = -0.1; p.wR = 0.75; p.aLx = -1.2; p.aLz = 0.55; p.eL = -0.9; p.hLx = -1.35; p.kL = 1.55; p.hRx = 0.1; p.kR = 0.35; p.spineX = 0.12; p.headX = -0.35; } // floater off one foot
+      }
+      p.brow = -0.35;
       break;
     }
     case ACT.LAYUP: {
       if (c.z < 0.15 && c.holding) { p.aLx = p.aRx = -1.0; p.eL = p.eR = -1.2; p.crouch = 0.12; break; }
-      p.hLx = -1.45; p.kL = 1.7; p.fL = 0.5; p.hRx = 0.25; p.kR = 0.25; p.aRx = -3.05; p.eR = -0.08; p.wR = c.holding ? 0 : 0.9; p.aLx = -1.1; p.eL = -1.0; p.aLz = 0.35; p.spineX = -0.05; p.headX = -0.4; fast = true; break;
+      p.hLx = -1.45; p.kL = 1.7; p.fL = 0.5; p.hRx = 0.25; p.kR = 0.25; p.aRx = -3.05; p.eR = -0.08; p.wR = c.holding ? 0 : 0.9; p.aLx = -1.1; p.eL = -1.0; p.aLz = 0.35; p.spineX = -0.05; p.headX = -0.4; fast = true;
+      if (c.shotStyle === "roll") { p.aRx = -2.6; p.eR = -0.22; p.aRy = -1.3; p.wR = c.holding ? -0.3 : -0.75; } // finger roll, palm up
+      break;
     }
     case ACT.DUNK: {
       if (c.z < 0.15 && c.holding) { const k = sstep(t / 0.36); p.crouch = 0.18 * k; p.kL = p.kR = 0.4 + 0.8 * k; p.hLx = p.hRx = -0.7 * k; p.aLx = p.aRx = lerp(-1.0, -2.2, k); p.eL = p.eR = -1.4; p.spineX = 0.3 * k; break; }
@@ -629,7 +654,14 @@ function poseFor(m, c) {
       else { p.aLx = -2.3; p.aRx = -2.1; p.eL = p.eR = -0.3; p.wL = p.wR = 0.9; p.spineX = 0.35; p.hLx = -0.9; p.kL = 1.3; p.headX = 0.1; } // slam, then hang
       fast = true; break;
     }
-    case ACT.PASS: { const k = sstep(t / 0.22); p.aLx = p.aRx = -1.35 - k * 0.2; p.eL = p.eR = -1.5 + k * 1.4; p.wL = p.wR = k * 0.8; p.aLz = 0.4 - k * 0.32; p.aRz = -0.4 + k * 0.32; p.spineX += 0.12; fast = true; break; }
+    case ACT.PASS: {
+      const k = sstep(t / 0.22), S = c.passStyle;
+      if (S === "bounce") { p.aLx = p.aRx = -1.0 - k * 0.15; p.eL = p.eR = -1.5 + k * 1.45; p.wL = p.wR = k * 0.9; p.aLz = 0.35 - k * 0.25; p.aRz = -0.35 + k * 0.25; p.crouch = 0.2; p.spineX += 0.35; p.kL = p.kR = 0.8; p.hLx = p.hRx = -0.5; }
+      else if (S === "lob") { p.aLx = p.aRx = -2.9 + k * 0.45; p.eL = p.eR = -1.6 + k * 1.5; p.wL = p.wR = k * 0.9; p.aLz = 0.3; p.aRz = -0.3; p.spineX -= 0.1; p.headX = -0.3; }
+      else if (S === "long") { p.aRx = lerp(-2.6, -1.5, k); p.aRz = lerp(-0.7, -0.1, k); p.eR = lerp(-1.9, -0.1, k); p.wR = k; p.aLx = -1.2; p.aLz = 0.5; p.eL = -0.6; p.spineY = lerp(-0.55, 0.45, k); p.hLx = -0.6; p.kL = 0.3; }
+      else { p.aLx = p.aRx = -1.35 - k * 0.2; p.eL = p.eR = -1.5 + k * 1.4; p.wL = p.wR = k * 0.8; p.aLz = 0.4 - k * 0.32; p.aRz = -0.4 + k * 0.32; p.spineX += 0.12; }
+      fast = true; break;
+    }
     case ACT.CATCH: p.aLx = p.aRx = -1.4; p.eL = p.eR = -0.4; p.aLz = 0.38; p.aRz = -0.38; p.wL = p.wR = -0.3; break;
     case ACT.TACKLE: { const k = sstep(t / 0.2); p = base(); p.pitch = 0.3 + k * 1.0; p.aLx = p.aRx = -2.2 - k * 0.3; p.eL = p.eR = -0.25 - k * 0.6; p.aLz = 0.75 - k * 0.45; p.aRz = -0.75 + k * 0.45; p.hLx = 0.55; p.kL = 0.5; p.hRx = -0.6 + k * 1.0; p.kR = 0.25; p.headX = -0.6 * k; p.drop = k * 0.25; fast = true; break; }
     case ACT.DOWN: {
@@ -642,7 +674,9 @@ function poseFor(m, c) {
     }
     case ACT.GETUP: { const k = sstep(t / 0.45), face = m.fallDir > 0; p = base(); p.pitch = (face ? 1.5 : -1.45) * (1 - k); p.drop = 1 - k; p.kL = p.kR = 1.5 * (1 - k * 0.8); p.hLx = p.hRx = -1.1 * (1 - k); p.aLx = p.aRx = face ? -1.0 * (1 - k) : 0.4; p.eL = p.eR = -1.2 * (1 - k); p.crouch = 0.25 * (1 - k); break; }
     case ACT.CONTEST: p = air(p, c.z, c.vz); p.aLx = -3.05; p.aRx = -2.92; p.eL = p.eR = -0.04; p.aLz = 0.12; p.aRz = -0.2; p.wL = p.wR = -0.2; p.spineX = 0.08; p.headX = -0.3; break;
-    case ACT.REBOUND: p = air(p, c.z, c.vz); p.aLx = p.aRx = -2.85; p.eL = p.eR = -0.2; p.aLz = 0.32; p.aRz = -0.32; p.headX = -0.5; break;
+    case ACT.REBOUND: p = air(p, c.z, c.vz); p.aLx = p.aRx = -2.85; p.eL = p.eR = -0.2; p.aLz = 0.32; p.aRz = -0.32; p.headX = -0.5;
+      if (c.holding && c.z < 0.3) { p.aLx = p.aRx = -0.9; p.eL = p.eR = -2.15; p.aLz = 1.0; p.aRz = -1.0; p.crouch = 0.16; p.spineX = 0.28; p.hLz = 0.15; p.hRz = -0.15; p.headX = 0.05; p.jaw = 0.15; p.brow = -0.6; } // chin it
+      break;
     case ACT.SWAT: { const k = sstep(t / 0.3); p = air(p, c.z, c.vz); p.aRx = -3.1 + k * 1.1; p.aRz = -0.15 - k * 0.3; p.eR = -0.05; p.wR = k * 0.8; p.aLx = -1.4; p.aLz = 0.7; p.headX = -0.4; fast = true; break; }
     case ACT.CELEBRATE: {
       const pump = Math.sin(t * 11), st = m.celeb;
@@ -674,6 +708,13 @@ function poseFor(m, c) {
   // faces: yell when celebrating and dunking, grimace on the floor, blink
   if (A === ACT.CELEBRATE) p.jaw = 0.32 + 0.08 * Math.sin(t * 9); else if (A === ACT.DUNK && c.z > 0.3) p.jaw = 0.3; else if (A === ACT.DOWN || A === ACT.TACKLE || A === ACT.GETUP) p.jaw = 0.17; else if (c.sp > 14) p.jaw = 0.1;
   p.lid = c.blink ? 0.9 : A === ACT.DOWN ? 0.35 : -0.75;
+  if (p.brow === 0) {
+    if (A === ACT.CELEBRATE) p.brow = m.celeb % 2 ? -0.6 : 0.8;
+    else if (A === ACT.DUNK && c.z > 0.3) p.brow = -0.8;
+    else if (A === ACT.DOWN || A === ACT.GETUP || A === ACT.TACKLE) p.brow = -0.9;
+    else if (A === ACT.STANCE || A === ACT.WALL || A === ACT.CONTEST || A === ACT.SWAT || (c.defending && c.sp < 3)) p.brow = -0.45;
+    else if (c.tired > 0.5) p.brow = 0.35;
+  }
   // hands: loose while running, cupped on the ball, flicked through on the release, spread to contest, fists to celebrate
   if (p.cL === 0.5 && p.cR === 0.5) {
     let cl = c.sp > 9 ? 0.78 : 0.5, cr = cl;
@@ -774,6 +815,7 @@ function applyPose(m, t, dt, grounded, place) {
   m.spine.rotation.set(p.spineX * 0.5, p.spineY * 0.5, p.spineZ * 0.5); m.chest.rotation.set(p.spineX * 0.5, p.spineY * 0.5, p.spineZ * 0.5);
   m.neck.rotation.set(p.headX * 0.4, p.headY * 0.4, 0); m.head.rotation.set(p.headX * 0.6, p.headY * 0.6, 0);
   m.P.lid = t.lid; if (m.jaw) { m.jaw.rotation.x = clamp(p.jaw, 0, 0.5); m.lids.rotation.x = t.lid; }
+  if (m.brows) m.brows.forEach((b, k) => { const s = k ? -1 : 1, fu = Math.max(0, -p.brow), ra = Math.max(0, p.brow); b.position.y = m.browY + (ra * 0.0045 - fu * 0.002) * m.H; b.rotation.z = s * (fu * 0.32 - ra * 0.1); });
   if (m.fingers) m.fingers.forEach((F, k) => { const s = k ? -1 : 1, c = k ? p.cR : p.cL; F.kn.rotation.z = -s * c * 0.95; F.mid.rotation.z = -s * Math.max(0, c) * 1.1; F.th.rotation.set(Math.max(0, c) * 0.4, 0, -s * c * 0.5); });
   // breathing: slow and shallow at rest, deep and quick when winded
   const fat = m.fat || 0; m.brPh = ((m.brPh || 0) + dt * (1.6 + 2.8 * fat)) % TAU;
@@ -1462,6 +1504,12 @@ function create(canvas, opts) {
   });
   const sprayGeo = new THREE.BufferGeometry(), sprayPos = new Float32Array(200 * 3); sprayGeo.setAttribute("position", new THREE.BufferAttribute(sprayPos, 3));
   const spray = new THREE.Points(sprayGeo, new THREE.PointsMaterial({ color: glow("#e6f2ff", 1.6), size: 0.16, sizeAttenuation: true, transparent: true, opacity: 0.85, depthWrite: false })); spray.frustumCulled = false; scene.add(spray);
+  function shotEvent(idx, a0) { for (let i = evIndex(a0 - 6); i < EV.length && EVT[i] <= a0 + 70; i++) { const e = EV[i]; if (e.type === "fga" && e.pid === idx) return e; } return null; }
+  function passKind(idx, a0) { // read the ball's flight: off the floor, over everyone, or a long way
+    const b0 = sampleBall(a0); let minZ = 99, maxZ = 0, far = 0;
+    for (let t = a0 + 4; t <= a0 + 44; t += 2) { const q = sampleBall(t); if (q.holder >= 0 && q.holder !== idx) break; minZ = Math.min(minZ, q.z); maxZ = Math.max(maxZ, q.z); far = Math.max(far, Math.hypot(q.x - b0.x, q.y - b0.y)); }
+    return minZ < 0.8 ? "bounce" : maxZ > 10.5 ? "lob" : far > 34 ? "long" : 0;
+  }
   function whereWas(idx, tk) { for (let k = 0; k < 10; k++) { const q = samplePlayer(k, tk); if (q.idx === idx) return q; } return null; }
   const flashGeo = new THREE.BufferGeometry(), flashPos = new Float32Array(160 * 3); flashGeo.setAttribute("position", new THREE.BufferAttribute(flashPos, 3));
   const flashes = new THREE.Points(flashGeo, new THREE.PointsMaterial({ color: glow("#ffffff", 6), size: 2.2, sizeAttenuation: true, transparent: true, depthWrite: false })); flashes.frustumCulled = false; scene.add(flashes);
@@ -1661,7 +1709,7 @@ function create(canvas, opts) {
   }
 
   // ---------- render ----------
-  let pinned = null, ballZ1 = null, ballZ2 = null; const prevVP = new THREE.Matrix4(), curVP = new THREE.Matrix4(), prevCamPos = new V3();
+  let pinned = null, ballZ1 = null, ballZ2 = null; const _bT = new THREE.Matrix4(), _bS = new THREE.Matrix4(), _bR = new THREE.Matrix4(); const prevVP = new THREE.Matrix4(), curVP = new THREE.Matrix4(), prevCamPos = new V3();
   let lastT = performance.now(), lastTick = -1, vt = 0, showK = 0, replayK = 0, finT0 = -1, frameNo = 0;
   const tmpV = new V3(), tmpV2 = new V3(), up = new V3(0, 1, 0), qSpin = new THREE.Quaternion(), tA = new V3(), tB = new V3(), tC = new V3(), tD = new V3(), tF = new V3(), tL = new V3();
   function tackleTarget(tick, idx) { // who this player is tackling: the event lands at the end of the lunge
@@ -1728,6 +1776,26 @@ function create(canvas, opts) {
         const start = Math.round(tick - s.actT * 20); m.dunkStyle = Math.floor(hash(s.idx * 13 + start * 7) * 5); ctx.dunkStyle = m.dunkStyle;
         const ap = clamp((s.actT - 0.36) / 0.55, 0, 1); m.extraYaw = (m.dunkStyle === 3 ? TAU : m.dunkStyle === 4 ? PI : 0) * sstep(ap);
       } else if (m.extraYaw) { const goal = m.extraYaw > PI * 1.2 ? TAU : 0; m.extraYaw = lerp(m.extraYaw, goal, 1 - Math.exp(-(gdt || 0) * 5)); if (Math.abs(m.extraYaw - goal) < 0.02) m.extraYaw = 0; }
+      { // what kind of shot or pass this is, decided once when the action starts (so replays match)
+        const aStart = Math.round(tick - s.actT * 20), shooting = s.act === ACT.SHOOT || s.act === ACT.LAYUP || s.act === ACT.FT;
+        if (shooting && m.styleKey !== aStart * 32 + s.act) {
+          m.styleKey = aStart * 32 + s.act; m.shotStyle = 0;
+          const id = G.roster[s.idx] ? G.roster[s.idx].id : s.idx;
+          if (s.act === ACT.FT) m.shotStyle = era < 1980 && hash(id * 2.71 + 9) < 0.14 ? "under" : 0;
+          else if (s.act === ACT.LAYUP) m.shotStyle = hash(aStart * 0.13 + id) < 0.4 ? "roll" : 0;
+          else {
+            const e = shotEvent(s.idx, aStart), rim = s.x < 47 ? BB.C.HX[0] : BB.C.HX[1], dx = rim - s.x, dy = 25 - s.y, dl = Math.hypot(dx, dy) || 1, toward = (s.vx * dx + s.vy * dy) / dl;
+            if (e && e.hook) m.shotStyle = "hook";
+            else if (era < 1960 && e && e.d >= 12 && hash(id * 7.31 + 3) < (era < 1957 ? 0.7 : 0.45)) m.shotStyle = "set2";
+            else if (toward < -3) m.shotStyle = "fade";
+            else if (e && e.d >= 5 && e.d <= 15 && toward > 7) m.shotStyle = "runner";
+          }
+        }
+        if (s.act === ACT.PASS && m.passKey !== aStart) { m.passKey = aStart; m.passStyle = passKind(s.idx, aStart); }
+        if (m.prevAct2 === ACT.REBOUND && s.act !== ACT.REBOUND && isHolder && !jump) m.chinTo = tick + 15; // secure it before the first dribble
+        m.prevAct2 = s.act; m.chin = ctx.chin = isHolder && s.act === ACT.DRIBBLE && m.chinTo > tick && m.chinTo - tick <= 15;
+        ctx.shotStyle = shooting ? m.shotStyle : 0; ctx.passStyle = s.act === ACT.PASS ? m.passStyle : 0;
+      }
       const grounded = s.z < 0.08 && ctx.act !== ACT.DOWN && ctx.act !== ACT.GETUP && ctx.act !== ACT.TACKLE;
       { // eyes on the ball; shooters on the rim; ball handlers scan the floor
         const A = ctx.act, rimX = s.x < 47 ? BB.C.HX[0] : BB.C.HX[1]; if (!m.look) m.look = new V3();
@@ -1752,7 +1820,7 @@ function create(canvas, opts) {
     if (holder) {
       const yaw = holder.root.rotation.y, fx = Math.sin(yaw), fz = Math.cos(yaw), lx = Math.cos(yaw), lz = -Math.sin(yaw);
       const act = holderS.act;
-      const dribbling = act === ACT.DRIBBLE || act === ACT.CALL || act === ACT.POST || (act === ACT.FT && b.mode !== 5 && holderS.actT % 3.2 < 1.3);
+      const dribbling = !(holder && holder.chin) && (act === ACT.DRIBBLE || act === ACT.CALL || act === ACT.POST) || (act === ACT.FT && b.mode !== 5 && holderS.actT % 3.2 < 1.3);
       if (dribbling) {
         const H = holder.H, top = H * 0.4, u = Math.abs(Math.cos(PI * holder.dph)), hgt = 0.39 + (top - 0.39) * Math.pow(u, 1.25);
         const side = (holder.crossT > 0 ? lerp(-holder.hand, holder.hand, 1 - holder.crossT / 0.22) : holder.hand) * 0.75 * (act === ACT.POST ? 1.3 : 1);
@@ -1772,7 +1840,7 @@ function create(canvas, opts) {
       const yaw = m.root.rotation.y, f = tF.set(Math.sin(yaw), 0, Math.cos(yaw)), l = tL.set(Math.cos(yaw), 0, -Math.sin(yaw)), act = s.act; let did = false;
       const two = (w, back) => { tA.copy(ball.position).addScaledVector(l, 0.37).addScaledVector(f, -back); tB.copy(ball.position).addScaledVector(l, -0.37).addScaledVector(f, -back); armIK(m, 0, tA, w); armIK(m, 1, tB, w); did = true; };
       if (m === holder) {
-        const dribbling = act === ACT.DRIBBLE || act === ACT.CALL || act === ACT.POST || (act === ACT.FT && b.mode !== 5 && s.actT % 3.2 < 1.3);
+        const dribbling = !(holder && holder.chin) && (act === ACT.DRIBBLE || act === ACT.CALL || act === ACT.POST) || (act === ACT.FT && b.mode !== 5 && s.actT % 3.2 < 1.3);
         if (dribbling) { const w = sstep((ball.position.y - (m.H * 0.4 - 0.9)) / 0.6) * 0.9; if (w > 0.01) { armIK(m, m.hand > 0 ? 0 : 1, tA.copy(ball.position).addScaledVector(up, 0.36).addScaledVector(f, -0.05), w); did = true; } }
         else if (act === ACT.LAYUP || (act === ACT.DUNK && s.z > 0.2)) { armIK(m, 1, tA.copy(ball.position).addScaledVector(up, -0.33).addScaledVector(f, -0.08), 1); if (act === ACT.DUNK && m.celeb % 2) armIK(m, 0, tB.copy(ball.position).addScaledVector(l, 0.36), 0.9); did = true; }
         else if ((act === ACT.SHOOT || act === ACT.FT) && (s.z > 0.15 || b.mode === 5)) { armIK(m, 1, tA.copy(ball.position).addScaledVector(up, -0.3).addScaledVector(f, -0.16), 1); armIK(m, 0, tB.copy(ball.position).addScaledVector(l, 0.36), 0.9); did = true; }
@@ -1798,6 +1866,13 @@ function create(canvas, opts) {
       if (ballZ1 !== null && ballZ2 !== null && ballZ1 < 1.1 && ballZ1 <= ballZ2 && ballZ1 < bz) cues.push(["bounce", bx, 0.3, by]);
       ballZ2 = ballZ1; ballZ1 = bz;
     } else if (gdt > 0) { ballZ1 = ballZ2 = null; }
+    { // squash on contact with the floor (in world space, under the spin)
+      const sq = clamp((0.47 - ball.position.y) / 0.08, 0, 1);
+      ball.matrixAutoUpdate = false;
+      if (sq > 0) { const sy = 1 - 0.2 * sq, sxz = 1 + 0.1 * sq; _bT.makeTranslation(ball.position.x, 0.39 * sy, ball.position.z); _bS.makeScale(sxz, sy, sxz); _bR.makeRotationFromQuaternion(ball.quaternion); ball.matrix.copy(_bT).multiply(_bS).multiply(_bR); }
+      else ball.updateMatrix();
+      ball.matrixWorldNeedsUpdate = true;
+    }
     blobs[10].position.set(bx, 0.03, by); const bsz = 0.9 * (1 - Math.min(0.7, bz * 0.05)); blobs[10].scale.set(bsz, bsz, 1);
     const slow = (view.rate || 1) < 0.7;
     ghosts.forEach((g, i) => { if (!slow || holder) { g.material.opacity = 0; return; } const q = sampleBall(tick - (i + 1) * 0.9); g.position.set(q.x, Math.max(0.39, q.z), q.y); g.material.opacity = 0.3 * (1 - i / ghosts.length); g.scale.setScalar(1 - i * 0.07); });
@@ -1841,8 +1916,8 @@ function create(canvas, opts) {
       const pose = locomotion(c.m, { sp: Math.abs(vx), fwd: 0, left: Math.abs(vx), turn: 0, defending: false });
       if (!huddle && Math.abs(vx) < 1.0) { pose.aLx = pose.aRx = -0.9; pose.aLz = -0.6; pose.aRz = 0.6; pose.eL = pose.eR = -1.9; }
       const mine = ex[t], theirs = ex[1 - t];
-      if (mine > 0.45) { pose.aRx = -2.8; pose.eR = -1.0 - Math.sin(gt * 10 + vt * 6) * 0.4; pose.jaw = 0.3; }
-      else if (theirs > 0.6) { pose.aLx = pose.aRx = -2.5; pose.eL = pose.eR = -2.4; pose.aLz = 0.6; pose.aRz = -0.6; pose.jaw = 0.15; }
+      if (mine > 0.45) { pose.aRx = -2.8; pose.eR = -1.0 - Math.sin(gt * 10 + vt * 6) * 0.4; pose.jaw = 0.3; pose.brow = 0.7; pose.cR = 1.5; }
+      else if (theirs > 0.6) { pose.aLx = pose.aRx = -2.5; pose.eL = pose.eR = -2.4; pose.aLz = 0.6; pose.aRz = -0.6; pose.jaw = 0.15; pose.brow = -0.8; }
       pose.lid = ((vt + t * 1.7) % 4.4) < 0.12 ? 0.9 : -0.75;
       if (huddle) { pose.aRx = -1.3; pose.eR = -1.4; pose.aLx = -0.9; pose.eL = -1.2; pose.spineX = 0.2; }
       if (jump) c.m.P = null;
