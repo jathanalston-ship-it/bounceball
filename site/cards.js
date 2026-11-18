@@ -7,7 +7,13 @@ const CC = BB.CARDS;
 const PC = { idxP: null, idx: null, shards: {}, list: [], lists: {}, at: 0, ps: null };
 
 async function pcIndex() {
-  if (!PC.idxP) PC.idxP = J("index/cards.json").then(x => (PC.idx = x)).catch(() => null);
+  if (!PC.idxP) PC.idxP = J("index/cards.json").then(x => {
+    // collector numbers: each collection's cards in order of season, then finish
+    const by = {}; for (const r of x.cards) (by[r[0]] = by[r[0]] || []).push(r);
+    PC.serials = {};
+    for (const rows of Object.values(by)) { rows.sort((a, b) => a[1] - b[1] || (a[6] || 99) - (b[6] || 99) || a[2] - b[2]); rows.forEach((r, i) => { PC.serials[r[0] + ":" + r[1] + ":" + r[2]] = `${i + 1}/${rows.length}`; }); }
+    return (PC.idx = x);
+  }).catch(() => null);
   return PC.idxP;
 }
 async function pcDetail(id) {
@@ -24,7 +30,7 @@ const pcAvg = (a, b, d) => b ? (a / b).toFixed(d === undefined ? 1 : d) : "–";
 // ---------- card objects ----------
 function pcCard(col, season, pid, team, ovr, rank, value, num, wt, base) {
   const p = D.pl[pid] || {}, t = TB[team] || { c1: "#59606b", c2: "#23272e" };
-  return { col, season, pid, team, teamId: team || "FA", ovr, base: base === undefined ? ovr : base, rank: rank || 0, value, num: num === undefined ? p.num : num, name: p.name || "#" + pid, role: p.role || "WING", ht: p.ht || 78, wt: wt || p.wt || 210, c1: t.c1, c2: t.c2, tier: CC.tierFor(ovr) };
+  return { col, season, pid, team, teamId: team || "FA", ovr, base: base === undefined ? ovr : base, rank: rank || 0, value, serial: PC.serials ? PC.serials[col + ":" + season + ":" + pid] : undefined, num: num === undefined ? p.num : num, name: p.name || "#" + pid, role: p.role || "WING", ht: p.ht || 78, wt: wt || p.wt || 210, c1: t.c1, c2: t.c2, tier: CC.tierFor(ovr) };
 }
 function pcBump(c) { const C = CC.CBY[c.col]; if (!C) return 0; return C.kind === "leader" ? CC.leaderBump(c.rank) : (C.bump || 0); }
 const COL_ORDER = Object.fromEntries(CC.COLLECTIONS.map((c, i) => [c.key, i]));
@@ -61,7 +67,17 @@ function pcArch(r, p, season) { try { if (!BB.archetype || !r || !p) return null
 function pcFlip(c, cls) {
   const r = c.r ? CC.cardRatings(c.col, c.r, pcBump(c)) : null;
   if (r && c.arch === undefined) { const a = pcArch(c.r, D.pl[c.pid], c.season); c.arch = a ? a.offName + " / " + a.defName : ""; }
+  if (c.line === undefined) c.line = pcLine(c);
   return `<div class="fcard ${cls || ""}" onclick="this.classList.toggle('flip')" title="Tap to flip"><div class="fc-in"><div class="fc-f">${CART.front(c)}</div><div class="fc-b">${r ? CART.back(c, r) : CART.front(c)}</div></div></div>`;
+}
+// the season's per-game line for the card back; the last number follows the collection
+function pcLine(c) {
+  const rows = D.idx && D.idx.regular && D.idx.regular[c.pid]; if (!rows || c.upcoming) return null;
+  const k = D.idx.keys, row = rows.find(x => x[0] === c.season); if (!row) return null;
+  const s = Object.fromEntries(k.map((x, i) => [x, row[i]])); if (!s.gp) return null;
+  const pg = v => (v / s.gp).toFixed(1);
+  const extra = { posterized: ["DNK", s.dnk], swat: ["BLK", s.blk], escape: ["BTK", s.btk], fouralarm: ["4PM", s.fpm], splash: ["3PM", s.tpm], pickpockets: ["STL", s.stl], dimes: ["STL", s.stl], boards: ["BLK", s.blk], wrecking: ["STL", s.stl] }[c.col] || ["BLK", s.blk];
+  return [["PTS", pg(s.pts)], ["REB", pg(s.oreb + s.dreb)], ["AST", pg(s.ast)], ["TKL", pg(s.tkl)], [extra[0], extra[1] === undefined ? "–" : pg(extra[1])]];
 }
 function pcTile(c, i, label, key) {
   return `<button class="ctile t-${c.tier.key}" onclick="pcOpen(${i},'${key || "main"}')" aria-label="${esc(c.name)} ${c.season} ${esc((CC.CBY[c.col] || {}).name || "")}">${CART.front(c)}${label ? `<span class="ctl">${label}</span>` : ""}</button>`;
@@ -409,8 +425,8 @@ function pcMore() {
 function pcHome(all) {
   PC.tierF = null;
   const byCol = {}; for (const c of all) (byCol[c.col] = byCol[c.col] || []).push(c);
-  const top = all.slice().sort((a, b) => b.ovr - a.ovr || b.season - a.season).slice(0, 4);
-  const featured = top.concat([]);
+  const seen = new Set(), featured = [];
+  for (const c of all.slice().sort((a, b) => b.ovr - a.ovr || b.season - a.season)) { if (seen.has(c.pid)) continue; seen.add(c.pid); featured.push(c); if (featured.length === 4) break; }
   pcSetList(featured, "home");
   let h = `<h2>Cards</h2><p class="m">Every season hands out cards. Each one carries the player's ratings as that season began; collection cards add a boost, and the overall sets the rarity. Every player also has a base card for every season on his player page.</p>`;
   h += `<h3>Rarest cards ever</h3><div class="cgrid feat">${featured.map((c, i) => pcTile(c, i, `${c.season}`, "home")).join("")}</div>`;
