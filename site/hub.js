@@ -147,9 +147,9 @@ function identityHTML(id, sd) {
   const teams = Object.keys(sd.style).filter(t => sd.style[t].g), n = teams.length;
   const rank = (f, t) => 1 + teams.filter(u => f(sd.style[u]) > f(sd.style[t])).length;
   const me = sd.style[id], tags = [];
-  const cells = ID_STATS.map(([k, label, f, hi, lo]) => {
+  const cells = ID_STATS.filter(([k, label, f]) => { const vs = teams.map(t => f(sd.style[t])); return Math.max(...vs) - Math.min(...vs) > 1e-9; }).map(([k, label, f, hi, lo]) => { // (a stat every team ties on, like fours before 1979, says nothing)
     const r = rank(f, id), v = f(me);
-    if (hi && r <= 3) tags.push(hi); else if (lo && r > n - 3) tags.push(lo);
+    if (hi && r <= 3 && v > 0) tags.push(hi); else if (lo && r > n - 3) tags.push(lo);
     return `<div><b>${k === "big" ? v.toFixed(0) + "%" : k === "flag" ? v : v.toFixed(1)}</b><span>${label}</span><small>${r === 1 ? "1st" : r === 2 ? "2nd" : r === 3 ? "3rd" : r + "th"} of ${n}</small></div>`;
   });
   const cov = Object.keys(BB.COVERS).map(k => [k, me["cov_" + k] || 0]).sort((a, b) => b[1] - a[1]), ct = cov.reduce((a, x) => a + x[1], 0);

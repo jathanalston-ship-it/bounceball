@@ -33,9 +33,9 @@ function setNumber(S, p, tid, rng) {
   let n, k = 0; do { n = rng.int(0, 55); k++; } while (used.has(n) && k < 200); p.num = n;
 }
 function addToTeam(S, p, tid, rng) { p.team = tid; S.teams[tid].roster.push(p.id); setNumber(S, p, tid, rng); }
-function removeFromTeam(S, p) {
+function removeFromTeam(S, p, how) {
   if (!p.team) return; const r = S.teams[p.team].roster; r.splice(r.indexOf(p.id), 1);
-  p.left = (p.left || []).filter(x => S.season - x.season <= 1).concat([{ team: p.team, season: S.season }]); // for revenge games
+  if (how) p.left = (p.left || []).filter(x => S.season - x.season <= 1).concat([{ team: p.team, season: S.season, how }]); // traded or cut: he'll want this one (revenge games)
   p.team = null;
 }
 function newPlayer(S, rng, role, q, age) {
@@ -128,7 +128,7 @@ function release(S, p, tid, why) {
   const c = p.contract, rem = c ? c.thru - S.season + 1 : 0;
   if (c && rem > 0 && c.salary > P.minSalary(S.season)) S.teams[tid].dead.push({ amt: c.salary, thru: c.thru, pid: p.id });
   log(S, "waive", { pid: p.id, team: tid, dead: c ? c.salary * rem : 0, why });
-  removeFromTeam(S, p); p.contract = null; p.fa = true;
+  removeFromTeam(S, p, "cut"); p.contract = null; p.fa = true;
 }
 
 // ---------- schedule ----------
@@ -234,8 +234,8 @@ function restRate(season) { return season < 1985 ? 0 : season < 2000 ? 0.05 : se
 // rivalries: geography, plus what happened (playoff series, fights, cheap shots); grudges between players
 const pairKey = (a, b) => a < b ? a + "|" + b : b + "|" + a;
 function rivalry(S, a, b) { return clamp(Math.max(0, 0.25 - miles(a, b) / 1600) + ((S.riv || {})[pairKey(a, b)] || 0), 0, 1); }
-function addRivalry(S, a, b, x) { S.riv = S.riv || {}; const k = pairKey(a, b); S.riv[k] = r2(clamp((S.riv[k] || 0) + x, 0, 0.8)); }
-function addGrudge(S, a, b, w) { S.grudges = S.grudges || {}; const k = a + ">" + b, g = S.grudges[k]; S.grudges[k] = r2(clamp(Math.max(g || 0, w) + (g ? 0.15 : 0), 0, 1)); }
+function addRivalry(S, a, b, x) { S.riv = S.riv || {}; const k = pairKey(a, b); S.riv[k] = Math.round(clamp((S.riv[k] || 0) + x * (1 - (S.riv[k] || 0) / 0.4), 0, 0.4) * 1000) / 1000; } // (diminishing: a rivalry can only get so hot)
+function addGrudge(S, a, b, w) { S.grudges = S.grudges || {}; const k = a + ">" + b, g = S.grudges[k]; S.grudges[k] = r2(clamp(Math.max(g || 0, w) + (g ? 0.08 : 0), 0, 1)); }
 // how well a player knows his teammates: games played for this team
 function chemOf(p, tid) { return p.chemTeam === tid ? clamp(0.55 + 0.45 * (p.chemG || 0) / 30, 0.55, 1) : 0.55; }
 // the context the engine needs for one game (stored with the game, so replays see the same thing)
@@ -476,12 +476,12 @@ function applyResults(S, specs, results) {
     for (const f of r.fights || []) {
       (cur.fights = cur.fights || []).push([sp.gid, f.a, f.b, f.brawl ? 1 : 0, f.join, f.why]);
       if (ban) { sus(f.a, rng.int(3, 6) + (f.brawl ? 2 : 0), `was suspended for starting a fight${f.brawl ? " that emptied the benches" : ""}`); sus(f.b, rng.int(2, 4), "was suspended for fighting"); for (const id of f.brawl ? f.join : []) sus(id, 1, "was suspended a game for joining a brawl"); }
-      else { sus(f.a, rng.chance(0.3) ? 1 : 0, "was fined for fighting"); sus(f.b, 0, "was fined for fighting"); }
-      addGrudge(S, f.a, f.b, 1); addGrudge(S, f.b, f.a, 1); addRivalry(S, sp.home, sp.away, f.brawl ? 0.25 : 0.15);
+      else if (rng.chance(0.3)) sus(f.a, 1, "was suspended a game for fighting"); // (otherwise a fine: the fight itself is on the record)
+      addGrudge(S, f.a, f.b, 0.8); addGrudge(S, f.b, f.a, 0.8); addRivalry(S, sp.home, sp.away, f.brawl ? 0.1 : 0.05);
     }
     // grudges: cheap shots and injuries are remembered
-    for (const [by, on] of r.flags || []) { addGrudge(S, on, by, 0.6); addRivalry(S, sp.home, sp.away, 0.04); }
-    for (const [by, on] of r.hurtBy || []) { addGrudge(S, on, by, 0.8); addRivalry(S, sp.home, sp.away, 0.03); }
+    for (const [by, on] of r.flags || []) { addGrudge(S, on, by, 0.5); addRivalry(S, sp.home, sp.away, 0.02); }
+    for (const [by, on] of r.hurtBy || []) { addGrudge(S, on, by, 0.6); addRivalry(S, sp.home, sp.away, 0.02); }
     // team identity and how each player scores
     if (r.style && sp.type === 0) {
       cur.style = cur.style || {};
@@ -497,6 +497,9 @@ function applyResults(S, specs, results) {
       if (p.susp > 0 && !sp.h.includes(p.id) && !sp.a.includes(p.id)) p.susp--;
     }
   }
+  // bad blood cools a little every day (and a lot over the summer)
+  for (const k in S.riv || {}) { S.riv[k] = Math.round(S.riv[k] * 0.992 * 1000) / 1000; if (S.riv[k] < 0.02) delete S.riv[k]; }
+  for (const k in S.grudges || {}) { S.grudges[k] = Math.round(S.grudges[k] * 0.985 * 1000) / 1000; if (S.grudges[k] < 0.1) delete S.grudges[k]; }
   // off the court
   const trng = rngFor(S, "trouble" + cur.phase + cur.day);
   for (const e of TR.rollTrouble(S, trng, { release: (p, tid) => release(S, p, tid, "released after his third incident of the season") })) { e.season = S.season; e.phase = cur.phase; cur.blotter.push(e); }
@@ -658,8 +661,8 @@ function tradeWindow(S, tag) {
     for (const k of picks) tryPkg([], [k]);
     if (!best) continue;
     // execute
-    removeFromTeam(S, X); addToTeam(S, X, b, rng); X.teams.push(b);
-    for (const p of best.players) { removeFromTeam(S, p); addToTeam(S, p, s, rng); p.teams.push(s); }
+    removeFromTeam(S, X, "trade"); addToTeam(S, X, b, rng); X.teams.push(b);
+    for (const p of best.players) { removeFromTeam(S, p, "trade"); addToTeam(S, p, s, rng); p.teams.push(s); }
     for (const k of best.pks) k.owner = s;
     log(S, "trade", { teams: [s, b], toB: [X.id], toS: best.players.map(p => p.id), picks: best.pks.map(k => [k.draft, k.round, k.orig]), when: tag });
     made++;
@@ -747,7 +750,7 @@ function offseason(S) {
       const remaining = cut.contract.thru - S.season + 1;
       if (remaining > 0 && cut.contract.salary > P.minSalary(S.season)) S.teams[tid].dead.push({ amt: cut.contract.salary, thru: cut.contract.thru, pid: cut.id });
       log(S, "waive", { pid: cut.id, team: tid, dead: cut.contract.salary * remaining });
-      removeFromTeam(S, cut); cut.contract = null; cut.fa = true;
+      removeFromTeam(S, cut, "cut"); cut.contract = null; cut.fa = true;
     }
   }
   // fill in rounds, worst teams first, so no team gets first dibs on every leftover
@@ -813,7 +816,7 @@ function expansionDraft(S, newTeams, rng) {
     }
     if (!best) break;
     lost[best.team]++; const from = best.team;
-    removeFromTeam(S, best); addToTeam(S, best, nt, rng); best.teams.push(nt);
+    removeFromTeam(S, best, "expansion"); addToTeam(S, best, nt, rng); best.teams.push(nt);
     log(S, "expansion", { pid: best.id, team: nt, from });
   }
 }

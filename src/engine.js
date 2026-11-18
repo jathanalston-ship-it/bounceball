@@ -434,8 +434,9 @@ function simulateGame(home, away, rosters, seed, opts) {
   function moodNow(P) { return P.mood ? P.mood * dhalf((G.tick - P.moodTk) / 6000) : 0; }
   function setMood(P, m) {
     const m0 = moodNow(P); P.mood = clamp(m, -1, 1); P.moodTk = G.tick;
-    if (m0 > -0.45 && P.mood <= -0.45) ev("mood", { pid: P.idx, team: P.t, lvl: -1 });
-    else if (m0 < 0.45 && P.mood >= 0.45) ev("mood", { pid: P.idx, team: P.t, lvl: 1 });
+    const ev1 = P.evTk || (P.evTk = [-1e9, -1e9, -1e9, -1e9]); // (news once in a while, not every time it flickers)
+    if (m0 > -0.45 && P.mood <= -0.45 && G.tick - ev1[0] > 7200) { ev1[0] = G.tick; ev("mood", { pid: P.idx, team: P.t, lvl: -1 }); }
+    else if (m0 < 0.45 && P.mood >= 0.45 && G.tick - ev1[1] > 7200) { ev1[1] = G.tick; ev("mood", { pid: P.idx, team: P.t, lvl: 1 }); }
   }
   // a big hit: the tough get angry, the soft get rattled
   function jolt(P, size) { if (P.out) return; const m = moodNow(P), t = P.tough; setMood(P, m + (t < 0.5 ? -size * (1 - t) * 1.15 : size * (t - 0.5) * 1.9)); }
@@ -1531,8 +1532,9 @@ function simulateGame(home, away, rosters, seed, opts) {
     const e = fgaEv(S, extra), P = S.P; ev("fga", e);
     const h0 = heatNow(P); P.heat = clamp(h0 + (e.made ? (e.val >= 3 ? 1.15 : 0.8) : -0.6), -3, 4); P.heatTk = G.tick;
     if (P.streak > 0.35) {
-      if (h0 < 2.8 && P.heat >= 2.8) ev("heat", { pid: P.idx, team: P.t, lvl: 1 });
-      else if (h0 > -2.2 && P.heat <= -2.2) ev("heat", { pid: P.idx, team: P.t, lvl: -1 });
+      const ev1 = P.evTk || (P.evTk = [-1e9, -1e9, -1e9, -1e9]);
+      if (h0 < 2.8 && P.heat >= 2.8 && G.tick - ev1[2] > 9600) { ev1[2] = G.tick; ev("heat", { pid: P.idx, team: P.t, lvl: 1 }); }
+      else if (h0 > -2.2 && P.heat <= -2.2 && G.tick - ev1[3] > 9600) { ev1[3] = G.tick; ev("heat", { pid: P.idx, team: P.t, lvl: -1 }); }
     }
   }
   function fgaEv(S, extra) {
@@ -1641,7 +1643,7 @@ function simulateGame(home, away, rosters, seed, opts) {
     const sp = hyp(H.vx, H.vy), dd = dist(D, H) || 1, mk = G.mark[D.t];
     const behind = sp > 4 && ((D.x - H.x) * H.vx + (D.y - H.y) * H.vy) / (sp * dd) < -0.55;
     const dirty = (D.p.aggr - 0.45) * 1.4 + (1 - D.comp) * 0.6 + (tech === "hit" ? 0.5 : 0) + (behind ? 0.7 : 0) + (air ? 0.9 : 0) + (late ? 0.4 : 0)
-      + (mk && mk.E === D && mk.on === H ? 0.8 : 0) + G.riv * 0.3 + grudgeW(D, H) * 0.6 + Math.max(0, moodNow(D)) * 0.4;
+      + (mk && mk.E === D && mk.on === H ? 0.8 : 0) + G.riv * 0.2 + grudgeW(D, H) * 0.4 + Math.max(0, moodNow(D)) * 0.4;
     if (!RULES.flag) return { lvl: 0, dirty }; // before 1969 there's no such thing: a cheap shot is just a hit (or a foul, if it's late)
     const home = D.t === 0 ? 1 - REF.h * 4 : 1 + REF.h * 4; // the crew leans (a little) toward the home team
     if (dirty <= 0.3 || !rng.chance(clamp((dirty - 0.3) * FLAG_RATE * (0.55 + 0.9 * REF.s) * home, 0, 0.14))) return { lvl: 0, dirty };
@@ -1675,7 +1677,7 @@ function simulateGame(home, away, rosters, seed, opts) {
     const star = H.use >= 1.4 || H.p.ovr >= 76, grudge = grudgeW(H, D) + grudgeW(D, H);
     if (!cheap && !(kind === "big" && star) && grudge < 0.3) return false;
     const E = enforcerFor(H.t, D), A = !H.out && H.st !== "down" ? H : null;
-    const k = (kind === "flagrant" || kind === "targeting" ? 1 : dirty >= 1.2 ? 0.8 : kind === "rough" ? 0.5 : kind === "big" ? 0.2 : 0.15) * (star ? 1.4 : 1) + grudge * 1.5;
+    const k = (kind === "flagrant" || kind === "targeting" ? 1 : dirty >= 1.2 ? 0.8 : kind === "rough" ? 0.5 : kind === "big" ? 0.2 : 0.15) * (star ? 1.4 : 1) + grudge * 0.6;
     const who = E && (!A || E.temper > A.temper) ? E : A || E;
     if (who && fightCheck(who, D, kind, k)) return true;
     if (E && !G.mark[H.t] && cheap && E.temper >= 0.45 && rng.chance(0.04 + E.temper * 0.14 + (star ? 0.1 : 0))) { G.mark[H.t] = { E, on: D, until: G.tick + 14400 }; ev("enforcer", { pid: E.idx, team: E.t, on: D.idx, for: H.idx }); }
@@ -1691,12 +1693,12 @@ function simulateGame(home, away, rosters, seed, opts) {
   function fightCheck(A, Bp, why, k) {
     if (G.fight || A.out || Bp.out || !A.on || !Bp.on || A.t === Bp.t || (G.phase !== "dead" && G.phase !== "ft")) return false;
     const heat = (A.temper * 0.65 + Bp.temper * 0.35 - 0.3) * 2.2 + Math.max(0, moodNow(A)) * 0.8;
-    const p = (RULES.fightBan ? FIGHT_RATE * 0.42 : FIGHT_RATE) * k * clamp(heat, 0.05, 2.2) * (1 + G.riv * 1.5) * (1 + (grudgeW(A, Bp) + grudgeW(Bp, A)) * 2.5) * (1.25 - REF.s * 0.5);
+    const p = (RULES.fightBan ? FIGHT_RATE * 0.3 : FIGHT_RATE) * k * clamp(heat, 0.05, 2.2) * (1 + G.riv * 0.5) * (1 + (grudgeW(A, Bp) + grudgeW(Bp, A)) * 0.8) * (1.25 - REF.s * 0.5);
     if (!rng.chance(clamp(p, 0, 0.7))) return false;
     startFight(A, Bp, why); return true;
   }
   function startFight(A, Bp, why) {
-    const brawl = rng.chance((RULES.fightBan ? 0.07 : 0.2) * (1 + G.riv) * (1.25 - REF.s * 0.5)), join = [];
+    const brawl = rng.chance((RULES.fightBan ? 0.07 : 0.18) * (1 + G.riv * 0.5) * (1.25 - REF.s * 0.5)), join = [];
     if (brawl) { for (const P of onC()) if (P !== A && P !== Bp && !P.out) join.push(P); } // everybody's in it
     else for (const t of [A.t, Bp.t]) { // a teammate or two come to pull them apart (or get a shot in)
       const near = G.lineup[t].filter(P => P !== A && P !== Bp && !P.out && P.st !== "down").sort((p, q) => dist(p, A) - dist(q, A)).slice(0, rng.chance(0.4) ? 2 : 1);
@@ -1716,7 +1718,7 @@ function simulateGame(home, away, rosters, seed, opts) {
       if (P.st === "down" && P.stT < 0.3) P.st = "ok";
       P.tx = F.x + dx / L * (apart ? 7 : 1.1); P.ty = F.y + dy / L * (apart ? 7 : 1.1); P.urg = apart ? 0.5 : 1;
     }
-    for (const P of F.join) { const dx = P.x - F.x, dy = P.y - F.y, L = hyp(dx, dy) || 1; P.tx = F.x + dx / L * (apart ? 6 : 3); P.ty = F.y + dy / L * (apart ? 6 : 3); P.urg = 0.9; }
+    for (const P of F.join) { const dx = P.x - F.x, dy = P.y - F.y, L = hyp(dx, dy) || 1, rr = apart ? 6.5 : 2.8 + (P.idx % 3) * 1.5; P.tx = F.x + dx / L * rr; P.ty = F.y + dy / L * rr; P.urg = 0.9; } // a ring of shoving, not one pile
     if (t < F.endT) return;
     G.fight = null; G.clockRun = F.clock;
     for (const P of F.join) P.fightRole = null;
