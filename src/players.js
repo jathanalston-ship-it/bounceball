@@ -18,6 +18,15 @@ const ROLE_LIST = ["PG","WING","SNIPER","BRUISER","BIG"];
 const FIRST = ["Marcus","Deshawn","Tyler","Andre","Cole","Jalen","Brock","Devin","Isaiah","Malik","Trey","Hunter","Darius","Wes","Reggie","Calvin","Otis","Lamar","Dante","Grant","Rashad","Kyle","Mason","Theo","Jerome","Nico","Elijah","Quentin","Boone","Cash","Rollie","Dwayne","Spencer","Terrell","Austin","Bryce","Cyrus","Desmond","Emmett","Felix","Garrett","Hollis","Ike","Jace","Kendrick","Luther","Monty","Nate","Orlando","Percy","Rufus","Sterling","Tobias","Vance","Wendell","Xavier","Yusuf","Zeke","Amos","Beau","Clint","Duke","Ezra","Lonnie","Hank","Moses","Walt","Earl","Chester","Virgil","Leroy","Floyd","Buck","Howard","Lyle","Gus","Dale","Ray","Roy","Curtis","Darnell","Jamal","Tavon","Kobe","Trevon","Zion","Ja","Luka","Bronson","Colt","Ryder","Maddox","Kai","Dmitri","Mateo","Santiago","Kenji","Obi","Tariq","Nasir","Femi","Lars","Arvid","Pavel","Goran","Bogdan","Rico","Hector"];
 const LAST = ["Abernathy","Banks","Calloway","Dunlap","Ellison","Fairbanks","Gaines","Hargrove","Ingram","Jefferson","Kowalski","Lindqvist","McAllister","Nwosu","Okafor","Pruitt","Quarles","Rourke","Salazar","Thibodeaux","Underwood","Vasquez","Whitfield","Yancey","Zielinski","Brannigan","Castellanos","Delacroix","Esposito","Fontaine","Gallagher","Holloway","Jankowski","Kincaid","Lombardi","Mbeki","Novak","O'Shea","Petrakis","Ramsey","Sorensen","Tolliver","Upshaw","Vandermeer","Washburn","Adeyemi","Boudreaux","Crenshaw","Dombrowski","Etheridge","Fitzhugh","Grimsley","Haddad","Kozlov","Larkin","Mancuso","Ndiaye","Ostrowski","Pickett","Rasmussen","Stallworth","Tran","Valdez","Winslow","Coldwell","Dabney","Easley","Ferrante","Hightower","Jablonski","Kruger","Muldoon","Szabo","Achterberg","Barlow","Corcoran","Dupree","Eastwood","Flanagan","Greer","Hatcher","Ivey","Jessup","Keogh","Lattimore","Merriweather","Nash","Oduya","Prentiss","Quinlan","Rudd","Sheffield","Tatum","Umberger","Vance","Weatherspoon","Yost","Zamora","Bianchi","Cardenas","Dubois","Eriksen","Fujita","Gutierrez","Horvat","Iwu","Jovanovic","Kaminski","Lebedev","Moreau","Nakamura","Oyelaran","Popescu","Reyes","Schultz","Takahashi","Ulrich","Varga","Wojcik"];
 
+// first names follow the era a player was born in
+const FIRST_OLD = ["Walt","Earl","Chester","Virgil","Leroy","Floyd","Buck","Howard","Lyle","Gus","Dale","Ray","Roy","Hank","Moses","Otis","Rufus","Percy","Wendell","Luther","Monty","Amos","Clint","Duke","Lonnie","Hollis","Ike","Rollie","Calvin","Emmett","Sterling","Vance","Orlando","Grant","Harold","Bernard","Clarence","Melvin","Elmer","Herb","Stan","Ernie","Mack","Virgil","Cecil","Wilbur","Norm","Lloyd"];
+const FIRST_MID = ["Marcus","Andre","Darius","Reggie","Lamar","Dante","Rashad","Kyle","Jerome","Quentin","Dwayne","Spencer","Terrell","Austin","Bryce","Desmond","Garrett","Kendrick","Nate","Tobias","Xavier","Yusuf","Zeke","Beau","Curtis","Darnell","Jamal","Tyler","Cole","Devin","Isaiah","Malik","Trey","Hunter","Wes","Mason","Theo","Nico","Elijah","Felix","Ezra","Cyrus","Boone","Cash","Derek","Shawn","Corey","Lance"];
+const FIRST_NEW = ["Ja","Zion","Luka","Kobe","Trevon","Tavon","Bronson","Colt","Ryder","Maddox","Kai","Mateo","Santiago","Kenji","Obi","Tariq","Nasir","Femi","Jalen","Deshawn","Brock","Jace","Dmitri","Lars","Arvid","Pavel","Goran","Bogdan","Rico","Hector","Jaylen","Zaire","Cade","Brayden"];
+function pickFirst(rng, born) {
+  const w = born < 1945 ? [0.75, 1.0] : born < 1965 ? [0.4, 0.95] : born < 1985 ? [0.08, 0.72] : [0.02, 0.45];
+  const x = rng.next();
+  return rng.pick(x < w[0] ? FIRST_OLD : x < w[1] ? FIRST_MID : FIRST_NEW);
+}
 function overall(p) {
   const w = ROLES[p.role].w; let s = 0, ws = 0;
   for (const k in w) { s += p.r[k] * w[k]; ws += w[k]; }
@@ -51,7 +60,7 @@ function genPlayer(rng, role, q, id, season, age) {
   }
   for (const k of RKEYS) r[k] = Math.round(clamp(r[k], 20, 99));
   const p = {
-    id, role, first: rng.pick(FIRST), last: rng.pick(LAST), ht, wt, wing, born: season - age, r, tier,
+    id, role, first: pickFirst(rng, season - age), last: rng.pick(LAST), ht, wt, wing, born: season - age, r, tier,
     drive: Math.round(clamp(rng.normal(50, 18), 1, 99)),   // hidden: who blooms, who wastes it
     aggr: Math.round(clamp(rng.normal(0.5, 0.2), 0, 1) * 100) / 100,
     trouble: Math.round(clamp(rng.normal(0.25, 0.18), 0, 1) * 100) / 100, // hidden: off-court risk (used in phase 4)
@@ -62,13 +71,15 @@ function genPlayer(rng, role, q, id, season, age) {
 }
 
 // Yearly development. age = age during the coming season.
-function develop(p, rng, season) {
+function develop(p, rng, season, coachDev) {
   const age = season - p.born;
   const d = (p.drive - 50) / 50; // -1..1
+  const cdev = age <= 27 ? (coachDev || 0) * 0.6 : 0; // a good development coach adds up to ~0.6/yr to young players
   let g;
   if (age <= 21) g = 2.3; else if (age <= 23) g = 1.6; else if (age <= 25) g = 0.8; else if (age <= 27) g = 0.15;
   else if (age <= 29) g = -0.6; else if (age <= 31) g = -1.5; else if (age <= 33) g = -2.5; else if (age <= 35) g = -3.6; else g = -5;
-  g += age <= 28 ? d * 1.6 : d * 0.7;              // drive: late bloomers vs. wasted talent; also slows decline
+  g += age <= 28 ? d * 1.6 : d * 0.7;
+  g += cdev;              // drive: late bloomers vs. wasted talent; also slows decline
   const shock = rng.normal(0, 1.1);               // breakout / bust year
   for (const k of RKEYS) {
     let gk = g;
@@ -100,7 +111,7 @@ function tradeValue(p, season, mode) {
 function age(p, season) { return season - p.born; }
 function displayName(p) { return p.first + " " + p.last; }
 
-const API = { RKEYS, RLABEL, ROLES, ROLE_LIST, overall, genPlayer, develop, capFor, salaryShare, askingSalary, minSalary, tradeValue, age, displayName };
+const API = { FIRST, LAST, pickFirst, RKEYS, RLABEL, ROLES, ROLE_LIST, overall, genPlayer, develop, capFor, salaryShare, askingSalary, minSalary, tradeValue, age, displayName };
 if (typeof module !== "undefined" && module.exports) module.exports = API;
 else window.BB = Object.assign(window.BB || {}, API);
 })();

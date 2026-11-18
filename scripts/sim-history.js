@@ -50,8 +50,12 @@ function writeSummaries(S) {
       contract: p.contract, injury: p.injury };
   }
   writeJSON(path.join(OUT, "players.json"), players);
+  const coaches = {}, owners = {};
+  for (const c of Object.values(S.coaches)) if (c.team || c.w + c.l > 0) coaches[c.id] = { id: c.id, name: c.first + " " + c.last, born: c.born, ex: c.ex, team: c.team, off: c.off, def: c.def, dev: c.dev, style: c.style, w: c.w, l: c.l, pw: c.pw, pl: c.pl, titles: c.titles, awards: c.awards, seasons: c.seasons || [], hist: c.hist, retired: c.retired };
+  for (const o of Object.values(S.owners)) owners[o.id] = { id: o.id, name: o.first + " " + o.last, born: o.born, team: o.team, from: o.from, to: o.to, how: o.how, biz: o.biz, wealth: o.wealth, patience: o.patience, spend: o.spend };
+  writeJSON(path.join(OUT, "staff.json"), { coaches, owners });
   const teams = {};
-  for (const info of T.TEAMS) { const t = S.teams[info.id]; if (t) teams[info.id] = Object.assign({}, info, { roster: t.roster, hist: t.hist, titles: t.titles, payroll: L.payroll(S, info.id) }); }
+  for (const info of T.TEAMS) { const t = S.teams[info.id]; if (t) teams[info.id] = Object.assign({}, info, { roster: t.roster, hist: t.hist, titles: t.titles, payroll: L.payroll(S, info.id), coach: t.coach, owner: t.owner, coachHist: t.coachHist, ownerHist: t.ownerHist }); }
   writeJSON(path.join(OUT, "league.json"), {
     seed: S.masterSeed, nextSeason: S.season, leagueVersion: L.LEAGUE_VERSION, engineVersion: S.engineVersion,
     seasons: S.champions.map(c => c.season), champions: S.champions.map(c => Object.assign({}, c, { fmvpName: name(S, c.fmvp), mvpName: name(S, c.mvp) })),
@@ -70,7 +74,7 @@ async function main() {
     L.startSeason(S);
     let specs, ngames = 0;
     while ((specs = L.nextGames(S))) {
-      const results = await Promise.all(specs.map(sp => pool.run({ sp, rosters: L.rostersFor(S, sp) })));
+      const results = await Promise.all(specs.map(sp => pool.run({ sp, rosters: L.rostersFor(S, sp), tactics: L.tacticsFor(S, sp) })));
       L.applyResults(S, specs, results); ngames += specs.length;
     }
     const aw = L.finishSeason(S);

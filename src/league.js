@@ -7,8 +7,10 @@ const NODE = typeof module !== "undefined" && module.exports;
 const E = NODE ? require("./engine.js") : window.BB;
 const P = NODE ? require("./players.js") : window.BB;
 const T = NODE ? require("./teams.js") : window.BB;
+const ST = NODE ? require("./staff.js") : window.BB;
+const TR = NODE ? require("./trouble.js") : window.BB;
 const { clamp, makeRng, hashStr } = E;
-const LEAGUE_VERSION = "0.2.0";
+const LEAGUE_VERSION = "0.3.0";
 const GAMES = 82, ROSTER_MIN = 13, ROSTER_MAX = 15, ACTIVE = 13;
 const ROSTER_ROLES = ["PG","WING","SNIPER","BRUISER","BIG","PG","WING","WING","SNIPER","BRUISER","BRUISER","BIG","BIG"];
 const STAT_KEYS = ["gp","gs","min","pts","fgm","fga","tpm","tpa","fpm","fpa","ftm","fta","oreb","dreb","ast","stl","blk","to","tkl","btk","pf"];
@@ -57,13 +59,17 @@ function generateRoster(S, tid, rng, q) {
   if (pay > cap) for (const id of S.teams[tid].roster) { const c = S.players[id].contract; c.salary = Math.max(P.minSalary(S.season), Math.round(c.salary * cap / pay / 1000) * 1000); }
 }
 function addTeam(S, info) {
-  S.teams[info.id] = { id: info.id, roster: [], dead: [], hist: [], titles: 0, joined: S.season };
+  S.teams[info.id] = { id: info.id, roster: [], dead: [], hist: [], titles: 0, joined: S.season, coach: null, owner: null, coachHist: [], ownerHist: [] };
   S.active.push(info.id);
 }
+function staffTeam(S, info, rng) {
+  ST.genOwner(S, rng, info.id, info.how);
+  ST.hireCoach(S, info.id, rng, "founding", (type, d) => log(S, type, d));
+}
 function newLeague(masterSeed, startSeason) {
-  const S = { masterSeed: String(masterSeed), season: startSeason || 1954, nextPid: 1, players: {}, teams: {}, active: [], picks: [], offTx: [], champions: [], hofClasses: [], cur: null, leagueVersion: LEAGUE_VERSION, engineVersion: E.ENGINE_VERSION };
+  const S = { masterSeed: String(masterSeed), season: startSeason || 1954, nextPid: 1, nextCid: 1, nextOid: 1, players: {}, teams: {}, coaches: {}, owners: {}, active: [], picks: [], offTx: [], champions: [], hofClasses: [], cur: null, leagueVersion: LEAGUE_VERSION, engineVersion: E.ENGINE_VERSION };
   const rng = rngFor(S, "init");
-  for (const info of T.TEAMS.filter(t => t.joined <= S.season)) { addTeam(S, info); generateRoster(S, info.id, rng, -1); }
+  for (const info of T.TEAMS.filter(t => t.joined <= S.season)) { addTeam(S, info); generateRoster(S, info.id, rng, -1); staffTeam(S, info, rng); }
   for (let y = S.season; y < S.season + 3; y++) addPicks(S, y);
   S.targets = ratingMeans(S);
   return S;
@@ -103,6 +109,13 @@ function eraAdjust(S) {
   return { f, shift };
 }
 
+function release(S, p, tid, why) {
+  const c = p.contract, rem = c ? c.thru - S.season + 1 : 0;
+  if (c && rem > 0 && c.salary > P.minSalary(S.season)) S.teams[tid].dead.push({ amt: c.salary, thru: c.thru, pid: p.id });
+  log(S, "waive", { pid: p.id, team: tid, dead: c ? c.salary * rem : 0, why });
+  removeFromTeam(S, p); p.contract = null; p.fa = true;
+}
+
 // ---------- schedule ----------
 function circleRounds(n) {
   const ids = [...Array(n).keys()], rounds = [];
@@ -139,7 +152,7 @@ function makeSchedule(teamIds, rng) {
 }
 
 // ---------- depth chart ----------
-function healthy(p) { return !p.injury || p.injury.out <= 0; }
+function healthy(p) { return (!p.injury || p.injury.out <= 0) && !(p.susp > 0); }
 function depthChart(S, tid, rng) {
   let avail = teamPlayers(S, tid).filter(healthy);
   if (avail.length < 10) { hardship(S, tid, 10 - avail.length, rng); avail = teamPlayers(S, tid).filter(healthy); }
@@ -164,7 +177,7 @@ function hardship(S, tid, n, rng) {
 // ---------- season ----------
 function startSeason(S) {
   const rng = rngFor(S, "schedule");
-  S.cur = { season: S.season, day: 0, phase: "regular", schedule: makeSchedule(S.active, rng), games: [], tx: S.offTx, injuries: [], stats: {}, pstats: {}, standings: {}, deadlineDone: false, gameSeq: 0, playoffs: null, snapshot: snapshotPlayers(S) };
+  S.cur = { season: S.season, day: 0, phase: "regular", schedule: makeSchedule(S.active, rng), games: [], tx: S.offTx, injuries: [], stats: {}, pstats: {}, standings: {}, deadlineDone: false, gameSeq: 0, playoffs: null, snapshot: snapshotPlayers(S), coachSnap: {}, coachStart: {}, blotter: [] };
   S.offTx = [];
   for (const tid of S.active) S.cur.standings[tid] = [0, 0, 0, 0];
 }
@@ -198,13 +211,16 @@ function spec(S, h, a, type, rng) {
   const gid = S.cur.gameSeq++;
   const hr = depthChart(S, h, rng), ar = depthChart(S, a, rng);
   for (const p of hr.concat(ar)) if (!S.cur.snapshot[p.id]) S.cur.snapshot[p.id] = engineView(p);
-  return { gid, season: S.season, day: S.cur.day, type, home: h, away: a, seed: gameSeed(S, gid), h: hr.map(p => p.id), a: ar.map(p => p.id) };
+  const hc = S.teams[h].coach, ac = S.teams[a].coach;
+  for (const cid of [hc, ac]) if (!S.cur.coachSnap[cid]) { const c = S.coaches[cid]; S.cur.coachSnap[cid] = { id: cid, name: c.first + " " + c.last, tac: ST.tactics(c) }; }
+  return { gid, season: S.season, day: S.cur.day, type, home: h, away: a, seed: gameSeed(S, gid), h: hr.map(p => p.id), a: ar.map(p => p.id), hc, ac };
 }
 // What a worker needs: player views from the season snapshot (ratings are frozen in-season)
 function rostersFor(S, sp) { return [sp.h.map(id => S.cur.snapshot[id]), sp.a.map(id => S.cur.snapshot[id])]; }
+function tacticsFor(S, sp) { return [S.cur.coachSnap[sp.hc].tac, S.cur.coachSnap[sp.ac].tac]; }
 // Run one game (used by workers and single-thread mode). Returns a compact result.
-function runGame(sp, rosters) {
-  const g = E.simulateGame({ id: sp.home }, { id: sp.away }, rosters, sp.seed, { frames: false });
+function runGame(sp, rosters, tactics) {
+  const g = E.simulateGame({ id: sp.home }, { id: sp.away }, rosters, sp.seed, { frames: false, tactics });
   const box = E.boxScore(g, 1e12);
   const ids = rosters[0].concat(rosters[1]).map(p => p.id);
   const lines = box.map((b, i) => [ids[i], b.played ? 1 : 0, i % 13 < 5 ? 1 : 0, Math.round(b.secs), b.pts, b.fgm, b.fga, b.tpm, b.tpa, b.fpm, b.fpa, b.ftm, b.fta, b.oreb, b.dreb, b.ast, b.stl, b.blk, b.to, b.tkl, b.btk, b.pf]);
@@ -225,7 +241,7 @@ function applyResults(S, specs, results) {
     const sp = specs[i], r = results[i];
     const store = sp.type === 0 ? cur.stats : cur.pstats;
     r.lines.forEach((ln, j) => addLine(store, ln, j < 13 ? sp.home : sp.away));
-    cur.games.push([sp.gid, sp.day, sp.home, sp.away, sp.seed, r.hs, r.as, r.per, sp.type, sp.h, sp.a]);
+    cur.games.push([sp.gid, sp.day, sp.home, sp.away, sp.seed, r.hs, r.as, r.per, sp.type, sp.h, sp.a, sp.hc, sp.ac]);
     if (sp.type === 0) {
       const H = cur.standings[sp.home], A = cur.standings[sp.away];
       if (r.hs > r.as) { H[0]++; A[1]++; } else { A[0]++; H[1]++; }
@@ -248,12 +264,18 @@ function applyResults(S, specs, results) {
       const [name, lo, hi] = INJ[k]; const out = rng.int(lo, hi);
       p.injury = { name, out }; cur.injuries.push([sp.gid, id, p.team, name, out]);
     }
-    // games missed tick down for both teams
-    for (const tid of [sp.home, sp.away]) for (const p of teamPlayers(S, tid)) if (p.injury && p.injury.out > 0 && !hurt.has(p.id)) { p.injury.out--; if (p.injury.out <= 0) p.injury = null; }
+    // games missed (injury or suspension) tick down for both teams
+    for (const tid of [sp.home, sp.away]) for (const p of teamPlayers(S, tid)) {
+      if (p.injury && p.injury.out > 0 && !hurt.has(p.id)) { p.injury.out--; if (p.injury.out <= 0) p.injury = null; }
+      if (p.susp > 0 && !sp.h.includes(p.id) && !sp.a.includes(p.id)) p.susp--;
+    }
   }
+  // off the court
+  const trng = rngFor(S, "trouble" + cur.phase + cur.day);
+  for (const e of TR.rollTrouble(S, trng, { release: (p, tid) => release(S, p, tid, "released after his third incident of the season") })) { e.season = S.season; e.phase = cur.phase; cur.blotter.push(e); }
   cur.day++;
   if (cur.phase === "regular") {
-    if (!cur.deadlineDone && cur.day >= Math.floor(cur.schedule.length * 0.6)) { cur.deadlineDone = true; tradeWindow(S, "deadline"); }
+    if (!cur.deadlineDone && cur.day >= Math.floor(cur.schedule.length * 0.6)) { cur.deadlineDone = true; tradeWindow(S, "deadline"); ST.midseasonFirings(S, rngFor(S, "firings"), (type, d) => log(S, type, d)); }
     if (cur.day >= cur.schedule.length) startPlayoffs(S);
   } else if (cur.phase === "playoffs") {
     const pf = cur.playoffs;
@@ -324,9 +346,21 @@ function finishSeason(S) {
     const pfS = cur.playoffs.series.filter(s => s.hi === tid || s.lo === tid);
     let res = pfS.length ? "R" + Math.max(...pfS.map(s => s.round)) : "-";
     if (tid === champ) res = "Champion"; else if (tid === awards.runnerUp) res = "Finals";
-    S.teams[tid].hist.push({ season: S.season, w: st[tid][0], l: st[tid][1], rank: order.indexOf(tid) + 1, res });
+    S.teams[tid].hist.push({ season: S.season, w: st[tid][0], l: st[tid][1], rank: order.indexOf(tid) + 1, res, coach: S.teams[tid].coach, owner: S.teams[tid].owner });
   }
   S.teams[champ].titles++;
+  // coaches: credit the season and playoffs, titles, Coach of the Year (biggest turnaround)
+  let coy = null, cv = -1e9;
+  for (const tid of S.active) {
+    ST.recordCoachSeason(S, tid);
+    const c = S.coaches[S.teams[tid].coach]; if (!c) continue;
+    for (const s of cur.playoffs.series) if (s.hi === tid || s.lo === tid) { c.pw += s.hi === tid ? s.wins[0] : s.wins[1]; c.pl += s.hi === tid ? s.wins[1] : s.wins[0]; }
+    if (tid === champ) { c.titles++; c.awards.push([S.season, "title"]); }
+    const h = S.teams[tid].hist, prev = h.length >= 2 ? h[h.length - 2].w : 41;
+    const v = (st[tid][0] - prev) + st[tid][0] * 0.15;
+    if (!cur.coachStart[tid] && v > cv) { cv = v; coy = c.id; }
+  }
+  if (coy) { S.coaches[coy].awards.push([S.season, "coy"]); awards.coy = coy; }
   S.champions.push({ season: S.season, champ, runnerUp: awards.runnerUp, fmvp: awards.fmvp, mvp: awards.mvp });
   cur.awards = awards;
   return awards;
@@ -423,7 +457,8 @@ function offseason(S) {
     for (const p of ps) {
       if (!p.contract || p.contract.thru > season) continue;
       const ask = Math.round(P.askingSalary(p, season + 1) * rng.range(1.0, 1.12) / 1000) * 1000;
-      if (keep.has(p.id) && P.age(p, season + 1) < 36 && payroll(S, tid, season + 1) - p.contract.salary + ask <= P.capFor(season + 1) * 0.97) {
+      const own = S.owners[S.teams[tid].owner], spend = own ? own.spend : 0.5;
+      if (keep.has(p.id) && P.age(p, season + 1) < 36 && payroll(S, tid, season + 1) + ask <= P.capFor(season + 1) * (0.9 + 0.08 * spend)) {
         p.contract = { salary: ask, thru: season + contractYears(P.age(p, season + 1), rng), signed: season + 1 };
         log(S, "resign", { pid: p.id, team: tid, salary: ask });
       } else { removeFromTeam(S, p); p.contract = null; p.fa = true; }
@@ -432,7 +467,12 @@ function offseason(S) {
   // 4. new season begins: aging & development, injuries heal
   S.season++;
   const drng = rngFor(S, "develop");
-  for (const p of Object.values(S.players)) if (!p.retired) { P.develop(p, drng, S.season); if (p.injury && p.injury.out < 82) p.injury = null; else if (p.injury) p.injury.out = Math.max(0, p.injury.out - 30); }
+  for (const p of Object.values(S.players)) if (!p.retired) {
+    const c = p.team && S.teams[p.team].coach ? S.coaches[S.teams[p.team].coach] : null;
+    P.develop(p, drng, S.season, c ? (c.dev - 50) / 50 : 0);
+    if (p.injury && p.injury.out < 82) p.injury = null; else if (p.injury) p.injury.out = Math.max(0, p.injury.out - 30);
+    if (S.season - p.born > 27) p.trouble = Math.max(0.02, Math.round(((p.trouble || 0.25) - 0.01) * 100) / 100); // most guys calm down
+  }
   // 5. retirements
   for (const p of Object.values(S.players)) {
     if (p.retired) continue;
@@ -444,11 +484,14 @@ function offseason(S) {
       p.retired = S.season - 1; p.fa = false;
       if (p.team) { log(S, "retire", { pid: p.id, team: p.team }); removeFromTeam(S, p); }
       p.contract = null;
+      if (p.career && p.career.seasons >= 4) ST.maybeCoachingCareer(S, p, drng);
     }
   }
   eraAdjust(S);
+  // coaches and owners
+  ST.staffOffseason(S, rng, (type, d) => log(S, type, d));
   // 6. expansion / merger
-  for (const info of T.TEAMS.filter(t => t.joined === S.season)) addTeam(S, info);
+  for (const info of T.TEAMS.filter(t => t.joined === S.season)) { addTeam(S, info); staffTeam(S, info, rng); }
   const newcomers = T.TEAMS.filter(t => t.joined === S.season);
   if (newcomers.length) {
     for (const info of newcomers.filter(t => t.how === "merger")) { generateRoster(S, info.id, rng, -1.5); log(S, "merger", { team: info.id }); }
@@ -547,7 +590,7 @@ function freeAgency(S, rng) {
     const offers = [];
     for (const tid of S.active) {
       const ros = teamPlayers(S, tid); if (ros.length >= ROSTER_MAX) continue;
-      const room = cap - payroll(S, tid); if (room < P.minSalary(S.season)) continue;
+      const room = ST.payrollTarget(S, tid) - payroll(S, tid); if (room < P.minSalary(S.season)) continue;
       const tenth = ros.map(q => q.ovr).sort((a, b) => b - a)[9] || 0;
       if (ros.length >= ROSTER_MIN && p.ovr <= tenth) continue;
       const offer = Math.min(ask, room);
@@ -568,14 +611,15 @@ function exportSeason(S) {
   return {
     season: cur.season, leagueVersion: LEAGUE_VERSION, engineVersion: E.ENGINE_VERSION, masterSeed: S.masterSeed,
     teams: S.active.slice(), cap: P.capFor(cur.season), statKeys: STAT_KEYS,
-    gameKeys: ["gid","day","home","away","seed","hs","as","periods","type","homeLineup","awayLineup"],
+    gameKeys: ["gid","day","home","away","seed","hs","as","periods","type","homeLineup","awayLineup","homeCoach","awayCoach"],
     games: cur.games, standings: cur.standings,
     playoffs: cur.playoffs, awards: cur.awards,
     stats: statArr(cur.stats), pstats: statArr(cur.pstats),
-    players: cur.snapshot, injuries: cur.injuries, tx: cur.tx
+    players: cur.snapshot, injuries: cur.injuries, tx: cur.tx, blotter: cur.blotter,
+    coaches: cur.coachSnap, owners: Object.fromEntries(S.active.map(t => { const o = S.owners[S.teams[t].owner]; return [t, { id: o.id, name: o.first + " " + o.last }]; }))
   };
 }
 
-const API = { LEAGUE_VERSION, STAT_KEYS, newLeague, startSeason, nextGames, rostersFor, runGame, applyResults, finishSeason, offseason, exportSeason, payroll, standingsOrder, hofScore, makeSchedule };
+const API = { LEAGUE_VERSION, STAT_KEYS, newLeague, startSeason, nextGames, rostersFor, tacticsFor, runGame, applyResults, finishSeason, offseason, exportSeason, payroll, standingsOrder, hofScore, makeSchedule };
 if (NODE) module.exports = API; else window.BB = Object.assign(window.BB || {}, API);
 })();

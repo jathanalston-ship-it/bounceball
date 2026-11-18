@@ -1,17 +1,20 @@
 // ===================== LEAGUE HUB: reads data/ and renders the league's record =====================
 "use strict";
 const BASE = window.DATA_BASE || "../data/";
-const D = { lg: null, pl: null, idx: null, seasons: {} };
+const D = { lg: null, pl: null, idx: null, staff: { coaches: {}, owners: {} }, seasons: {} };
 async function J(p) { if (window.INLINE && p in window.INLINE) return window.INLINE[p]; const r = await fetch(BASE + p); if (!r.ok) throw new Error("missing " + p); return r.json(); }
 async function season(y) { return D.seasons[y] || (D.seasons[y] = await J("seasons/" + y + ".json")); }
-const AW = { mvp: "MVP", dpoy: "Defensive Player of the Year", roy: "Rookie of the Year", sniper: "Sniper Award (most fours)", fmvp: "Finals MVP" };
+const AW = { mvp: "MVP", dpoy: "Defensive Player of the Year", roy: "Rookie of the Year", sniper: "Sniper Award (most fours)", fmvp: "Finals MVP", coy: "Coach of the Year" };
 const AWS = { mvp: "MVP", dpoy: "DPOY", roy: "ROY", sniper: "Sniper", fmvp: "Finals MVP", champ: "Champion" };
 const tname = id => TB[id] ? TB[id].city + " " + TB[id].name : id;
 const chip = id => `<span class="chip" style="--c:${TB[id] ? TB[id].c1 : "#888"};--c2:${TB[id] ? TB[id].c2 : "#333"}"></span>`;
 const tlink = (id, short) => `<a href="#team-${id}">${chip(id)}${esc(short ? TB[id].name : tname(id))}</a>`;
 const pname = id => D.pl[id] ? D.pl[id].name : "#" + id;
 const plink = id => `<a href="#player-${id}">${esc(pname(id))}</a>`;
-const money = n => n >= 1e6 ? "$" + (n / 1e6).toFixed(n >= 1e7 ? 1 : 2) + "M" : "$" + Math.round(n / 1000) + "k";
+const cname = id => D.staff.coaches[id] ? D.staff.coaches[id].name : "Coach #" + id;
+const clink = id => `<a href="#coach-${id}">${esc(cname(id))}</a>`;
+const oname = id => D.staff.owners[id] ? D.staff.owners[id].name : "Owner #" + id;
+const money = n => n >= 1e6 ? "$" + (n / 1e6).toFixed(n >= 1e7 ? 1 : 2) + "M" : n >= 10000 ? "$" + Math.round(n / 1000) + "k" : "$" + Math.round(n).toLocaleString();
 const pct = (a, b) => b ? (a / b * 100).toFixed(1) : "–";
 const lastSeason = () => D.lg.seasons[D.lg.seasons.length - 1];
 function statObj(S, arr) { const o = { team: arr[0] }; S.statKeys.forEach((k, i) => o[k] = arr[i + 1]); return o; }
@@ -48,7 +51,7 @@ async function vStandings(y) {
 }
 function awardsBlock(S) {
   let h = `<h3>Awards</h3><div class="aw">`;
-  for (const k of ["mvp", "fmvp", "dpoy", "roy", "sniper"]) if (S.awards[k] !== null && S.awards[k] !== undefined) h += `<div><span class="m">${AW[k]}</span>${plink(S.awards[k])}</div>`;
+  for (const k of ["mvp", "fmvp", "dpoy", "roy", "sniper", "coy"]) if (S.awards[k] !== null && S.awards[k] !== undefined) h += `<div><span class="m">${AW[k]}</span>${k === "coy" ? clink(S.awards[k]) : plink(S.awards[k])}</div>`;
   return h + `</div>`;
 }
 async function vLeaders(y) {
@@ -97,6 +100,12 @@ async function vTeams() {
 async function vTeam(id) {
   const t = TB[id], tm = D.lg.teams[id];
   let h = `<div class="thead" style="--c:${t.c1};--c2:${t.c2}"><span class="sw big"></span><div><h2>${esc(t.city)} ${esc(t.name)}</h2><p class="m">${esc(t.arena)} · joined ${t.joined} (${t.how}) · ${tm.titles} championship${tm.titles === 1 ? "" : "s"} · payroll ${money(tm.payroll)}</p></div></div>`;
+  if (tm.coach || tm.owner) {
+    const c = D.staff.coaches[tm.coach], o = D.staff.owners[tm.owner];
+    h += `<div class="aw">${c ? `<div><span class="m">Head coach${c.ex ? " (former player)" : ""}</span>${clink(c.id)} <span class="m">${c.w}-${c.l} career</span></div>` : ""}${o ? `<div><span class="m">Owner${o.how === "heir" ? " (inherited)" : o.how === "purchase" ? " (bought the team)" : ""}</span>${esc(o.name)} <span class="m">${esc(o.biz || "")}</span></div>` : ""}</div>`;
+    if (tm.coachHist && tm.coachHist.length > 1) h += `<p class="m small">Coaching history: ${tm.coachHist.slice().reverse().map(x => `${clink(x.cid)} (${x.from}–${x.to || "now"}${x.why ? ", " + x.why : ""})`).join(" · ")}</p>`;
+    if (tm.ownerHist && tm.ownerHist.length > 1) h += `<p class="m small">Ownership: ${tm.ownerHist.map(x => `${esc(oname(x.oid))} (${x.from}, ${x.how})`).join(" → ")}</p>`;
+  }
   const roster = Object.values(D.pl).filter(p => p.team === id).sort((a, b) => b.ovr - a.ovr);
   h += `<h3>Current roster (${D.lg.nextSeason})</h3><div class="tw"><table class="box"><thead><tr><th class="pn">Player</th><th>Pos</th><th>Age</th><th>OVR</th><th>Contract</th></tr></thead><tbody>`;
   for (const p of roster) h += `<tr><td class="pn"><span class="num">${p.num}</span>${plink(p.id)}${p.injury ? ` <span class="inj">${esc(p.injury.name)}</span>` : ""}</td><td>${BB.ROLES[p.role].name}</td><td>${D.lg.nextSeason - p.born}</td><td class="b">${p.ovr}</td><td>${p.contract ? money(p.contract.salary) + " thru " + p.contract.thru : "–"}</td></tr>`;
@@ -137,6 +146,10 @@ async function vMoves(y) {
       case "waive": return `${tlink(t.team, true)} waive ${plink(t.pid)}${t.dead ? ` · ${money(t.dead)} dead money` : ""}`;
       case "expansion": return `${tlink(t.team, true)} take ${plink(t.pid)} from ${TB[t.from].name} in the expansion draft`;
       case "merger": return `${tlink(t.team)} join from the WBA with their roster`;
+      case "coach-hire": return `${tlink(t.team, true)} hire ${clink(t.cid)}${t.why === "interim" ? " as interim coach" : ""}`;
+      case "coach-fired": return `${tlink(t.team, true)} fire coach ${clink(t.cid)}`;
+      case "coach-retired": return `${tlink(t.team, true)} coach ${clink(t.cid)} retires`;
+      case "owner-change": return `${tlink(t.team, true)}: ${esc(oname(t.from))} ${t.how === "heir" ? "hands the team to " + esc(oname(t.to)) : t.how === "forced sale" ? "is forced to sell to " + esc(oname(t.to)) : "sells the team to " + esc(oname(t.to))}`;
     }
     return t.type;
   };
@@ -144,8 +157,8 @@ async function vMoves(y) {
   const filt = new URLSearchParams("").get("x");
   let h = `<div class="vh"><h2>${y} transactions</h2>${seasonPicker(y, "moves")}</div>`;
   const grp = (title, list, types) => { const l = list.filter(t => types.includes(t.type)); return l.length ? `<h4>${title} (${l.length})</h4><ul class="tx">${l.map(t => `<li>${fmt(t)}</li>`).join("")}</ul>` : ""; };
-  h += `<h3>Offseason before ${y}</h3>` + grp("Expansion & merger", pre, ["expansion", "merger"]) + grp("Draft", pre, ["draft"]) + grp("Trades", pre, ["trade"]) + grp("Free agency", pre, ["sign", "resign"]) + grp("Retirements", pre, ["retire"]) + grp("Waived", pre, ["waive"]);
-  h += `<h3>During the season</h3>` + (grp("Trade deadline", mid, ["trade"]) + grp("Signings", mid, ["sign"]) || `<p class="m">Quiet year.</p>`);
+  h += `<h3>Offseason before ${y}</h3>` + grp("Front offices", pre, ["coach-hire", "coach-fired", "coach-retired", "owner-change"]) + grp("Expansion & merger", pre, ["expansion", "merger"]) + grp("Draft", pre, ["draft"]) + grp("Trades", pre, ["trade"]) + grp("Free agency", pre, ["sign", "resign"]) + grp("Retirements", pre, ["retire"]) + grp("Waived", pre, ["waive"]);
+  h += `<h3>During the season</h3>` + (grp("Trade deadline", mid, ["trade"]) + grp("Coaching changes", mid, ["coach-hire", "coach-fired"]) + grp("Signings & releases", mid, ["sign", "waive"]) || `<p class="m">Quiet year.</p>`);
   h += `<h4>Injuries (${S.injuries.length})</h4><ul class="tx">${S.injuries.filter(i => i[4] >= 10).map(i => `<li>${plink(i[1])} (${TB[i[2]].name}): ${esc(i[3])}, out ${i[4] >= 82 ? "for the season" : i[4] + " games"}</li>`).join("")}</ul><p class="m small">Showing injuries of 10+ games. Tackles cause most of them.</p>`;
   return h;
 }
@@ -156,11 +169,46 @@ async function vGames(y, team) {
   h += `<select class="sp" onchange="location.hash='games-${y}'+(this.value?'-'+this.value:'')"><option value="">All teams</option>${S.teams.map(t => `<option value="${t}" ${t === team ? "selected" : ""}>${tname(t)}</option>`).join("")}</select>`;
   h += `<p class="m small">Every game is stored as a seed plus the two lineups. Tap one to replay it through the engine exactly as it happened.</p><ul class="games">`;
   const rows = S.games.filter(g => !team || g[2] === team || g[3] === team).slice().reverse();
+  let lastDay = null;
   for (const g of rows.slice(0, 400)) {
     const [gid, day, hm, aw, , hs, as, per, type] = g;
+    const dk = type + ":" + day;
+    if (dk !== lastDay) { lastDay = dk; const n = S.games.filter(x => x[1] === day && x[8] === type).length; h += `<li class="dayh"><span>${type ? "Playoffs, day " + (day + 1) : "Day " + (day + 1)}</span>${n > 1 && !team ? `<a href="#tv-${y}-${type}-${day}">📺 Watch ${Math.min(3, n)} at once</a>` : ""}</li>`; }
     h += `<li><a href="#watch-${y}-${gid}"><span class="m">${type ? "Playoffs" : "Day " + (day + 1)}</span><span>${chip(aw)}${TB[aw].name} <b class="${as > hs ? "w" : ""}">${as}</b></span><span>@ ${chip(hm)}${TB[hm].name} <b class="${hs > as ? "w" : ""}">${hs}</b>${per > 4 ? ` <span class="m">${per === 5 ? "OT" : (per - 4) + "OT"}</span>` : ""}</span></a></li>`;
   }
   return h + `</ul>`;
+}
+async function vTv(y, type, day) {
+  const S = await season(y);
+  // the three best matchups of the day air together
+  const st = S.standings, q = t => st[t][0] / Math.max(1, st[t][0] + st[t][1]);
+  const rows = S.games.filter(g => g[1] === +day && g[8] === +type).sort((a, b) => (q(b[2]) + q(b[3])) - (q(a[2]) + q(a[3]))).slice(0, 3);
+  $("broadcast").hidden = false;
+  loadChannels(rows, S);
+  return `<p><a href="#games-${y}">← ${y} games</a> · <span class="m">Three games on one clock. Tap a channel, or swipe the court, to flip between them.</span></p>`;
+}
+async function vBlotter(y) {
+  const S = await season(y);
+  const who = e => e.who === "player" ? plink(e.id) : e.who === "coach" ? "Coach " + clink(e.id) : "Owner " + esc(oname(e.id));
+  const list = (S.blotter || []).slice().reverse();
+  let h = `<div class="vh"><h2>${y} police blotter</h2>${seasonPicker(y, "blotter")}</div><p class="m small">Fines, suspensions and bad luck. Suspended players can't play until they've served their games.</p><ul class="tx blot">`;
+  for (const e of list) h += `<li>${chip(e.team)}${who(e)} ${esc(e.text)}${e.kind === "luck" ? ` <span class="k luck">out ${e.games} games</span>` : e.games ? ` <span class="k ${e.kind}">${e.games}-game suspension</span>` : ""}${e.fine ? ` <span class="k">${money(e.fine)} fine</span>` : ""}${e.released ? ` <span class="k arrest">released</span>` : ""}</li>`;
+  return h + (list.length ? "" : "<li>A quiet year. Suspiciously quiet.</li>") + `</ul>`;
+}
+async function vCoaches() {
+  const cs = Object.values(D.staff.coaches).filter(c => c.w + c.l > 0).sort((a, b) => b.w - a.w);
+  let h = `<h2>Coaches</h2><p class="m">Coaches shape how their teams play (pace, tackling, appetite for fours, whether they switch screens, how deep the rotation goes) and how fast young players develop. Owners hire and fire them.</p>`;
+  h += `<div class="tw"><table class="box"><thead><tr><th class="pn">Coach</th><th>Team</th><th>W-L</th><th>PCT</th><th>Titles</th><th>COY</th><th>Playoffs</th></tr></thead><tbody>`;
+  for (const c of cs.slice(0, 150)) h += `<tr><td class="pn">${clink(c.id)}${c.ex ? ' <span class="m">ex-player</span>' : ""}</td><td>${c.team ? TB[c.team].id : c.retired ? "retired" : "–"}</td><td>${c.w}-${c.l}</td><td>${(c.w / (c.w + c.l)).toFixed(3).replace(/^0/, "")}</td><td class="b">${c.titles || ""}</td><td>${c.awards.filter(a => a[1] === "coy").length || ""}</td><td>${c.pw}-${c.pl}</td></tr>`;
+  return h + `</tbody></table></div>`;
+}
+async function vCoach(id) {
+  const c = D.staff.coaches[id]; if (!c) return `<p>Unknown coach.</p>`;
+  const st = c.style, styl = [st.pace > 0.3 ? "runs" : st.pace < -0.3 ? "grinds it out" : "balanced pace", st.tackle > 1.15 ? "loves the big hit" : st.tackle < 0.85 ? "rarely sends tacklers" : "picks his tackles", st.four > 1.15 ? "fires away from four" : st.four < 0.85 ? "distrusts the four" : "takes fours in rhythm", st.sw > 0.6 ? "switches screens" : "fights over screens", st.depth + "-man rotation"];
+  let h = `<h2>${esc(c.name)}</h2><p class="m">Born ${c.born}${c.ex ? ` · played as ${plink(c.ex)}` : ""}${c.team ? ` · coaching ${tname(c.team)}` : c.retired ? ` · retired ${c.retired}` : ""}</p>`;
+  h += `<div class="aw"><div><span class="m">Record</span>${c.w}-${c.l} (${c.pw}-${c.pl} playoffs)</div><div><span class="m">Titles</span>${c.titles}</div><div><span class="m">Style</span>${styl.join(", ")}</div><div><span class="m">Offense / defense / development</span>${c.off} / ${c.def} / ${c.dev}</div></div>`;
+  h += `<h3>Seasons</h3><div class="tw"><table class="box"><thead><tr><th>Season</th><th>Team</th><th>W-L</th></tr></thead><tbody>${(c.seasons || []).slice().reverse().map(s => `<tr><td><a href="#standings-${s.season}">${s.season}</a></td><td>${s.team}</td><td>${s.w}-${s.l}${s.partial ? " (fired mid-season)" : ""}</td></tr>`).join("")}</tbody></table></div>`;
+  return h;
 }
 async function vWatch(y, gid) {
   const S = await season(y);
@@ -175,20 +223,22 @@ async function route() {
   const hsh = (location.hash || "").slice(1) || "standings-" + lastSeason();
   const [v, a, b] = hsh.split("-");
   document.querySelectorAll("nav.main a").forEach(x => x.classList.toggle("on", x.dataset.v === v));
-  if (v !== "watch") { $("broadcast").hidden = true; V.playing = false; }
+  if (v !== "watch" && v !== "tv") { $("broadcast").hidden = true; V.playing = false; V.channels = null; }
   const y = a && /^\d{4}$/.test(a) ? +a : lastSeason();
   let html;
   try {
     html = v === "standings" ? await vStandings(y) : v === "leaders" ? await vLeaders(y) : v === "history" ? await vHistory()
       : v === "hof" ? await vHof() : v === "teams" ? await vTeams() : v === "team" ? await vTeam(a) : v === "player" ? await vPlayer(a)
-      : v === "moves" ? await vMoves(y) : v === "games" ? await vGames(y, b) : v === "watch" ? await vWatch(y, b) : await vStandings(lastSeason());
+      : v === "moves" ? await vMoves(y) : v === "games" ? await vGames(y, b) : v === "watch" ? await vWatch(y, b) : v === "tv" ? await vTv(y, b, hsh.split("-")[3])
+      : v === "blotter" ? await vBlotter(y) : v === "coaches" ? await vCoaches() : v === "coach" ? await vCoach(a) : await vStandings(lastSeason());
   } catch (e) { html = `<p class="bad">Couldn't load that: ${esc(e.message)}</p>`; }
   $("view").innerHTML = html;
-  if (v !== "watch") window.scrollTo(0, 0);
+  window.scrollTo(0, 0);
 }
 async function boot() {
   try {
     [D.lg, D.pl, D.idx] = await Promise.all([J("league.json"), J("players.json"), J("index/player-seasons.json")]);
+    try { D.staff = await J("staff.json"); } catch (e) { /* older data without staff */ }
   } catch (e) {
     $("view").innerHTML = `<h2>No history yet</h2><p>Run the <b>Simulate league history</b> workflow from the repo's Actions tab, then reload.</p>`;
     return;

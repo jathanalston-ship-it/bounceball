@@ -12,3 +12,4 @@ jobs:
           node-version: 22
       - run: node test/engine-sanity.js
       - run: node test/longrun-dry.js 1
+      - run: node test/stats.js 12

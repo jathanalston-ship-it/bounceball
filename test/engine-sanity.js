@@ -6,7 +6,7 @@ let bad = 0, pts = 0, n = 12;
 for (let g = 0; g < n; g++) {
   const R = [mk(10 + g, 0), mk(50 + g, 0)];
   const a = E.simulateGame({ id: "H" }, { id: "A" }, R, 777 + g, { frames: false });
-  const b = E.simulateGame({ id: "H" }, { id: "A" }, R, 777 + g, { frames: false });
+  const b = E.simulateGame({ id: "H" }, { id: "A" }, R, 777 + g, { frames: g % 3 === 0 }); // recording frames must not change the game
   const box = E.boxScore(a, 1e12), s = [0, 0]; box.forEach(x => s[x.t] += x.pts);
   if (s[0] !== a.score[0] || s[1] !== a.score[1]) { bad++; console.log("box mismatch", g); }
   if (a.score.join() !== b.score.join() || a.events.length !== b.events.length) { bad++; console.log("replay mismatch", g); }
