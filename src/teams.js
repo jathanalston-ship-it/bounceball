@@ -35,7 +35,12 @@ const LEAGUE_INFO = {
   ]
 };
 const TEAMS = LEAGUE_INFO.teams;
-const API = { LEAGUE_INFO, TEAMS };
+// v0.7: All-Star Sunday (never in the standings; the host's building)
+const ALLSTAR = [
+  { id: "ASE", city: "East", name: "All-Stars", c1: "#1f4fd1", c2: "#e8e8e8", allstar: true },
+  { id: "ASW", city: "West", name: "All-Stars", c1: "#d1281f", c2: "#e8e8e8", allstar: true }
+];
+const API = { LEAGUE_INFO, TEAMS, ALLSTAR };
 if (typeof module !== "undefined" && module.exports) module.exports = API;
 else window.BB = Object.assign(window.BB || {}, API);
 })();

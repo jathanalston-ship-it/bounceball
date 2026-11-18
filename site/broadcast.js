@@ -388,6 +388,7 @@ function playEvents(fromTick, toTick) {
     const r = e.pid !== undefined ? GAME.roster[e.pid] : null, col = e.team !== undefined ? COLORS[e.team] : "#f2b134";
     const homeTeam = e.team === 0;
     const call = callFor(e); if (call && call[0]) ANN.say(call[0], call[1]);
+    if (GAME.chase && GAME.chase.length && (e.type === "fga" || e.type === "ft" || e.type === "reb" || e.type === "to" || e.type === "tackle")) chaseCheck(e, i);
     switch (e.type) {
       case "fga":
         if (e.made) {
@@ -416,6 +417,10 @@ function playEvents(fromTick, toTick) {
       case "mismatch": if (e.v >= 12) lowerThird(col, `MISMATCH · #${r.num} ${esc(r.short)}`, `${htStr(e.pid)} on ${htStr(e.d)} ${esc(GAME.roster[e.d].short)} · ${e.kind === "post" ? "taking him to the post" : "clearing out for him"}`); break;
       case "injury": lowerThird(col, `INJURY · ${esc(r.short)}`, `${esc(e.kind)} · ${e.sev === 0 ? "done for the night" : "will not return"}`, 4500, true); break;
       case "ejected": lowerThird(col, `EJECTED · ${esc(r.short)}`, e.why === "fight" ? "fighting · he's gone" : e.why === "targeting" ? "targeting · a hit to the head" : "flagrant 2 · he's gone", 4000, true); break;
+      case "dunkjudge": { const sc = e.scores.join("  "); lowerThird(e.total >= 48 ? "#d4af37" : "#3b82f6", `${esc(r.short)} · ${e.total}`, `${esc(e.move)} · judges ${sc}`, 4200, true); ANN.say(e.total === 50 ? `Fifty! A perfect score for the ${e.move}!` : e.made ? `The judges give that ${e.move} a ${e.total}.` : `He couldn't get it down. ${e.total} from the judges.`, 2); if (AUDIO) AUDIO.excite(e.total >= 46 ? 1 : 0.5); break; }
+      case "dunkmiss": lowerThird("#8b95a5", `${esc(r.short)} · MISS`, `attempt ${e.try} of 3`, 1800); break;
+      case "dunkround": lowerThird("#d4af37", e.round === 0 ? "FIRST ROUND" : e.round === 1 ? "THE FINAL" : "DUNK-OFF", e.round === 0 ? "two dunks each · the top two advance" : "two dunks for the title", 3000, true); break;
+      case "dunkwin": lowerThird("#d4af37", `${esc(r.short)} WINS THE DUNK CONTEST`, "", 6000, true); ANN.say(`${r.name} is your dunk contest champion!`, 3); if (AUDIO) AUDIO.excite(1); break;
       case "fight": if (AUDIO) { AUDIO.excite(1); AUDIO.whistle(); } lowerThird("#ff4d4d", e.brawl ? "BENCHES CLEAR" : `FIGHT · ${esc(r.short)} & ${esc(GAME.roster[e.on].short)}`, e.brawl ? `${esc(r.short)} and ${esc(GAME.roster[e.on].short)} started it` : "the officials step in", 4500, true); break;
       case "enforcer": lowerThird(col, `ENFORCER · ${esc(r.short)}`, `has a message for ${esc(GAME.roster[e.on].short)}`, 3200); break;
       case "heat": psyTag(e.lvl > 0 ? "HEATING UP" : "ICE COLD", r, col, e.lvl > 0 ? "#ff9f43" : "#7cc6ff"); if (e.lvl > 0 && arcadeFX() && r) setTimeout(() => callout("ON FIRE!", "#ff8a1c", r.name.split(" ").slice(-1)[0].toUpperCase()), 900); break;
@@ -481,7 +486,7 @@ function records(ctxx) {
     for (const [tm, won] of [[g[2], g[5] > g[6]], [g[3], g[6] > g[5]]]) if (rec[tm]) rec[tm][won ? 0 : 1]++;
   }
   let series = null;
-  if (type !== 0) {
+  if (type === 1) {
     const w = { [h]: 0, [a]: 0 }; let n = 0;
     for (const g of sd.games) if (g[8] !== 0 && g[0] < gid && ((g[2] === h && g[3] === a) || (g[2] === a && g[3] === h))) { n++; w[g[5] > g[6] ? g[2] : g[3]]++; }
     series = n === 0 ? "Game 1" : w[h] === w[a] ? `Series tied ${w[h]}-${w[a]}` : w[h] > w[a] ? `${h} leads ${w[h]}-${w[a]}` : `${a} leads ${w[a]}-${w[h]}`;
@@ -507,15 +512,47 @@ function storylines() {
   (c.b2b || []).forEach((b, t) => { if (b) out.push(`The ${tn(t)} are on the second night of a back-to-back`); });
   (c.mi || []).forEach((m, t) => { if (m >= 900 && !(c.b2b && c.b2b[t])) out.push(`The ${tn(t)} flew ${m.toLocaleString()} miles to get here`); });
   for (const r of GAME.restNames || []) out.push(`${esc(r.name)} sits tonight for the ${tn(r.t)} (rest)`);
+  // v0.7
+  if (GAME.allstar) out.unshift(`All-Star Sunday: East against West under full rules. The hits are real.`);
+  const pri = { record: 0, season: 1, pass: 2, mile: 3 };
+  for (const c of (GAME.chase || []).slice().sort((a, b) => pri[a.kind] - pri[b.kind]).slice(0, 2)) out.push(chaseLine(c));
+  for (const l of (GAME.feudLines || []).slice(0, 1)) out.push(l);
+  for (const l of (GAME.demandLines || []).slice(0, 1)) out.push(l);
+  if (GAME.att) { const [n, cap] = GAME.att, f = n / cap; if (f >= 0.985) out.push(`A sellout: ${n.toLocaleString()} in the building`); else if (f < 0.5) out.push(`Plenty of empty seats: ${n.toLocaleString()} in a building that holds ${cap.toLocaleString()}`); }
   return out;
+}
+const CHASE_STAT = { pts: "points", reb: "rebounds", ast: "assists", stl: "steals", blk: "blocks", tkl: "tackles", btk: "broken tackles", dnk: "dunks", fpm: "fours", tpm: "threes" };
+function chaseLine(c) {
+  const nm = esc(GAME.roster[c.idx].name), st = CHASE_STAT[c.k];
+  return c.kind === "mile" ? `${nm} needs ${c.need} ${st} for ${c.target.toLocaleString()} in his career`
+    : c.kind === "record" ? `${nm} needs ${c.need} ${st} to pass ${esc(c.other)} for the all-time record`
+    : c.kind === "season" ? `${nm} needs ${c.need} ${st} to break ${esc(c.other)}'s single-season record`
+    : `${nm} needs ${c.need} ${st} to pass ${esc(c.other)} for No. ${c.rank} all-time`;
+}
+// the moment a chase ends, on the air
+function chaseCheck(e, i) {
+  if (!GAME.chase || !GAME.chase.length) return;
+  const who = new Set([e.pid, e.ast, e.by, e.blk, e.on].filter(x => x !== undefined && x >= 0));
+  const live = GAME.chase.filter(c => !c.done && who.has(c.idx)); if (!live.length) return;
+  const box = boxScore(GAME, e.tk);
+  for (const c of live) {
+    const b = box[c.idx], v = c.k === "reb" ? b.oreb + b.dreb : b[c.k];
+    if (v < c.need) continue;
+    c.done = true;
+    const nm = GAME.roster[c.idx], st = CHASE_STAT[c.k].toUpperCase();
+    const title = c.kind === "mile" ? `${c.target.toLocaleString()} CAREER ${st}` : c.kind === "record" ? `THE ALL-TIME ${st} RECORD` : c.kind === "season" ? `SINGLE-SEASON ${st} RECORD` : `NO. ${c.rank} ALL-TIME IN ${st}`;
+    setTimeout(() => lowerThird("#d4af37", title, `${esc(nm.short)}${c.other ? " passes " + esc(c.other) : ""}`, 5200, true), 900);
+    ANN.say(c.kind === "mile" ? `And that's ${c.target.toLocaleString()} career ${CHASE_STAT[c.k]} for ${nm.name}!` : c.kind === "record" ? `${nm.name} has done it! The all-time ${CHASE_STAT[c.k]} record belongs to him!` : c.kind === "season" ? `There it is: ${nm.name} breaks the single-season record!` : `${nm.name} moves past ${c.other} into number ${c.rank} all-time!`, 3);
+    if (AUDIO) AUDIO.excite(1);
+  }
 }
 function introHTML() {
   const R = records(V.ctx), H = TB[GAME.home], A = TB[GAME.away];
-  const tm = t => { const T = t ? A : H, rec = R && R.rec[T.id]; return `<div class="tm" style="--c:${COLORS[t]}"><span class="cty">${esc(T.city)}</span><b>${esc(T.name)}</b><span class="rec">${rec ? rec[0] + "-" + rec[1] : ""}${R && R.coach[t] ? " · " + esc(R.coach[t]) : ""}</span></div>`; };
+  const tm = t => { const T = t ? A : H, rec = R && GAME.type !== 2 && R.rec[T.id]; return `<div class="tm" style="--c:${COLORS[t]}"><span class="cty">${esc(T.city)}</span><b>${esc(T.name)}</b><span class="rec">${rec ? rec[0] + "-" + rec[1] : ""}${R && R.coach[t] ? " · " + esc(R.coach[t]) : ""}</span></div>`; };
   const lu = t => `<ul style="--c:${COLORS[t]}">${GAME.roster.filter(r => r.t === t && r.starter).map(r => `<li><span class="num">${r.num}</span>${esc(r.short)}<em>${r.role === "SNIPER" ? "SN" : r.role === "BRUISER" ? "BR" : r.role}</em></li>`).join("")}</ul>`;
-  const kick = R ? `${R.season} · ${R.type ? "PLAYOFFS · " + esc(R.series) : "DAY " + (R.day + 1)}` : "UBL";
+  const kick = R ? `${R.season} · ${R.type === 2 ? "ALL-STAR SUNDAY" : R.type ? "PLAYOFFS · " + esc(R.series) : "DAY " + (R.day + 1)}` : "UBL";
   return `<div class="cin"><div class="ck">UBL ON TV · ${kick}</div><div class="mu">${tm(1)}<div class="at">at</div>${tm(0)}</div>
-    <div class="arena">${esc(H.arena || H.city + " Arena")} · ${esc(H.city)}</div>
+    <div class="arena">${esc(H.arena || H.city + " Arena")} · ${esc(GAME.allstar && GAME.allstar.host && TB[GAME.allstar.host] ? TB[GAME.allstar.host].city : H.city)}${GAME.att ? ` · attendance ${GAME.att[0].toLocaleString()}${GAME.att[0] >= GAME.att[1] ? " (sellout)" : ""}` : ""}</div>
     <div class="lus">${lu(1)}${lu(0)}</div>
     ${crewNames().length ? `<div class="crew"><b>Officials</b> ${crewNames().map((n, i) => esc(n) + (i === 0 ? " <em>(crew chief)</em>" : "")).join(" · ")}<span>${esc(crewStyle())}</span></div>` : ""}
     ${storylines().length ? `<ul class="story">${storylines().slice(0, 4).map(x => `<li>${x}</li>`).join("")}</ul>` : ""}
@@ -1033,9 +1070,18 @@ function simulate(row, seasonData) {
   game.ctx = ctx || null; game.refs = seasonData.refs || {};
   game.restNames = ctx && ctx.rest ? ctx.rest.flatMap((ids, t) => (Array.isArray(ids) ? ids : []).map(id => ps[id] ? { name: ps[id].first + " " + ps[id].last, t } : null)).filter(Boolean) : [];
   game.coachNames = [co[hc] ? co[hc].name : "", co[ac] ? co[ac].name : ""];
-  game.season = seasonData.season;
+  game.season = seasonData.season; game.type = type; game.day = day;
+  // v0.7: the crowd, record chases, feuds and front-office drama around the game
+  game.att = ctx && ctx.att ? ctx.att : null;
+  const pname = id => ps[id] ? ps[id].first + " " + ps[id].last : (window.D && D.pl && D.pl[id] ? D.pl[id].name : "#" + id);
+  const at = {}; hl.concat(al).forEach((id, i) => at[id] = i);
+  game.chase = (seasonData.chase && seasonData.chase[gid] || []).filter(c => at[c[0]] !== undefined).map(c => ({ idx: at[c[0]], k: c[1], need: c[2], kind: c[3], target: c[4], rank: c[5], other: c[3] === "mile" ? null : pname(c[4]) }));
+  game.feudLines = (seasonData.feuds || []).filter(f => f.season === seasonData.season && f.day <= day && (!f.end || f.end.season > seasonData.season || type) && (at[f.a] !== undefined))
+    .map(f => f.kind === "coach" ? `${esc(pname(f.a))} and his coach aren't speaking` : at[f.b] !== undefined ? `${esc(pname(f.a))} and ${esc(pname(f.b))} are feuding` : null).filter(Boolean);
+  game.demandLines = (seasonData.tx || []).filter(t => t.type === "demand" && t.day >= 0 && t.day <= day && at[t.pid] !== undefined).map(t => `${esc(pname(t.pid))} has asked to be traded`);
+  if (type === 2 && seasonData.allstar) game.allstar = seasonData.allstar;
   const match = game.score[0] === hs && game.score[1] === as;
-  game.note = `${seasonData.season} ${type ? "playoffs" : "day " + (day + 1)} · seed ${seed} · ${match ? '<span class="ok">✓ replay matches the record</span>' : `<span class="bad">replay differs from the record (engine ${ENGINE_VERSION} vs ${seasonData.engineVersion})</span>`}`;
+  game.note = `${seasonData.season} ${type === 2 ? "All-Star game" : type ? "playoffs" : "day " + (day + 1)} · seed ${seed} · ${match ? '<span class="ok">✓ replay matches the record</span>' : `<span class="bad">replay differs from the record (engine ${ENGINE_VERSION} vs ${seasonData.engineVersion})</span>`}`;
   return game;
 }
 function resetShow() { stopReplay(); V.intro = null; V.hold = 0; hideCard(); ANN.stop(); $("skipIntro").hidden = true; }
@@ -1074,6 +1120,88 @@ function loadChannels(rows, seasonData) {
   setTimeout(next, 30);
 }
 function stopBroadcast() { V.playing = false; V.channels = null; resetShow(); }
+
+// ---------- v0.7: the dunk contest, staged in 3D ----------
+// A synthetic "game": the contestants take turns at the right-hand rim while the other All-Stars watch from
+// the sidelines. Every attempt is scripted from the stored contest (move, tries, make or miss, the judges' cards),
+// recorded in the engine's frame layout, so the broadcast's camera, crowd and replays work as they do for games.
+function dunkShow(sd) {
+  const K = sd.dunk, A = sd.allstar, ps = sd.players, FS = BB.C.FS, HX = BB.C.HX[1], HY = BB.C.HY, ACT = BB.ACT;
+  const field = K.field.slice(0, 4), extra = (A ? A.sides.east.starters.concat(A.sides.west.starters) : []).filter(id => !field.includes(id) && ps[id]).slice(0, 6);
+  while (field.length + extra.length < 10) extra.push(field[0]);
+  const ids = field.concat(extra).slice(0, 10), roster = ids.map((id, i) => { const p = ps[id] || {}; return { idx: i, id, t: i < 5 ? 0 : 1, name: p.first + " " + p.last, short: (p.first || "?")[0] + ". " + p.last, num: p.num || 0, role: p.role || "WING", starter: true, secs: 0, ht: p.ht, wt: p.wt, arch: "SLA", darch: "LOCK" }; });
+  const home = [], events = [], frames = [];
+  // where everyone stands: contestants by the near sideline, the rest across the floor
+  const spot = i => i < 5 ? { x: 66 + i * 3.2, y: 3.5, f: Math.PI / 2 } : { x: 64 + (i - 5) * 3.4, y: 46.5, f: -Math.PI / 2 };
+  const pos = roster.map((r, i) => Object.assign({ z: 0, act: ACT.NONE, actT: 0 }, spot(i)));
+  const ball = { x: HX - 1, y: HY, z: 0.2, holder: -1, mode: 4 };
+  let tk = 0, s0 = 0;
+  const rec = () => {
+    const F = new Float32Array(FS); let o = 0;
+    for (let i = 0; i < 10; i++) { const P = pos[i]; F[o++] = P.x; F[o++] = P.y; F[o++] = P.z; F[o++] = i; F[o++] = ball.holder === i ? 2 : 0; F[o++] = P.f; F[o++] = P.act; F[o++] = P.actT; }
+    F[o++] = ball.x; F[o++] = ball.y; F[o++] = ball.z; F[o++] = ball.holder; F[o++] = ball.mode;
+    F[o++] = 0; F[o++] = 0; F[o++] = 1; F[o++] = s0; F[o++] = 0; F[o++] = 0; F[o++] = 1;
+    frames.push(F);
+  };
+  const run = (secs, step) => { const n = Math.round(secs * 10); for (let k = 0; k < n; k++) { step(k / n, k); tk += 2; for (const P of pos) P.actT += 0.1; rec(); } };
+  events.push({ type: "period_start", tk: 0, per: 1, clk: 720, l0: [0, 1, 2, 3, 4], l1: [5, 6, 7, 8, 9] });
+  run(1.5, () => {});
+  const R = K.rounds;
+  R.forEach((rd, ri) => {
+    events.push({ type: "dunkround", tk, round: ri, n: R.length });
+    for (const entry of rd) {
+      const i = ids.indexOf(entry.pid); if (i < 0) continue;
+      const P = pos[i], home0 = spot(i);
+      for (const d of entry.dunks) {
+        const far = /four-point/.test(d.move) ? 26 : /free-throw/.test(d.move) ? 15 : 5.5, tx = HX - far, ty = HY + (d.d % 2 ? 2.5 : -2.5);
+        for (let t = 0; t < d.tries; t++) {
+          const made = d.made && t === d.tries - 1, sx = tx - 24, sy = ty + (t % 2 ? 9 : -9);
+          // walk to the start with the ball
+          const ax = P.x, ay = P.y; ball.holder = i; ball.mode = 0;
+          run(1.4, u => { P.x = ax + (sx - ax) * u; P.y = ay + (sy - ay) * u; P.f = Math.atan2(HY - P.y, HX - P.x); P.act = ACT.NONE; ball.x = P.x + 0.6; ball.y = P.y; ball.z = 3.2; });
+          run(0.6, () => { ball.x = P.x + 0.6; ball.y = P.y; ball.z = 3.2; });
+          // the run-up, dribbling on the rubber floor
+          P.act = ACT.DRIBBLE; P.actT = 0;
+          run(1.3, (u, k) => { P.x = sx + (tx - sx) * u; P.y = sy + (ty - sy) * u; P.f = Math.atan2(HY - P.y, HX - P.x); ball.x = P.x + 1.2 * Math.cos(P.f); ball.y = P.y + 1.2 * Math.sin(P.f); ball.z = 0.4 + Math.abs(Math.sin(k * 0.9)) * 2.6; });
+          // takeoff, flight, the slam (or the clank)
+          events.push({ type: "fga", tk, pid: i, team: 0, val: 2, made, dunk: true, ast: -1, per: 1, clk: 720, x: tx, y: ty, show: 1 });
+          P.act = ACT.DUNK; P.actT = 0;
+          const hop = 3.2 + (far > 10 ? 0.6 : 0), lx = HX - 1.4, ly = HY + (ty - HY) * 0.25;
+          run(1.0, u => { P.x = tx + (lx - tx) * u; P.y = ty + (ly - ty) * u; P.z = 4 * hop * u * (1 - u) + (u > 0.5 ? 0.4 * (u - 0.5) : 0); ball.x = P.x + 0.5 * Math.cos(P.f); ball.y = P.y + 0.5 * Math.sin(P.f); ball.z = P.z + 7.4 + Math.min(1, u * 1.6) * 1.2; });
+          ball.holder = -1; ball.mode = made ? 2 : 3;
+          const bx = HX, by = HY;
+          run(1.2, u => { P.z = Math.max(0, P.z - 0.9); if (made) { ball.x = bx; ball.y = by; ball.z = Math.max(0.2, 10 - u * 14 + (u > 0.6 ? Math.abs(Math.sin(u * 14)) * 1.5 : 0)); } else { ball.x = bx - u * 9; ball.y = by + u * 5; ball.z = Math.max(0.2, 10.5 + u * 6 - u * u * 18); } });
+          P.z = 0;
+          if (made) { P.act = ACT.CELEBRATE; P.actT = 0; run(1.4, () => {}); }
+          else { events.push({ type: "dunkmiss", tk, pid: i, team: 0, try: t + 1, per: 1, clk: 720 }); run(0.8, () => {}); }
+        }
+        s0 = d.total;
+        events.push({ type: "dunkjudge", tk, pid: i, team: 0, move: d.move, scores: d.scores, total: d.total, made: d.made, per: 1, clk: 720 });
+        P.act = ACT.NONE; run(2.6, () => {});
+        // back to his spot
+        const bx0 = P.x, by0 = P.y; ball.holder = -1; ball.mode = 4; ball.x = HX - 2; ball.y = HY; ball.z = 0.2;
+        run(1.6, u => { P.x = bx0 + (home0.x - bx0) * u; P.y = by0 + (home0.y - by0) * u; P.f = Math.atan2(P.y - by0, P.x - bx0); });
+        P.f = home0.f; s0 = 0;
+      }
+    }
+  });
+  events.push({ type: "dunkwin", tk, pid: ids.indexOf(K.winner), team: 0, per: 1, clk: 0 });
+  pos[ids.indexOf(K.winner)].act = ACT.CELEBRATE; pos[ids.indexOf(K.winner)].actT = 0; run(3, () => {});
+  events.push({ type: "period_end", tk, per: 1, clk: 0 });
+  const F = new Float32Array(frames.length * FS); frames.forEach((f, k) => F.set(f, k * FS));
+  return { engineVersion: BB.ENGINE_VERSION, seed: 0, home: "ASE", away: "ASW", rules: BB.rulesFor(sd.season), score: [0, 0], periods: 1, ticks: tk, poss: [0, 0], frames: F, nFrames: frames.length, events, roster,
+    ctx: null, refs: {}, restNames: [], coachNames: ["", ""], season: sd.season, type: 3, day: 0, att: null, chase: [], feudLines: [], demandLines: [], show: "dunk", note: `${sd.season} dunk contest · scripted from the record` };
+}
+function loadDunk(seasonData) {
+  V.playing = false; V.channels = null; V.live = false; resetShow(); renderChannels(); resize();
+  const game = dunkShow(seasonData);
+  V.ctx = { S: seasonData, row: [0, 0, "ASE", "ASW", 0, 0, 0, 1, 3] };
+  useGame(game, teamColors("ASE", "ASW"));
+  V.tick = 0; $("scrub").max = game.ticks; $("scrub").value = 0;
+  $("seed").innerHTML = game.note; $("bc-overlay").hidden = true; updateAll(true);
+  setSpeed(1); V.playing = true; setPlayBtn();
+  lowerThird("#d4af37", "THE DUNK CONTEST", `${TB[seasonData.allstar ? seasonData.allstar.host : "ASE"] ? esc(TB[seasonData.allstar.host].city) : ""} · ${seasonData.season}`, 4000, true);
+}
 
 // ---------- main loop ----------
 function updateAll(force) {

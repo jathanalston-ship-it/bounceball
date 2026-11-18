@@ -470,3 +470,32 @@ div.tline{border-left:2px solid var(--line);margin:6px 0 0 8px;padding-left:16px
 .psytag.on{transform:none}.psytag b{color:var(--t);margin-right:5px;letter-spacing:1.2px}
 .crewp{font-size:13px;margin:4px 0 8px}
 .rulebook{list-style:none;padding:0;margin:4px 0 14px}.rulebook li{padding:5px 0;border-bottom:1px solid #222a36;font-size:13.5px}.rulebook b{display:inline-block;width:52px;color:#ffd166;font:600 14px Oswald}
+/* ---------- league v0.7: the wire, season tabs, awards night, All-Star weekend, the draft, the record book ---------- */
+.ticker{margin:0 0 10px}.ticker[hidden]{display:none}
+.tk{display:flex;align-items:stretch;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;font-size:12.5px}
+.tk>b{background:var(--gold);color:#111;font:700 12px Oswald;letter-spacing:1px;padding:7px 10px;white-space:nowrap;display:flex;align-items:center}
+.tkm{overflow:hidden;flex:1;position:relative;mask-image:linear-gradient(90deg,transparent,#000 3%,#000 97%,transparent)}
+.tkr{display:inline-flex;gap:28px;white-space:nowrap;padding:7px 0;animation:tk 140s linear infinite}
+.tkm:hover .tkr{animation-play-state:paused}
+.tkr span i{font-style:normal;margin-right:5px}
+@keyframes tk{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:reduce){.tkr{animation:none;flex-wrap:wrap;white-space:normal}}
+.snav{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 10px}
+.snav a{font:600 12px Inter;color:var(--mut);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px 10px;text-decoration:none}
+.snav a.on{color:#111;background:var(--gold);border-color:var(--gold)}
+ul.news{list-style:none;margin:0;padding:0}
+ul.news li{display:flex;gap:8px;padding:6px 2px;border-bottom:1px solid var(--line)}
+ul.news li i{font-style:normal;width:20px;flex:none;text-align:center}
+ul.news li.dayh{color:var(--mut);font:600 12px Oswald;letter-spacing:.5px;border:0;padding-top:12px}
+.chips{display:flex;gap:4px;flex-wrap:wrap}.chipb{padding:3px 9px;font-size:12px;border-radius:999px}.chipb.on{background:var(--gold);color:#111;border-color:var(--gold)}
+.votes{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:8px}
+.vote{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px}.vote h4{margin:2px 0 4px}.vote table{width:100%}
+.asg{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0}
+.asg .sc{display:flex;align-items:baseline;gap:8px;font:700 15px Oswald}.asg .sc b{font-size:26px}.asg .sc b.w{color:var(--gold)}
+.btn{background:var(--gold);color:#111!important;font:700 13px Inter;border-radius:8px;padding:7px 12px;text-decoration:none}
+.asr{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media (max-width:560px){.asr{grid-template-columns:1fr}}
+table.dunks td{vertical-align:top;line-height:1.6}
+ol.board{columns:2;column-gap:24px;padding-left:22px}ol.board li{break-inside:avoid;margin:2px 0}@media (max-width:560px){ol.board{columns:1}}
+.lgrid.two{grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
+td.bad{color:#ff7b72}
+.vh .sp{max-width:160px}
