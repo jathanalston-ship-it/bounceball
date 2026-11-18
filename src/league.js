@@ -10,11 +10,15 @@ const T = NODE ? require("./teams.js") : window.BB;
 const ST = NODE ? require("./staff.js") : window.BB;
 const TR = NODE ? require("./trouble.js") : window.BB;
 const CD = NODE ? require("./cards.js") : window.BB; // the league calendar (real dates for back-to-backs and travel)
+const B = NODE ? require("./business.js") : window.BB;     // v0.7: markets, the gate, owners' books, relocation, TV and labor
+const FO = NODE ? require("./frontoffice.js") : window.BB; // v0.7: GMs, scouting, star power, feuds
+const EV = NODE ? require("./events.js") : window.BB;      // v0.7: All-Star weekend, the dunk contest, awards night
+const R = NODE ? require("./records.js") : window.BB;      // v0.7: the record book and chases
 const { clamp, makeRng, hashStr } = E;
-const LEAGUE_VERSION = "0.6.0";
+const LEAGUE_VERSION = "0.7.0";
 const GAMES = 82, ROSTER_MIN = 13, ROSTER_MAX = 15, ACTIVE = 13;
 const ROSTER_ROLES = ["PG","WING","SNIPER","BRUISER","BIG","PG","WING","WING","SNIPER","BRUISER","BRUISER","BIG","BIG"];
-const STAT_KEYS = ["gp","gs","min","pts","fgm","fga","tpm","tpa","fpm","fpa","ftm","fta","oreb","dreb","ast","stl","blk","to","tkl","btk","pf","dnk"];
+const STAT_KEYS = ["gp","gs","min","pts","fgm","fga","tpm","tpa","fpm","fpa","ftm","fta","oreb","dreb","ast","stl","blk","to","tkl","btk","pf","dnk","pm"];
 
 function rngFor(S, tag) { return makeRng(hashStr(S.masterSeed + ":" + S.season + ":" + tag)); }
 const pl = (S, id) => S.players[id];
@@ -27,6 +31,8 @@ function payroll(S, tid, season) {
   return s;
 }
 function log(S, type, data) { const e = Object.assign({ type, season: S.season, day: S.cur ? S.cur.day : -1 }, data); (S.cur ? S.cur.tx : S.offTx).push(e); return e; }
+// headlines: {p:id} {t:team} {c:coach} {g:gm} {o:owner} tokens become links in the viewer
+function news(S, k, text, d) { const e = { k, text, season: S.season, day: S.cur ? S.cur.day : -1 }; if (d && d.team) e.team = d.team; if (d && d.pid) e.pid = d.pid; (S.cur ? (S.cur.news = S.cur.news || []) : (S.offNews = S.offNews || [])).push(e); return e; }
 function setNumber(S, p, tid, rng) {
   const used = new Set(S.teams[tid].roster.filter(id => id !== p.id).map(id => S.players[id].num));
   if (!used.has(p.num) && p.num) return;
@@ -41,7 +47,7 @@ function removeFromTeam(S, p, how) {
 function newPlayer(S, rng, role, q, age) {
   const p = P.genPlayer(rng, role, q, S.nextPid++, S.season, age);
   p.career = null; p.awards = []; p.teams = [];
-  S.players[p.id] = p; giveTraits(S, p); return p;
+  S.players[p.id] = p; giveTraits(S, p); FO.giveEgo(S, p); return p;
 }
 // temperament, from the player's own random stream (so it never shifts anything else in the league)
 const r2 = x => Math.round(x * 100) / 100;
@@ -56,7 +62,7 @@ function giveTraits(S, p) {
 function contractYears(age, rng) { return age < 25 ? rng.int(3, 4) : age < 30 ? rng.int(2, 4) : age < 33 ? rng.int(1, 2) : 1; }
 function sign(S, p, tid, salary, years, rng, how) {
   p.contract = { salary, thru: S.season + years - 1, signed: S.season };
-  if (p.team !== tid) { removeFromTeam(S, p); addToTeam(S, p, tid, rng); }
+  if (p.team !== tid) { removeFromTeam(S, p); addToTeam(S, p, tid, rng); p.demand = null; }
   if (!p.teams.length || p.teams[p.teams.length - 1] !== tid) p.teams.push(tid);
   if (how) log(S, "sign", { pid: p.id, team: tid, salary, years, how });
 }
@@ -74,16 +80,19 @@ function generateRoster(S, tid, rng, q) {
   if (pay > cap) for (const id of S.teams[tid].roster) { const c = S.players[id].contract; c.salary = Math.max(P.minSalary(S.season), Math.round(c.salary * cap / pay / 1000) * 1000); }
 }
 function addTeam(S, info) {
-  S.teams[info.id] = { id: info.id, roster: [], dead: [], hist: [], titles: 0, joined: S.season, coach: null, owner: null, coachHist: [], ownerHist: [] };
+  S.teams[info.id] = { id: info.id, roster: [], dead: [], hist: [], titles: 0, joined: S.season, coach: null, owner: null, coachHist: [], ownerHist: [], gm: null, gmHist: [] };
   S.active.push(info.id);
+  B.initTeam(S, info);
 }
 function staffTeam(S, info, rng) {
   ST.genOwner(S, rng, info.id, info.how);
   ST.hireCoach(S, info.id, rng, "founding", (type, d) => log(S, type, d));
+  FO.hireGM(S, info.id, rng, "founding", (type, d) => log(S, type, d));
 }
 function newLeague(masterSeed, startSeason) {
   const S = { masterSeed: String(masterSeed), season: startSeason || 1954, nextPid: 1, nextCid: 1, nextOid: 1, players: {}, teams: {}, coaches: {}, owners: {}, active: [], picks: [], offTx: [], champions: [], hofClasses: [], cur: null, leagueVersion: LEAGUE_VERSION, engineVersion: E.ENGINE_VERSION };
   const rng = rngFor(S, "init");
+  B.initLeague(S); FO.initLeague(S); R.init(S); S.offNews = [];
   for (const info of T.TEAMS.filter(t => t.joined <= S.season)) { addTeam(S, info); generateRoster(S, info.id, rng, -1); staffTeam(S, info, rng); }
   for (let y = S.season; y < S.season + 3; y++) addPicks(S, y);
   S.targets = ratingMeans(S);
@@ -117,10 +126,12 @@ function eraAdjust(S) {
     }
     for (const p of Object.values(S.players)) if (!p.retired) for (const k of P.RKEYS) p.r[k] = roleMean[p.role][k] + (p.r[k] - roleMean[p.role][k]) * f;
   }
-  for (const p of Object.values(S.players)) if (!p.retired) { for (const k of P.RKEYS) p.r[k] = Math.round(clamp(p.r[k], 20, 99)); p.ovr = P.overall(p); }
+  // (ratings are on the absolute scale, which rises with the generations: the era-relative overall is what's held steady)
+  const top = P.rmax(S.season);
+  for (const p of Object.values(S.players)) if (!p.retired) { for (const k of P.RKEYS) p.r[k] = Math.round(clamp(p.r[k], 20, top)); P.rate(p, S.season); }
   const mid = ovrStats(S);
   const shift = (tg.m - mid.m) * 0.7 / 1.4; // ovr points -> raw rating points
-  for (const p of Object.values(S.players)) if (!p.retired) { for (const k of P.RKEYS) p.r[k] = Math.round(clamp(p.r[k] + shift, 20, 99)); p.ovr = P.overall(p); }
+  for (const p of Object.values(S.players)) if (!p.retired) { for (const k of P.RKEYS) p.r[k] = Math.round(clamp(p.r[k] + shift, 20, top)); P.rate(p, S.season); }
   return { f, shift };
 }
 
@@ -168,9 +179,10 @@ function makeSchedule(teamIds, rng) {
 
 // ---------- depth chart ----------
 function healthy(p) { return (!p.injury || p.injury.out <= 0) && !(p.susp > 0); }
+const available = p => healthy(p) && !(p.holdout > 0); // (a holdout is healthy, and tradeable, but not in uniform)
 function depthChart(S, tid, rng, rest) {
-  let avail = teamPlayers(S, tid).filter(p => healthy(p) && !(rest && rest.includes(p.id)));
-  if (avail.length < 10) { hardship(S, tid, 10 - avail.length, rng); avail = teamPlayers(S, tid).filter(p => healthy(p) && !(rest && rest.includes(p.id))); }
+  let avail = teamPlayers(S, tid).filter(p => available(p) && !(rest && rest.includes(p.id)));
+  if (avail.length < 10) { hardship(S, tid, 10 - avail.length, rng); avail = teamPlayers(S, tid).filter(p => available(p) && !(rest && rest.includes(p.id))); }
   avail.sort((a, b) => b.ovr - a.ovr || a.id - b.id);
   const starters = [];
   for (const role of P.ROLE_LIST) {
@@ -218,22 +230,16 @@ function crewTend(S, crew) {
   const rs = crew.map(id => S.refs[id]), m = k => rs.reduce((a, r) => a + r[k], 0) / rs.length;
   return { s: r2(m("strict")), w: r2(m("whistle")), h: Math.round(m("home") * 0.025 * 1000) / 1000 };
 }
-// the map: miles between arenas (for travel and old rivalries)
-const GEO = { AKR: [41.08, -81.52], TOL: [41.66, -83.56], GRY: [41.59, -87.35], FLN: [43.01, -83.69], YNG: [41.1, -80.65], ERI: [42.13, -80.09], PIT: [40.44, -80], CLE: [41.5, -81.69], DET: [42.33, -83.05], BUF: [42.89, -78.88],
-  LV: [36.17, -115.14], PHX: [33.45, -112.07], SD: [32.72, -117.16], HOU: [29.76, -95.37], DEN: [39.74, -104.99], MIA: [25.76, -80.19], MEM: [35.15, -90.05], POR: [45.52, -122.68], NSH: [36.16, -86.78], ABQ: [35.08, -106.65],
-  OMA: [41.26, -95.93], KC: [39.1, -94.58], BOI: [43.62, -116.2], TUL: [36.15, -95.99] };
-function miles(a, b) {
-  const A = GEO[a], B = GEO[b]; if (!A || !B || a === b) return 0;
-  const dy = (A[0] - B[0]) * 69, dx = (A[1] - B[1]) * 69 * Math.cos((A[0] + B[0]) / 2 * Math.PI / 180);
-  return Math.round(Math.sqrt(dx * dx + dy * dy));
-}
+// the map: miles between arenas (franchises can move, so it's by the city they play in)
+function miles(a, b) { return B.milesBetween(a, b); }
+const cityOf = (S, tid) => B.cityOf(S, tid);
 // buses and trains, then planes, then charters
 function travelFactor(season) { return season < 1960 ? 1.5 : season < 1980 ? 1.2 : season < 2000 ? 1 : 0.75; }
 // how often a coach sits a healthy star on the second night of a back-to-back
 function restRate(season) { return season < 1985 ? 0 : season < 2000 ? 0.05 : season < 2010 ? 0.12 : season < 2015 ? 0.25 : 0.38; }
 // rivalries: geography, plus what happened (playoff series, fights, cheap shots); grudges between players
 const pairKey = (a, b) => a < b ? a + "|" + b : b + "|" + a;
-function rivalry(S, a, b) { return clamp(Math.max(0, 0.25 - miles(a, b) / 1600) + ((S.riv || {})[pairKey(a, b)] || 0), 0, 1); }
+function rivalry(S, a, b) { return clamp(Math.max(0, 0.25 - miles(cityOf(S, a), cityOf(S, b)) / 1600) + ((S.riv || {})[pairKey(a, b)] || 0), 0, 1); }
 function addRivalry(S, a, b, x) { S.riv = S.riv || {}; const k = pairKey(a, b); S.riv[k] = Math.round(clamp((S.riv[k] || 0) + x * (1 - (S.riv[k] || 0) / 0.4), 0, 0.4) * 1000) / 1000; } // (diminishing: a rivalry can only get so hot)
 function addGrudge(S, a, b, w) { S.grudges = S.grudges || {}; const k = a + ">" + b, g = S.grudges[k]; S.grudges[k] = r2(clamp(Math.max(g || 0, w) + (g ? 0.08 : 0), 0, 1)); }
 // how well a player knows his teammates: games played for this team
@@ -254,6 +260,11 @@ function gameCtx(S, sp, crew) {
     const c = chemOf(p, mine); if (c < 0.97) chem[i] = r2(c);
     if (p.health && p.health.conc) conc[i] = p.health.conc;
   });
+  // v0.7: feuds (chemistry, passes not thrown, a bad mood), and the crowd
+  const fc = FO.feudCtx(S, sp, ids);
+  for (const i in fc.chemMul) chem[i] = r2((chem[i] !== undefined ? chem[i] : 1) * fc.chemMul[i]);
+  if (fc.fd.length) ctx.fd = fc.fd; if (Object.keys(fc.md).length) ctx.md = fc.md;
+  if (sp.att) ctx.att = sp.att;
   if (rev.length) ctx.rev = rev; if (Object.keys(chem).length) ctx.chem = chem; if (Object.keys(conc).length) ctx.conc = conc;
   return ctx;
 }
@@ -280,12 +291,26 @@ function restList(S, tid, rng) {
 // ---------- season ----------
 function startSeason(S) {
   const rng = rngFor(S, "schedule");
-  for (const p of Object.values(S.players)) if (!p.retired) giveTraits(S, p); // (leagues saved before v0.6)
+  B.initLeague(S); FO.initLeague(S); R.init(S); // (leagues saved before v0.7)
+  for (const tid of S.active) { B.initTeam(S, T.TEAMS.find(t => t.id === tid)); if (!S.teams[tid].gm) FO.hireGM(S, tid, rngFor(S, "gm-init"), "founding", (type, d) => log(S, type, d)); }
+  for (const p of Object.values(S.players)) if (!p.retired) { giveTraits(S, p); FO.giveEgo(S, p); } // (leagues saved before v0.6 / v0.7)
   staffRefs(S);
-  S.cur = { season: S.season, day: 0, phase: "regular", schedule: makeSchedule(S.active, rng), games: [], tx: S.offTx, injuries: [], stats: {}, pstats: {}, standings: {}, deadlineDone: false, gameSeq: 0, playoffs: null, snapshot: snapshotPlayers(S), coachSnap: {}, coachStart: {}, blotter: [], fights: [], refsUsed: {} };
+  S.cur = { season: S.season, day: 0, phase: "regular", schedule: makeSchedule(S.active, rng), games: [], tx: S.offTx, injuries: [], stats: {}, pstats: {}, standings: {}, deadlineDone: false, gameSeq: 0, playoffs: null, snapshot: snapshotPlayers(S), coachSnap: {}, coachStart: {}, blotter: [], fights: [], refsUsed: {},
+    news: S.offNews || [], att: {}, chase: {}, astats: {}, allstar: null, dunk: null, asDone: false };
   S.cur.cal = CD.seasonCalendar(S.season, S.cur.schedule.length);
-  S.offTx = [];
+  S.offTx = []; S.offNews = [];
   for (const tid of S.active) S.cur.standings[tid] = [0, 0, 0, 0];
+  // the year of his life (hidden), star power at the gate, and holdouts in camp
+  S.cur.legend = R.legend(S, rngFor(S, "legend"), S.cur.snapshot, P);
+  S.cur.starPower = {}; for (const tid of S.active) S.cur.starPower[tid] = teamPlayers(S, tid).filter(p => p.ovr >= 74).length + teamPlayers(S, tid).filter(p => p.ovr >= 80).length;
+  FO.holdouts(S, rngFor(S, "holdouts"), H(S));
+  S.cur.asDay = Math.floor(S.cur.schedule.length * 0.55);
+}
+// helpers the v0.7 modules call back into
+function H(S) {
+  return { log: (type, d) => log(S, type, d), news: (k, text, d) => news(S, k, text, d), roster: tid => teamPlayers(S, tid), available, eraGain: P.eraGain,
+    blot: (p, text, games) => { if (games > 0) p.susp = (p.susp || 0) + games; (S.cur ? S.cur.blotter : []).push({ who: "player", id: p.id, team: p.team, text, kind: games > 0 ? "susp" : "fine", games, fine: 0, day: S.cur ? S.cur.day : -1, season: S.season, phase: S.cur ? S.cur.phase : "off" }); },
+    sellTeam: (tid, how) => { const o = S.owners[S.teams[tid].owner]; o.retired = S.season; o.to = S.season; const n = ST.genOwner(S, rngFor(S, "sale" + tid), tid, "purchase"); log(S, "owner-change", { team: tid, from: o.id, to: n.id, how }); return n; } };
 }
 function snapshotPlayers(S) {
   const snap = {};
@@ -293,20 +318,23 @@ function snapshotPlayers(S) {
   return snap;
 }
 // minimal, replay-complete view of a player for the engine
-function engineView(p) { return { id: p.id, role: p.role, first: p.first, last: p.last, ht: p.ht, wt: p.wt, wing: p.wing, r: Object.assign({}, p.r), aggr: p.aggr, ovr: p.ovr, num: p.num, clutch: p.clutch, streak: p.streak, tough: p.tough, temper: p.temper }; }
+function engineView(p) { return { id: p.id, role: p.role, first: p.first, last: p.last, ht: p.ht, wt: p.wt, wing: p.wing, r: Object.assign({}, p.r), aggr: p.aggr, ovr: p.ovr, num: p.num, clutch: p.clutch, streak: p.streak, tough: p.tough, temper: p.temper, ego: p.ego, loyal: p.loyal, show: p.show }; }
 function gameSeed(S, tag) { return hashStr(S.masterSeed + ":" + S.season + ":g:" + tag) || 1; }
 // Returns the specs for the next batch of games (one day), or null when the phase is over.
 function nextGames(S) {
   const cur = S.cur, rng = rngFor(S, "day" + cur.phase + cur.day);
   if (cur.phase === "regular") {
     if (cur.day >= cur.schedule.length) return null;
+    if (cur.allstar && !cur.asDone) return [allStarSpec(S)]; // All-Star Sunday (no schedule day of its own)
     const day = cur.schedule[cur.day], crews = dealCrews(S, day.length, "r" + cur.day);
+    cur.dayL = R.dayLists(S); cur.left = cur.schedule.length - cur.day;
     return day.map(([h, a], i) => spec(S, h, a, 0, rng, crews[i]));
   }
   if (cur.phase === "playoffs") {
     const live = cur.playoffs.series.filter(s => s.round === cur.playoffs.round && !s.winner);
     if (!live.length) return null;
     const crews = dealCrews(S, live.length, "p" + cur.day);
+    cur.dayL = R.dayLists(S); cur.left = 99;
     return live.map((s, i) => {
       const g = s.wins[0] + s.wins[1]; const hiHome = [0, 1, 4, 6].includes(g);
       const h = hiHome ? s.hi : s.lo, a = hiHome ? s.lo : s.hi;
@@ -318,10 +346,10 @@ function nextGames(S) {
 function spec(S, h, a, type, rng, crew) {
   const gid = S.cur.gameSeq++, cday = S.cur.day; // (the day count runs on into the playoffs)
   // the road: who's tired, and who sits
-  const rh = roadFor(S, h, cday, h, type), ra = roadFor(S, a, cday, h, type);
+  const city = cityOf(S, h), rh = roadFor(S, h, cday, city, type), ra = roadFor(S, a, cday, city, type);
   const rrng = rngFor(S, "rest" + gid), restH = rh.b2b ? restList(S, h, rrng) : [], restA = ra.b2b ? restList(S, a, rrng) : [];
   const hr = depthChart(S, h, rng, restH), ar = depthChart(S, a, rng, restA);
-  noteRoad(S, h, rh.t, h); noteRoad(S, a, ra.t, h);
+  noteRoad(S, h, rh.t, city); noteRoad(S, a, ra.t, city);
   for (const p of hr.concat(ar)) if (!S.cur.snapshot[p.id]) S.cur.snapshot[p.id] = engineView(p);
   const hc = S.teams[h].coach, ac = S.teams[a].coach;
   for (const cid of [hc, ac]) if (!S.cur.coachSnap[cid]) { const c = S.coaches[cid]; S.cur.coachSnap[cid] = { id: cid, name: c.first + " " + c.last, tac: ST.tactics(c) }; }
@@ -329,7 +357,29 @@ function spec(S, h, a, type, rng, crew) {
     fat: [rh.fat, ra.fat], b2b: [rh.b2b ? 1 : 0, ra.b2b ? 1 : 0], mi: [rh.mi, ra.mi], rest: [restH, restA] };
   crew = crew || dealCrews(S, 1, "x" + gid)[0];
   for (const id of crew) S.cur.refsUsed[id] = 1;
+  sp.att = B.attendance(S, h, a, type, rngFor(S, "gate" + gid));
   sp.ctx = gameCtx(S, sp, crew);
+  if (S.cur.dayL) { const ch = R.chasesFor(S, sp.h.concat(sp.a), S.cur.dayL, S.cur.left); if (ch.length) sp.chase = ch; }
+  return sp;
+}
+// All-Star Sunday: East vs. West, full rules, in the host's building
+function allStarSpec(S) {
+  const cur = S.cur, as = cur.allstar, gid = cur.gameSeq++, host = as.host, hostEast = EV.sides(S, B).east.has(host);
+  const ids = side => as.sides[side].starters.concat(as.sides[side].reserves);
+  const h = hostEast ? "ASE" : "ASW", a = hostEast ? "ASW" : "ASE", hs = hostEast ? "east" : "west", aw = hostEast ? "west" : "east";
+  for (const id of ids(hs).concat(ids(aw))) if (!cur.snapshot[id]) cur.snapshot[id] = engineView(S.players[id]);
+  const hc = as.coaches[hs], ac = as.coaches[aw];
+  for (const cid of [hc, ac]) if (!cur.coachSnap[cid]) { const c = S.coaches[cid]; cur.coachSnap[cid] = { id: cid, name: c.first + " " + c.last, tac: ST.tactics(c) }; }
+  const sp = { gid, season: S.season, day: cur.day, type: 2, home: h, away: a, seed: gameSeed(S, "allstar"), h: ids(hs), a: ids(aw), hc, ac, fat: [0, 0], b2b: [0, 0], mi: [0, 0], rest: [[], []], host };
+  const crew = dealCrews(S, 1, "as")[0]; for (const id of crew) cur.refsUsed[id] = 1;
+  const ctx = { crew, ref: Object.assign(crewTend(S, crew), { h: 0 }) }, n = sp.h.length + sp.a.length, chem = {};
+  for (let i = 0; i < n; i++) chem[i] = 0.62; // they've never played together
+  ctx.chem = chem;
+  const all = sp.h.concat(sp.a), at = {}; all.forEach((id, i) => at[id] = i);
+  const gr = []; for (const k in S.grudges || {}) { const [x, y] = k.split(">").map(Number); if (at[x] !== undefined && at[y] !== undefined && (at[x] < sp.h.length) !== (at[y] < sp.h.length)) gr.push([at[x], at[y], S.grudges[k]]); }
+  if (gr.length) ctx.gr = gr;
+  const cap = S.teams[host].arena.cap; sp.att = [cap, cap]; ctx.att = [cap, cap];
+  sp.ctx = ctx;
   return sp;
 }
 // What a worker needs: player views from the season snapshot (ratings are frozen in-season)
@@ -340,7 +390,7 @@ function runGame(sp, rosters, tactics) {
   const g = E.simulateGame({ id: sp.home }, { id: sp.away }, rosters, sp.seed, { frames: false, tactics, season: sp.season, ctx: sp.ctx });
   const box = E.boxScore(g, 1e12);
   const ids = rosters[0].concat(rosters[1]).map(p => p.id);
-  const lines = box.map((b, i) => [ids[i], b.played ? 1 : 0, g.roster[i].starter ? 1 : 0, Math.round(b.secs), b.pts, b.fgm, b.fga, b.tpm, b.tpa, b.fpm, b.fpa, b.ftm, b.fta, b.oreb, b.dreb, b.ast, b.stl, b.blk, b.to, b.tkl, b.btk, b.pf, b.dnk]);
+  const lines = box.map((b, i) => [ids[i], b.played ? 1 : 0, g.roster[i].starter ? 1 : 0, Math.round(b.secs), b.pts, b.fgm, b.fga, b.tpm, b.tpa, b.fpm, b.fpa, b.ftm, b.fta, b.oreb, b.dreb, b.ast, b.stl, b.blk, b.to, b.tkl, b.btk, b.pf, b.dnk, b.pm]);
   const downs = g.events.filter(e => e.type === "tackle" && e.result === "down").map(e => ids[e.on]);
   // hurt in the game (the engine decides who and what; the league decides how long), and ejections
   const inj = g.events.filter(e => e.type === "injury").map(e => [ids[e.pid], e.k]);
@@ -427,8 +477,13 @@ function chronicCheck(S, p, name, rng) {
 }
 function applyResults(S, specs, results) {
   const cur = S.cur, rng = rngFor(S, "apply" + cur.phase + cur.day);
+  if (specs.length === 1 && specs[0].type === 2) return applyAllStar(S, specs[0], results[0], rng);
   for (let i = 0; i < specs.length; i++) {
     const sp = specs[i], r = results[i];
+    // the gate
+    const ga = cur.att[sp.home] || (cur.att[sp.home] = { n: 0, sum: 0, cap: 0, po: 0 });
+    if (sp.att) { ga.n++; ga.sum += sp.att[0]; ga.cap += sp.att[1]; if (sp.type === 1) ga.po++; }
+    if (sp.chase) { cur.chase[sp.gid] = sp.chase; R.moments(S, sp, r.lines, SI, (k, t, d) => news(S, k, t, d), (t, d) => log(S, t, d)); }
     const store = sp.type === 0 ? cur.stats : cur.pstats;
     r.lines.forEach((ln, j) => addLine(store, ln, j < sp.h.length ? sp.home : sp.away));
     const hstore = sp.type === 0 ? (cur.highs = cur.highs || {}) : (cur.phighs = cur.phighs || {});
@@ -495,6 +550,7 @@ function applyResults(S, specs, results) {
     for (const tid of [sp.home, sp.away]) for (const p of teamPlayers(S, tid)) {
       if (p.injury && p.injury.out > 0 && !hurt.has(p.id)) { p.injury.out--; if (p.injury.out <= 0) p.injury = null; }
       if (p.susp > 0 && !sp.h.includes(p.id) && !sp.a.includes(p.id)) p.susp--;
+      if (p.holdout > 0 && sp.type === 0) { p.holdout--; if (p.holdout <= 0) FO.holdoutEnds(S, p, rng, H(S)); }
     }
   }
   // bad blood cools a little every day (and a lot over the summer)
@@ -505,12 +561,52 @@ function applyResults(S, specs, results) {
   for (const e of TR.rollTrouble(S, trng, { release: (p, tid) => release(S, p, tid, "released after his third incident of the season") })) { e.season = S.season; e.phase = cur.phase; cur.blotter.push(e); }
   cur.day++;
   if (cur.phase === "regular") {
-    if (!cur.deadlineDone && cur.day >= Math.floor(cur.schedule.length * 0.6)) { cur.deadlineDone = true; tradeWindow(S, "deadline"); ST.midseasonFirings(S, rngFor(S, "firings"), (type, d) => log(S, type, d)); }
+    if (cur.day % 5 === 0) FO.feudTick(S, rngFor(S, "feud" + cur.day), H(S));
+    if (cur.day === Math.floor(cur.schedule.length * 0.4) || cur.day === Math.floor(cur.schedule.length * 0.75)) R.paceWatch(S, (k, t, d) => news(S, k, t, d));
+    if (!cur.allstar && cur.day >= cur.asDay) allStarWeekend(S);
+    if (!cur.deadlineDone && cur.day >= Math.floor(cur.schedule.length * 0.6)) { cur.deadlineDone = true; FO.demands(S, rngFor(S, "demands-dl"), H(S), "deadline"); tradeWindow(S, "deadline"); ST.midseasonFirings(S, rngFor(S, "firings"), (type, d) => log(S, type, d)); }
     if (cur.day >= cur.schedule.length) startPlayoffs(S);
   } else if (cur.phase === "playoffs") {
     const pf = cur.playoffs;
     if (pf.series.filter(s => s.round === pf.round).every(s => s.winner)) advancePlayoffs(S);
   }
+}
+// ---------- All-Star weekend ----------
+function allStarWeekend(S) {
+  const cur = S.cur, rng = rngFor(S, "allstar"), h = H(S);
+  const as = EV.selectAllStars(S, rng, B, h), sd = EV.sides(S, B), st = cur.standings;
+  const best = side => S.active.filter(t => sd[side].has(t)).sort((a, b) => st[b][0] - st[a][0] || st[a][1] - st[b][1] || (a < b ? -1 : 1))[0];
+  as.coaches = { east: S.teams[best("east")].coach, west: S.teams[best("west")].coach };
+  as.teams = { east: [...sd.east], west: [...sd.west] };
+  cur.allstar = as;
+  for (const side of ["east", "west"]) for (const id of as.sides[side].starters.concat(as.sides[side].reserves)) S.players[id].awards.push([S.season, "as"]);
+  cur.dunk = EV.dunkContest(S, rngFor(S, "dunk"), h);
+  if (cur.dunk) news(S, "dunk", `{p:${cur.dunk.winner}} wins the dunk contest in ${B.cityName(B.cityOf(S, as.host))}`, { pid: cur.dunk.winner });
+  // the union: players threaten to sit out the All-Star game until the owners recognize them
+  if (S.biz && !S.biz.union && S.season >= S.biz.unionYear) { S.biz.union = S.season; news(S, "union", "The players threaten to boycott the All-Star game; the owners recognize the UBL Players Association an hour before tipoff", {}); }
+}
+function applyAllStar(S, sp, r, rng) {
+  const cur = S.cur;
+  r.lines.forEach(ln => addLine(cur.astats, ln, null));
+  (cur.pog = cur.pog || []).push(gameStars(r.lines, sp.gid, sp.h.length, r.hs > r.as));
+  cur.games.push([sp.gid, sp.day, sp.home, sp.away, sp.seed, r.hs, r.as, r.per, sp.type, sp.h, sp.a, sp.hc, sp.ac, sp.ctx]);
+  cur.asDone = true;
+  // MVP: the best line on the winning side
+  const homeWon = r.hs > r.as; let mvp = null, mv = -1e9;
+  r.lines.forEach((ln, j) => { if (!ln[1] || (j < sp.h.length) !== homeWon) return; const v = gameScoreOf(ln); if (v > mv) { mv = v; mvp = ln[0]; } });
+  cur.allstar.game = { gid: sp.gid, hs: r.hs, as: r.as, home: sp.home, mvp };
+  if (mvp) { S.players[mvp].awards.push([S.season, "asmvp"]); news(S, "allstar", `The ${homeWon === (sp.home === "ASE") ? "East" : "West"} win the All-Star game ${Math.max(r.hs, r.as)}-${Math.min(r.hs, r.as)}; {p:${mvp}} is the MVP`, { pid: mvp }); }
+  // full rules: the injuries are real, and so are the grudges
+  for (const [id, k] of r.inj || []) {
+    const I = E.INJURIES[k], p = S.players[id]; if (!p || !p.team) continue;
+    const hh = p.health || (p.health = { conc: 0, chronic: [] }); let out = rng.int(I[2], I[3]);
+    if (I[0] === "concussion") { hh.conc++; out = Math.round(out * (1 + 0.35 * (hh.conc - 1))); }
+    if (!(p.injury && p.injury.out > 0)) { p.injury = { name: I[0], out }; cur.injuries.push([sp.gid, id, p.team, I[0], out]); news(S, "injury", `{p:${id}} is hurt in the All-Star game (${I[0]}, out ${out} games)`, { pid: id }); }
+    chronicCheck(S, p, I[0], rng);
+  }
+  for (const f of r.fights || []) { (cur.fights = cur.fights || []).push([sp.gid, f.a, f.b, f.brawl ? 1 : 0, f.join, f.why]); addGrudge(S, f.a, f.b, 0.8); addGrudge(S, f.b, f.a, 0.8); }
+  for (const [by, on] of r.flags || []) addGrudge(S, on, by, 0.5);
+  for (const [by, on] of r.hurtBy || []) addGrudge(S, on, by, 0.6);
 }
 function standingsOrder(S) {
   const st = S.cur.standings, rng = rngFor(S, "tiebreak");
@@ -548,21 +644,26 @@ function finishSeason(S) {
   const winPct = t => st[t][0] / Math.max(1, st[t][0] + st[t][1]);
   const elig = Object.entries(cur.stats).filter(([, s]) => s.gp >= Math.min(50, cur.schedule.length * 0.6));
   const best = f => { let b = null, bv = -1e9; for (const [id, s] of elig) { const v = f(s, S.players[id]); if (v > bv) { bv = v; b = +id; } } return b; };
-  const awards = {
-    mvp: best(s => gameScore(s) / s.gp * (0.55 + winPct(s.team))),
-    dpoy: best(s => (2 * s.stl + 2 * s.blk + 3 * s.tkl + 0.5 * s.dreb) / s.gp),
-    roy: best((s, p) => p.rookie === S.season ? gameScore(s) / s.gp : -1e9),
-    sniper: best(s => s.fpa >= 100 ? s.fpm : -1e9)
-  };
-  if (awards.roy !== null && S.players[awards.roy].rookie !== S.season) awards.roy = null;
+  // awards night: a voting panel (v0.7), plus the sniper award (most fours) by the numbers
+  const awards = EV.awardsNight(S, rngFor(S, "awards"), { elig, winPct, gameScore, prevGs: S.prevGs || {}, roles: P.ROLE_LIST });
+  awards.sniper = best(s => s.fpa >= 100 ? s.fpm : -1e9);
+  if (awards.roy !== null && S.players[awards.roy] && S.players[awards.roy].rookie !== S.season) awards.roy = null;
   if (awards.sniper !== null && cur.stats[awards.sniper].fpa < 100) awards.sniper = null;
   // Finals MVP: best playoff game score on the champion in the final series
   const fin = cur.playoffs.series.find(s => s.round === cur.playoffs.round);
   let fmvp = null, fv = -1e9;
   for (const [id, s] of Object.entries(cur.pstats)) if (s.team === champ && s.gp) { const v = gameScore(s); if (v > fv) { fv = v; fmvp = +id; } }
   awards.fmvp = fmvp; awards.champion = champ; awards.runnerUp = fin.winner === fin.hi ? fin.lo : fin.hi;
-  for (const k of ["mvp","dpoy","roy","sniper","fmvp"]) if (awards[k] !== null && awards[k] !== undefined) S.players[awards[k]].awards.push([S.season, k]);
+  for (const k of ["mvp","dpoy","roy","sniper","fmvp","smoy","mip"]) if (awards[k] !== null && awards[k] !== undefined) S.players[awards[k]].awards.push([S.season, k]);
+  awards.allLeague.forEach((tm, i) => { for (const id of tm) if (id) S.players[id].awards.push([S.season, "all" + (i + 1)]); });
+  awards.allDef.forEach((tm, i) => { for (const id of tm) if (id) S.players[id].awards.push([S.season, "def" + (i + 1)]); });
   for (const id of Object.keys(cur.pstats)) if (cur.pstats[id].team === champ && cur.pstats[id].gp) S.players[id].awards.push([S.season, "champ"]);
+  awards.eoy = FO.eoyPick(S, st);
+  if (cur.allstar && cur.allstar.game) awards.asmvp = cur.allstar.game.mvp;
+  // the record book (before this season is folded into careers), and every team's books
+  R.seasonEnd(S, cur); R.gameEnd(S, cur.highs || {}, HIGH_KEYS);
+  cur.books = B.seasonBooks(S, payroll);
+  S.prevGs = {}; for (const [id, s] of elig) S.prevGs[id] = Math.round(gameScore(s) / s.gp * 10) / 10;
   // careers
   for (const [id, s] of Object.entries(cur.stats)) {
     const p = S.players[id]; if (!s.gp) continue;
@@ -593,15 +694,19 @@ function finishSeason(S) {
   if (coy) { S.coaches[coy].awards.push([S.season, "coy"]); awards.coy = coy; }
   S.champions.push({ season: S.season, champ, runnerUp: awards.runnerUp, fmvp: awards.fmvp, mvp: awards.mvp });
   cur.awards = awards;
+  // the headlines: champions (and dynasties), the MVP
+  const recent = S.champions.slice(-5).filter(c => c.champ === champ).length, run = (() => { let n = 0; for (let i = S.champions.length - 1; i >= 0 && S.champions[i].champ === champ; i--) n++; return n; })();
+  news(S, "champion", run >= 3 ? `Dynasty: the {t:${champ}} win their ${run === 3 ? "third straight" : run + "th straight"} title` : run === 2 ? `Back-to-back: the {t:${champ}} repeat as champions` : recent >= 3 ? `The {t:${champ}} win their ${recent === 3 ? "third" : recent + "th"} title in five years` : `The {t:${champ}} are UBL champions`, { team: champ });
+  if (awards.mvp) news(S, "award", `{p:${awards.mvp}} is the MVP${awards.votes.mvp[0] && awards.votes.mvp[0][2] === 100 ? ", unanimously" : ""}`, { pid: awards.mvp });
   return awards;
 }
 function hofScore(p) {
   if (!p.career) return 0;
   let s = p.career.value / 100 + p.career.best * 1.5;
-  for (const [, a] of p.awards) s += { mvp: 30, fmvp: 12, dpoy: 12, roy: 3, champ: 4, sniper: 3 }[a] || 0;
+  for (const [, a] of p.awards) s += { mvp: 30, fmvp: 12, dpoy: 12, roy: 3, champ: 4, sniper: 3, all1: 5, all2: 2.5, all3: 1, def1: 2, as: 1, smoy: 2, mip: 1 }[a] || 0;
   return s;
 }
-const HOF_LINE = 255; // roughly the top ~2% of careers (calibrated on simmed stats)
+const HOF_LINE = 272; // roughly the top ~2% of careers (calibrated on simmed stats; raised in v0.7 for All-League and All-Star credit)
 function hallOfFame(S) {
   const cls = [];
   for (const p of Object.values(S.players)) if (p.retired && !p.hof && S.season - p.retired === 3 && hofScore(p) >= HOF_LINE) { p.hof = S.season; cls.push(p.id); }
@@ -617,36 +722,43 @@ function teamMode(S, tid) {
   const pct = w / Math.max(1, w + l);
   const top = teamPlayers(S, tid).map(p => p.ovr).sort((a, b) => b - a).slice(0, 5);
   const avgAge = teamPlayers(S, tid).reduce((s, p) => s + P.age(p, S.season), 0) / Math.max(1, S.teams[tid].roster.length);
-  if (pct >= 0.56) return "contend";
-  if (pct <= 0.42 || (avgAge > 29.5 && pct < 0.5)) return "rebuild";
-  return top[0] >= 72 ? "contend" : "middle";
+  let m;
+  if (pct >= 0.56) m = "contend";
+  else if (pct <= 0.42 || (avgAge > 29.5 && pct < 0.5)) m = "rebuild";
+  else m = top[0] >= 72 ? "contend" : "middle";
+  return FO.teamMode(S, tid, m, pct); // the GM's style leans on it
 }
 function pickValue(S, k, mode) {
   const yrs = k.draft - S.season, base = k.round === 1 ? P.tradeValue({ ovr: 60, born: S.season - 20 }, S.season, "rebuild") : 35;
   const m = mode === "rebuild" ? 1.25 : mode === "contend" ? 0.6 : 0.9;
   return base * m * Math.pow(0.9, Math.max(0, yrs));
 }
+// v0.7: every front office values players through its own eyes (scouting fog and style); stars who demand
+// a trade get moved at a discount; owners losing money dump salary on teams with room.
 function tradeWindow(S, tag) {
-  const rng = rngFor(S, "trade" + tag), cap = P.capFor(S.season);
+  const rng = rngFor(S, "trade" + tag);
   const modes = {}; for (const t of S.active) modes[t] = teamMode(S, t);
-  const sellers = S.active.filter(t => modes[t] === "rebuild"), buyers = S.active.filter(t => modes[t] === "contend");
-  let made = 0; const maxTrades = Math.ceil(S.active.length / 4);
-  for (let attempt = 0; attempt < 40 && made < maxTrades; attempt++) {
+  const sellers = S.active.filter(t => modes[t] === "rebuild" || teamPlayers(S, t).some(p => p.demand)), buyers = S.active.filter(t => modes[t] === "contend");
+  let made = 0; const maxTrades = Math.ceil(S.active.length / 4 * (0.6 + 0.4 * S.active.reduce((a, t) => a + FO.appetite(S, t), 0) / S.active.length));
+  const V = (tid, p, mode) => FO.value(S, tid, p, mode);
+  for (let attempt = 0; attempt < 48 && made < maxTrades; attempt++) {
     if (!sellers.length || !buyers.length) break;
     const s = rng.pick(sellers), b = rng.pick(buyers); if (s === b) continue;
-    // seller shops a veteran the buyer would value more than they do
-    const vets = teamPlayers(S, s).filter(p => P.age(p, S.season) >= 27 && p.ovr >= 62 && healthy(p) && p.contract && (tag !== "offseason" || p.contract.thru > S.season));
+    if (!rng.chance(Math.min(1, FO.appetite(S, s) * FO.appetite(S, b)))) continue;
+    // seller shops a veteran (a star who wants out goes first) the buyer values more than they do
+    const wants = teamPlayers(S, s).filter(p => p.demand && p.contract && healthy(p));
+    const vets = wants.length ? wants : teamPlayers(S, s).filter(p => P.age(p, S.season) >= 27 && p.ovr >= 62 && healthy(p) && p.contract && (tag !== "offseason" || p.contract.thru > S.season));
     if (!vets.length) continue;
-    const X = rng.pick(vets);
-    const sellerLoses = P.tradeValue(X, S.season, "rebuild"), buyerGains = P.tradeValue(X, S.season, "contend");
+    const X = rng.pick(vets), forced = !!X.demand;
+    const sellerLoses = V(s, X, "rebuild") * (forced ? 0.72 : 1), buyerGains = V(b, X, "contend");
     const bRoster = teamPlayers(S, b).sort((p, q) => q.ovr - p.ovr);
     const core = new Set(bRoster.slice(0, 5).map(p => p.id));
     const chips = bRoster.filter(p => !core.has(p.id) && healthy(p) && p.contract && (tag !== "offseason" || p.contract.thru > S.season));
     const picks = S.picks.filter(k => k.owner === b && k.draft >= S.season && k.draft <= S.season + 2);
     let best = null;
     const tryPkg = (players, pks) => {
-      const give = players.reduce((a, p) => a + P.tradeValue(p, S.season, "rebuild"), 0) + pks.reduce((a, k) => a + pickValue(S, k, "rebuild"), 0);
-      const cost = players.reduce((a, p) => a + P.tradeValue(p, S.season, "contend"), 0) + pks.reduce((a, k) => a + pickValue(S, k, "contend"), 0);
+      const give = players.reduce((a, p) => a + V(s, p, "rebuild"), 0) + pks.reduce((a, k) => a + pickValue(S, k, "rebuild"), 0);
+      const cost = players.reduce((a, p) => a + V(b, p, "contend"), 0) + pks.reduce((a, k) => a + pickValue(S, k, "contend"), 0);
       if (give < sellerLoses * 1.05 || cost > buyerGains * 0.95) return;
       const inSal = players.reduce((a, p) => a + p.contract.salary, 0), outSal = X.contract.salary;
       const yr = tag === "offseason" ? S.season + 1 : S.season, capY = P.capFor(yr);
@@ -660,55 +772,120 @@ function tradeWindow(S, tag) {
     for (let i = 0; i < chips.length; i++) for (let j = i + 1; j < chips.length; j++) tryPkg([chips[i], chips[j]], []);
     for (const k of picks) tryPkg([], [k]);
     if (!best) continue;
-    // execute
-    removeFromTeam(S, X, "trade"); addToTeam(S, X, b, rng); X.teams.push(b);
-    for (const p of best.players) { removeFromTeam(S, p, "trade"); addToTeam(S, p, s, rng); p.teams.push(s); }
-    for (const k of best.pks) k.owner = s;
-    log(S, "trade", { teams: [s, b], toB: [X.id], toS: best.players.map(p => p.id), picks: best.pks.map(k => [k.draft, k.round, k.orig]), when: tag });
+    doTrade(S, s, b, [X], best.players, best.pks, tag, rng, forced ? "demand" : null);
     made++;
-    if (tag === "offseason") { /* keep rosters legal after */ }
   }
+  // salary dumps: an owner bleeding money sends a big contract (and a sweetener) to a team with room
+  if (tag === "offseason") for (const s of S.active) {
+    const t = S.teams[s], o = S.owners[t.owner], fh = t.fin && t.fin.hist[t.fin.hist.length - 1];
+    if (!o || !fh || fh.profit >= 0 || payroll(S, s, S.season + 1) <= B.payrollTarget(S, s) * 1.02 || !rng.chance(0.5)) continue;
+    const yr = S.season + 1, capY = P.capFor(yr);
+    const bad = teamPlayers(S, s).filter(p => p.contract && p.contract.thru > S.season && p.contract.salary > capY * 0.08)
+      .sort((a, b) => b.contract.salary / Math.max(1, P.tradeValue(b, S.season, "middle")) - a.contract.salary / Math.max(1, P.tradeValue(a, S.season, "middle")))[0];
+    if (!bad) continue;
+    const taker = S.active.filter(x => x !== s && payroll(S, x, yr) + bad.contract.salary <= capY * 0.97 && S.teams[x].roster.length < ROSTER_MAX && modes[x] !== "contend")
+      .sort((a, b) => payroll(S, a, yr) - payroll(S, b, yr))[0];
+    if (!taker) continue;
+    const pk = S.picks.filter(k => k.owner === s && k.draft > S.season).sort((a, b) => b.round - a.round || a.draft - b.draft)[0];
+    doTrade(S, s, taker, [bad], [], pk ? [pk] : [], tag, rng, "dump", true);
+  }
+}
+// X goes from s to b; players (and picks) from b to s. dumpPicks: the picks go with X instead.
+function doTrade(S, s, b, Xs, players, pks, tag, rng, why, dumpPicks) {
+  for (const X of Xs) { removeFromTeam(S, X, "trade"); addToTeam(S, X, b, rng); X.teams.push(b); if (X.demand) { X.demand = null; } }
+  for (const p of players) { removeFromTeam(S, p, "trade"); addToTeam(S, p, s, rng); p.teams.push(s); }
+  for (const k of pks) k.owner = dumpPicks ? b : s;
+  const e = { teams: [s, b], toB: Xs.map(p => p.id), toS: players.map(p => p.id), picks: pks.map(k => [k.draft, k.round, k.orig]), when: tag };
+  if (why) e.why = why; if (dumpPicks) e.picksTo = b;
+  log(S, "trade", e);
+  const g = FO.gmOf(S, b); if (g) g.trades++;
+  const star = Xs.find(p => p.ovr >= 74);
+  if (why === "demand") news(S, "trade", `{t:${s}} grant {p:${Xs[0].id}}'s wish and trade him to {t:${b}}`, { pid: Xs[0].id, team: b });
+  else if (why === "dump") news(S, "trade", `Cost-cutting {t:${s}} dump {p:${Xs[0].id}}'s contract on {t:${b}}`, { pid: Xs[0].id, team: s });
+  else if (star) news(S, "trade", `Blockbuster: {t:${b}} get {p:${star.id}} from {t:${s}}`, { pid: star.id, team: b });
 }
 
 // ---------- offseason ----------
 function offseason(S) {
-  const season = S.season, rng = rngFor(S, "offseason");
-  const order = standingsOrder(S), playoffTeams = new Set(S.cur.playoffs.seeds);
-  S.cur = null; S.offTx = [];
+  const season = S.season, rng = rngFor(S, "offseason"), h = H(S), lg = (type, d) => log(S, type, d), nw = (k, t, d) => news(S, k, t, d);
+  const order = standingsOrder(S), playoffTeams = new Set(S.cur.playoffs.seeds), last = S.cur;
+  S.cur = null; S.offTx = []; S.offNews = S.offNews || [];
   const inducted = hallOfFame(S);
-  // 1. draft (held after season `season`)
-  runDraft(S, order, playoffTeams, rng);
-  // 2. offseason trade window
+  if (inducted.length) nw("hof", `The Hall of Fame inducts ${inducted.map(id => `{p:${id}}`).join(", ")}`, {});
+  // 0. league business for next season: the national TV deal, collective bargaining (the cap for next season)
+  if (S.biz.tv.thru <= season) { const fills = S.active.map(t => { const f = S.teams[t].fin.hist; return f.length ? f[f.length - 1].fill : 0.7; }); B.tvDeal(S, rngFor(S, "tv"), clamp((fills.reduce((a, b) => a + b, 0) / fills.length - 0.55) / 0.4, 0, 1), nw); }
+  B.laborYear(S, rngFor(S, "labor"), nw);
+  S.biz.capHist[season + 1] = S.biz.capMult;
+  // 1. feuds get settled upstairs; stars on losing teams ask out
+  const fireCoach = FO.feudOffseason(S, rngFor(S, "feud-off"), h);
+  FO.demands(S, rngFor(S, "demands-off"), h, "offseason");
+  // 2. draft night (held after season `season`)
+  S.lastDraft = runDraft(S, order, playoffTeams, rng);
+  // 3. offseason trade window
   tradeWindow(S, "offseason");
-  // 3. expiring contracts: re-sign or release to free agency
+  // 4. expiring contracts: re-sign or let him walk (under the reserve clause, he can't)
+  const reserve = S.biz.fa === "reserve", champs = new Set(S.champions.slice(-2).map(c => c.champ));
   for (const tid of S.active) {
-    const ps = teamPlayers(S, tid).sort((a, b) => P.tradeValue(b, season + 1, "middle") - P.tradeValue(a, season + 1, "middle"));
-    const keep = new Set(ps.slice(0, 11).map(p => p.id));
+    const g = FO.gmOf(S, tid), ps = teamPlayers(S, tid).sort((a, b) => FO.value(S, tid, b, "middle") - FO.value(S, tid, a, "middle") || a.id - b.id);
+    const keepN = (g && g.style === "loyalist") || champs.has(tid) ? 12 : g && g.style === "analytics" ? 10 : 11;
+    const keep = new Set(ps.slice(0, keepN).map(p => p.id)), pct = last.standings[tid][0] / Math.max(1, last.standings[tid][0] + last.standings[tid][1]);
     for (const p of ps) {
       if (!p.contract || p.contract.thru > season) continue;
-      const ask = Math.round(P.askingSalary(p, season + 1) * rng.range(1.0, 1.12) / 1000) * 1000;
+      let ask = Math.round(P.askingSalary(p, season + 1) * rng.range(1.0, 1.12) / 1000) * 1000;
+      // a ring (or home) discount keeps winners together; a reserve-clause player takes what he's offered
+      const disc = reserve ? 0.9 : (champs.has(tid) ? 0.88 + 0.08 * (1 - p.loyal) : 1) * (1 - 0.06 * p.loyal);
+      ask = Math.round(ask * disc / 1000) * 1000;
       const own = S.owners[S.teams[tid].owner], spend = own ? own.spend : 0.5;
-      if (keep.has(p.id) && P.age(p, season + 1) < 36 && payroll(S, tid, season + 1) + ask <= P.capFor(season + 1) * (0.9 + 0.08 * spend)) {
-        p.contract = { salary: ask, thru: season + contractYears(P.age(p, season + 1), rng), signed: season + 1 };
-        log(S, "resign", { pid: p.id, team: tid, salary: ask });
-      } else { removeFromTeam(S, p); p.contract = null; p.fa = true; }
+      const stays = reserve || rng.chance(clamp(0.62 + 0.35 * p.loyal - (pct < 0.45 ? 0.3 * p.ego : 0) + (champs.has(tid) ? 0.15 : 0) - (p.demand ? 0.7 : 0), 0.05, 0.98));
+      if (keep.has(p.id) && stays && P.age(p, season + 1) < 36 && payroll(S, tid, season + 1) + ask <= P.capFor(season + 1) * (0.9 + 0.08 * spend)) {
+        const yrs = contractYears(P.age(p, season + 1), rng);
+        p.contract = { salary: ask, thru: season + yrs, signed: season + 1 };
+        log(S, "resign", { pid: p.id, team: tid, salary: ask, years: yrs, disc: disc < 0.97 ? Math.round(disc * 100) : undefined });
+      } else { if (keep.has(p.id) && !stays && p.ovr >= 70) log(S, "walk", { pid: p.id, team: tid }); removeFromTeam(S, p); p.contract = null; p.fa = true; p.demand = null; }
     }
   }
-  // 4. new season begins: aging & development, injuries heal
+  // 5. new season begins: aging & development, summer work, mentors, injuries heal
   S.season++;
-  const drng = rngFor(S, "develop");
+  const drng = rngFor(S, "develop"), srng = rngFor(S, "skills"), G = P.eraGain(S.season);
+  const grp = r => r === "BIG" || r === "BRUISER" ? "F" : "B", mentorOf = {};
+  for (const tid of S.active) {
+    const ros = teamPlayers(S, tid), feuding = new Set(S.feuds.filter(f => !f.end).flatMap(f => [f.a, f.b]));
+    const vets = ros.filter(p => P.age(p, S.season) >= 30 && p.r.iq - G >= 62 && p.drive >= 52 && !feuding.has(p.id)).sort((a, b) => b.ovr - a.ovr || a.id - b.id);
+    const kids = ros.filter(p => P.age(p, S.season) <= 24).sort((a, b) => a.id - b.id);
+    for (const v of vets.slice(0, 2)) { let n = 0; for (const k of kids) { if (n >= 2 || mentorOf[k.id]) continue; if (grp(v.role) !== grp(k.role) && v.r.iq - G < 78) continue; mentorOf[k.id] = v; n++; } }
+  }
   for (const p of Object.values(S.players)) if (!p.retired) {
-    const c = p.team && S.teams[p.team].coach ? S.coaches[S.teams[p.team].coach] : null;
-    P.develop(p, drng, S.season, c ? (c.dev - 50) / 50 : 0);
-    if (p.health && p.health.chronic.length) { for (const k of p.health.chronic) for (const r in CHRONIC[k].r) p.r[r] = Math.max(20, Math.round(p.r[r] + CHRONIC[k].r[r] * 0.12)); p.ovr = P.overall(p); } // bad joints keep wearing down
+    const c = p.team && S.teams[p.team].coach ? S.coaches[S.teams[p.team].coach] : null, cdev = c ? (c.dev - 50) / 50 : 0;
+    const d = P.develop(p, drng, S.season, cdev);
+    if (d.cliff && p.team && p.ovr >= 64) { log(S, "cliff", { pid: p.id, team: p.team }); if (p.ovr >= 72) nw("cliff", `{p:${p.id}} reports to camp a step slower: the legs are going`, { pid: p.id }); }
+    if (p.health && p.health.chronic.length) { for (const k of p.health.chronic) for (const r in CHRONIC[k].r) p.r[r] = Math.max(20, Math.round(p.r[r] + CHRONIC[k].r[r] * 0.12)); P.rate(p, S.season); } // bad joints keep wearing down
     if (p.injury && p.injury.out < 82) p.injury = null; else if (p.injury) p.injury.out = Math.max(0, p.injury.out - 30);
     if (S.season - p.born > 27) p.trouble = Math.max(0.02, Math.round(((p.trouble || 0.25) - 0.01) * 100) / 100); // most guys calm down
+    if (!p.team) continue;
+    // a mentor's habits rub off; a mentor's best skill gets passed down
+    const m = mentorOf[p.id]; let mk = null;
+    if (m) {
+      p.drive = Math.min(99, p.drive + srng.int(1, 4));
+      if (m.temper < 0.4 && p.temper > 0.2) p.temper = r2(p.temper - 0.03);
+      if (m.tough > 0.65) p.tough = r2(Math.min(1, p.tough + 0.02));
+      if (m.clutch > 0.3) p.clutch = r2(p.clutch + 0.15 * (m.clutch - p.clutch));
+      const menu = ["thr", "fr", "mid", "pas", "ins", "perD", "tck", "rim", "reb", "sec"].filter(k => m.r[k] - G >= 80 && m.r[k] > p.r[k] + 8).sort((a, b) => m.r[b] - m.r[a]);
+      if (menu.length) mk = { k: menu[0] };
+      (p.mentors = p.mentors || []).push([S.season, m.id]);
+    }
+    for (const gn of P.growSkills(p, srng, S.season, cdev, mk)) {
+      const taught = mk && mk.k === gn.k;
+      if (gn.gain >= 6 || gn.reinvent || taught) log(S, "skill", { pid: p.id, team: p.team, k: gn.k, gain: gn.gain, reinvent: gn.reinvent || undefined, from: taught ? m.id : undefined });
+    }
+    const nr = P.bestRole(p, S.season);
+    if (nr !== p.role && P.age(p, S.season) <= 32 && srng.chance(0.5)) { log(S, "role", { pid: p.id, team: p.team, from: p.role, to: nr }); p.role = nr; P.rate(p, S.season); }
   }
-  // 5. retirements
+  // 6. retirements
   for (const p of Object.values(S.players)) {
     if (p.retired) continue;
     const a = P.age(p, S.season);
     let pr = a < 30 ? 0.004 : a < 33 ? 0.04 + Math.max(0, 62 - p.ovr) * 0.01 : a < 36 ? 0.22 + Math.max(0, 66 - p.ovr) * 0.02 : a < 39 ? 0.55 : 0.9;
+    if (p.ageStyle === "ageless" && a >= 33) pr *= 0.6;
     if (!p.team) pr += a > 28 ? 0.25 : 0.05;
     if (p.injury && p.injury.out >= 82) pr += 0.1;
     const hh = p.health, conc = hh ? hh.conc : 0;
@@ -718,34 +895,43 @@ function offseason(S) {
     const byConc = cpr > 0 && drng.chance(cpr);
     if (byConc || drng.chance(clamp(pr, 0, 1))) {
       p.retired = S.season - 1; p.fa = false; if (byConc) p.retireWhy = "concussions";
-      if (p.team) { log(S, "retire", { pid: p.id, team: p.team, why: byConc ? "concussions" : undefined }); removeFromTeam(S, p); }
+      if (p.team) { log(S, "retire", { pid: p.id, team: p.team, why: byConc ? "concussions" : undefined }); if (p.ovr >= 76 || p.hof) nw("retire", `{p:${p.id}} retires${byConc ? " after too many concussions" : ""}`, { pid: p.id }); removeFromTeam(S, p); }
       p.contract = null;
-      if (p.career && p.career.seasons >= 4) ST.maybeCoachingCareer(S, p, drng);
+      if (p.career && p.career.seasons >= 4) { ST.maybeCoachingCareer(S, p, drng); FO.maybeFrontOffice(S, p, drng); }
     }
   }
   eraAdjust(S);
   // old wounds heal: rivalries cool, grudges fade
   for (const k in S.riv || {}) { S.riv[k] = r2(S.riv[k] * 0.8); if (S.riv[k] < 0.03) delete S.riv[k]; }
   for (const k in S.grudges || {}) { const [a, b] = k.split(">"); S.grudges[k] = r2(S.grudges[k] * 0.55); if (S.grudges[k] < 0.12 || S.players[a].retired || S.players[b].retired) delete S.grudges[k]; }
-  // coaches and owners
-  ST.staffOffseason(S, rng, (type, d) => log(S, type, d));
-  // 6. expansion / merger
+  // 7. the business: owners sell, cities build arenas, franchises move
+  B.offseasonBiz(S, rngFor(S, "biz"), T, h);
+  // 8. coaches (a star who won his feud gets his coach fired) and front offices
+  for (const tid of fireCoach) if (S.teams[tid].coach) { const cid = S.teams[tid].coach; ST.releaseCoach(S, tid, "fired", lg); nw("coach", `The {t:${tid}} side with their star and fire coach {c:${cid}}`, { team: tid }); }
+  ST.staffOffseason(S, rng, lg);
+  FO.gmOffseason(S, rngFor(S, "gm"), lg, nw);
+  // 9. expansion / merger (new owners pay a fee that the old ones split)
   for (const info of T.TEAMS.filter(t => t.joined === S.season)) { addTeam(S, info); staffTeam(S, info, rng); }
   const newcomers = T.TEAMS.filter(t => t.joined === S.season);
   if (newcomers.length) {
     for (const info of newcomers.filter(t => t.how === "merger")) { generateRoster(S, info.id, rng, -1.5); log(S, "merger", { team: info.id }); }
     const exp = newcomers.filter(t => t.how === "expansion").map(t => t.id);
-    if (exp.length) expansionDraft(S, exp, rng);
+    if (exp.length) {
+      expansionDraft(S, exp, rng);
+      const fee = 0.6 * B.valueMultiple(S.season) / 1.6, old = S.active.filter(t => !exp.includes(t));
+      for (const t of old) { const o = S.owners[S.teams[t].owner]; if (o) o.cash = Math.round(((o.cash || 0) + fee * exp.length / old.length) * 1000) / 1000; }
+      nw("expansion", `Expansion: ${exp.map(t => `{t:${t}}`).join(" and ")} join the UBL, paying ${Math.round(fee * 100) / 100} times the salary cap apiece`, { fee });
+    }
   }
   addPicks(S, S.season); addPicks(S, S.season + 1); addPicks(S, S.season + 2);
   S.picks = S.picks.filter(k => k.draft >= S.season);
-  // 7. free agency
+  // 10. free agency
   freeAgency(S, rng);
-  // 8. trim (over max, or over the cap while above the minimum), then fill to the minimum
+  // 11. trim (over max, or over the cap while above the minimum), then fill to the minimum
   for (const tid of S.active) {
     while (S.teams[tid].roster.length > ROSTER_MAX || (payroll(S, tid) > P.capFor(S.season) && S.teams[tid].roster.length > ROSTER_MIN)) {
       const ps = teamPlayers(S, tid);
-      const cut = S.teams[tid].roster.length > ROSTER_MAX ? ps.sort((a, b) => a.ovr - b.ovr)[0]
+      const cut = S.teams[tid].roster.length > ROSTER_MAX ? ps.sort((a, b) => a.ovr - b.ovr || a.id - b.id)[0]
         : ps.sort((a, b) => P.tradeValue(a, S.season, "middle") / Math.max(1, a.contract.salary) - P.tradeValue(b, S.season, "middle") / Math.max(1, b.contract.salary))[0];
       const remaining = cut.contract.thru - S.season + 1;
       if (remaining > 0 && cut.contract.salary > P.minSalary(S.season)) S.teams[tid].dead.push({ amt: cut.contract.salary, thru: cut.contract.thru, pid: cut.id });
@@ -765,7 +951,7 @@ function offseason(S) {
   for (const t of Object.values(S.teams)) t.dead = t.dead.filter(d => d.thru >= S.season);
   // unsigned free agents mostly drift out of the league
   for (const p of Object.values(S.players)) if (p.fa && !p.retired && (P.age(p, S.season) > 31 || p.ovr < 48) && rng.chance(0.6)) { p.retired = S.season - 1; p.fa = false; }
-  return { inducted };
+  return { inducted, draft: S.lastDraft };
 }
 function runDraft(S, order, playoffTeams, rng) {
   const draftYear = S.season, N = S.active.length;
@@ -783,24 +969,23 @@ function runDraft(S, order, playoffTeams, rng) {
   for (let i = 0; i < size; i++) {
     const age = rng.int(19, 22);
     const p = newPlayer(S, rng, rng.pick(P.ROLE_LIST), -9 + classQ - (22 - age) * 1.0, age);
-    p.born = draftYear + 1 - age; p.ovr = P.overall(p);
-    p.scout = p.ovr + (22 - age) * 2.2 + rng.normal(0, 4); // what front offices see
+    p.born = draftYear + 1 - age; P.rate(p, draftYear);
     pool.push(p);
   }
-  pool.sort((a, b) => b.scout - a.scout);
-  let pickNo = 0;
-  for (const round of [1, 2]) for (const orig of r1) {
-    const k = S.picks.find(x => x.draft === draftYear && x.round === round && x.orig === orig);
-    const owner = k ? k.owner : orig; pickNo++;
-    const p = pool.shift(); if (!p) break;
+  // draft night: every team picks off its own board (v0.7), with trades on the night
+  const h = H(S);
+  const { rec, undrafted } = FO.draftNight(S, pool, r1, rng, Object.assign({}, h, { pick: (p, owner, round, pickNo) => {
     p.draft = { season: draftYear, round, pick: pickNo, team: owner }; p.rookie = draftYear + 1;
     const sal = round === 1 ? Math.max(P.minSalary(draftYear + 1), Math.round(P.capFor(draftYear + 1) * (0.07 - 0.0018 * (pickNo - 1)) / 1000) * 1000) : P.minSalary(draftYear + 1);
     p.contract = { salary: sal, thru: draftYear + (round === 1 ? 3 : 2), signed: draftYear + 1 };
     addToTeam(S, p, owner, rng); p.teams.push(owner);
     log(S, "draft", { pid: p.id, team: owner, round, pick: pickNo });
-  }
-  for (const p of pool) { p.fa = true; p.rookie = draftYear + 1; } // undrafted
+  } }));
+  rec.classQ = Math.round(classQ * 10) / 10;
+  for (const p of undrafted) { p.fa = true; p.rookie = draftYear + 1; } // undrafted
   S.picks = S.picks.filter(k => k.draft !== draftYear);
+  if (rec.picks[0]) news(S, "draft", `{t:${rec.picks[0].team}} take {p:${rec.picks[0].pid}} first overall`, { pid: rec.picks[0].pid, team: rec.picks[0].team });
+  return rec;
 }
 function expansionDraft(S, newTeams, rng) {
   const protect = {}, lost = {};
@@ -820,29 +1005,38 @@ function expansionDraft(S, newTeams, rng) {
     log(S, "expansion", { pid: best.id, team: nt, from });
   }
 }
+// v0.7: a free agent weighs money, winning, the stars already there, the market and home (superteams happen);
+// teams bid through their own eyes and their owner's wallet
 function freeAgency(S, rng) {
-  const cap = P.capFor(S.season);
-  const fas = Object.values(S.players).filter(p => p.fa && !p.retired).sort((a, b) => P.tradeValue(b, S.season, "middle") - P.tradeValue(a, S.season, "middle"));
-  const strength = {}; for (const t of S.active) strength[t] = teamPlayers(S, t).map(p => p.ovr).sort((a, b) => b - a).slice(0, 8).reduce((a, b) => a + b, 0) / 8;
+  const fas = Object.values(S.players).filter(p => p.fa && !p.retired).sort((a, b) => P.tradeValue(b, S.season, "middle") - P.tradeValue(a, S.season, "middle") || a.id - b.id);
+  const strength = {}, stars = {}, big = {};
+  const rate = t => { const o = teamPlayers(S, t).map(p => p.ovr).sort((a, b) => b - a); strength[t] = o.slice(0, 8).reduce((a, b) => a + b, 0) / 8; stars[t] = o.filter(x => x >= 74).length; big[t] = o.filter(x => x >= 77).length; };
+  for (const t of S.active) rate(t);
   for (const p of fas) {
     const ask = P.askingSalary(p, S.season);
     const offers = [];
     for (const tid of S.active) {
       const ros = teamPlayers(S, tid); if (ros.length >= ROSTER_MAX) continue;
-      const room = ST.payrollTarget(S, tid) - payroll(S, tid); if (room < P.minSalary(S.season)) continue;
-      const tenth = ros.map(q => q.ovr).sort((a, b) => b - a)[9] || 0;
-      if (ros.length >= ROSTER_MIN && p.ovr <= tenth) continue;
-      const offer = Math.min(ask, room);
+      const room = B.payrollTarget(S, tid) - payroll(S, tid); if (room < P.minSalary(S.season)) continue;
+      const tenth = ros.map(q => q.ovr).sort((a, b) => b - a)[9] || 0, seen = FO.seenOvr(S, tid, p), g = FO.gmOf(S, tid);
+      if (ros.length >= ROSTER_MIN && seen <= tenth) continue;
+      const bid = ask * (g && g.style === "win-now" ? 1.08 : g && g.style === "analytics" && P.age(p, S.season) >= 31 ? 0.85 : 1) * (1 + (seen - p.ovr) * 0.02);
+      const offer = Math.min(bid, room);
       if (offer < ask * 0.7) continue;
-      offers.push({ tid, offer, score: offer * (1 + (strength[tid] - 60) * 0.01) * rng.range(0.9, 1.1) });
+      offers.push({ tid, offer });
     }
     if (!offers.length) continue;
-    offers.sort((a, b) => b.score - a.score);
-    const o = offers[0]; p.fa = false;
+    for (const o of offers) o.u = FO.faUtility(S, p, o, ask, strength, stars, B) + rng.normal(0, 0.04);
+    offers.sort((a, b) => b.u - a.u);
+    const o = offers[0], from = p.teams && p.teams[p.teams.length - 1]; p.fa = false;
     sign(S, p, o.tid, Math.round(o.offer / 1000) * 1000, contractYears(P.age(p, S.season), rng), rng, "free agent");
+    if (p.ovr >= 74) {
+      if (big[o.tid] >= 2 && p.ovr >= 78) news(S, "superteam", `Superteam: {p:${p.id}} joins {t:${o.tid}}${o.offer < ask * 0.95 ? " for less money" : ""}, their ${big[o.tid] + 1 === 3 ? "third" : (big[o.tid] + 1) + "th"} star`, { pid: p.id, team: o.tid });
+      else if (from && from !== o.tid) news(S, "signing", `{p:${p.id}} leaves {t:${from}} for {t:${o.tid}}`, { pid: p.id, team: o.tid });
+    }
+    rate(o.tid);
   }
 }
-
 // ---------- season export (compact, replay-complete) ----------
 function exportSeason(S) {
   const cur = S.cur;
@@ -862,7 +1056,14 @@ function exportSeason(S) {
     fights: cur.fights || [], chronic: cur.chronic || [],
     health: Object.fromEntries(Object.values(S.players).filter(p => p.health && (p.health.conc || p.health.chronic.length) && (p.team || p.retired === cur.season)).map(p => [p.id, { conc: p.health.conc, chronic: p.health.chronic.map(k => CHRONIC[k].name) }])),
     rivals: Object.entries(S.riv || {}).filter(([k, v]) => v >= 0.1).map(([k, v]) => k.split("|").concat([v])),
-    coaches: cur.coachSnap, owners: Object.fromEntries(S.active.map(t => { const o = S.owners[S.teams[t].owner]; return [t, { id: o.id, name: o.first + " " + o.last }]; }))
+    coaches: cur.coachSnap, owners: Object.fromEntries(S.active.map(t => { const o = S.owners[S.teams[t].owner]; return [t, { id: o.id, name: o.first + " " + o.last }]; })),
+    // v0.7
+    era: { gain: Math.round(P.eraGain(cur.season) * 100) / 100, ht: Math.round(P.eraHt(cur.season) * 100) / 100 },
+    teamInfo: Object.fromEntries(S.active.map(t => { const T0 = S.teams[t], g = FO.gmOf(S, t), key = B.cityOf(S, t); return [t, { key, city: B.cityName(key), abbr: B.abbrOf(S, t), arena: T0.arena.name, cap: T0.arena.cap, gm: g ? { id: g.id, name: g.first + " " + g.last, style: g.style } : null }]; })),
+    books: cur.books || {}, biz: S.biz ? { tv: S.biz.tv, capMult: S.biz.capMult, union: S.biz.union, fa: S.biz.fa, revShare: S.biz.revShare, share: S.biz.share, max: S.biz.max } : null,
+    allstar: cur.allstar, astats: statArr(cur.astats || {}), dunk: cur.dunk, legend: cur.legend, chase: cur.chase || {}, miles: cur.miles || [], news: cur.news || [],
+    feuds: (S.feuds || []).filter(f => f.season === cur.season || !f.end || f.end.season === cur.season).map(f => ({ id: f.id, kind: f.kind, a: f.a, b: f.b || null, c: f.c || null, team: f.team, season: f.season, day: f.day, heat: f.heat, end: f.end })),
+    attKeys: "ctx.att = [attendance, capacity]"
   };
 }
 

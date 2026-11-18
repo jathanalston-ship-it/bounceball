@@ -19,7 +19,7 @@
 // own way (and low-IQ hotheads freelance). Rules added: fumbles are live balls, gang tackles are legal,
 // and hitting an airborne player is roughing. The four-point line arrives with the 1979 merger.
 "use strict";
-const ENGINE_VERSION = "0.6.0";
+const ENGINE_VERSION = "0.7.0";
 const C = {
   L: 94, W: 50, HX: [5.25, 88.75], HY: 25, RIM: 10,
   R3: 23.75, C3: 22, C3X: 14.2, R4: 30, FTD: 15,
@@ -347,6 +347,7 @@ function simulateGame(home, away, rosters, seed, opts) {
     if (CTX.chem && CTX.chem[gi] !== undefined) P.chem = CTX.chem[gi];
     if (CTX.conc && CTX.conc[gi]) P.conc = CTX.conc[gi];
     if (CTX.rev && CTX.rev.includes(gi)) { P.rev = true; P.mood = 0.3; } // revenge game: he's up for this one
+    if (CTX.md && CTX.md[gi]) P.mood += CTX.md[gi]; // v0.7: walking in unhappy (a feud with his coach, a trade demand) or loose
     P.energy = 1 - (FAT[t] || 0) * (1.25 - r.sta / 99 * 0.6);
     P.comp *= 0.8 + 0.2 * P.chem; // still learning the system
     all.push(P); team[t].push(P);
@@ -364,6 +365,8 @@ function simulateGame(home, away, rosters, seed, opts) {
     adj: [{ at: {}, tried: new Set(), pts: 0, poss: 0 }, { at: {}, tried: new Set(), pts: 0, poss: 0 }], ts: [newTS(), newTS()], pp: new Array(all.length).fill(0), closers: [null, null], closeAt: [-1e9, -1e9], possN: 0, sitO: ""
   };
   for (const [a, b, w] of CTX.gr || []) if (all[a] && all[b]) G.grudge.set(a * 64 + b, w); // a holds it against b
+  G.feud = new Set(); for (const [a, b] of CTX.fd || []) { G.feud.add(a * 64 + b); G.feud.add(b * 64 + a); } // v0.7: teammates who aren't speaking
+  if (CTX.att && CTX.att[1] > 0) REF.h *= 0.4 + 0.9 * clamp(CTX.att[0] / CTX.att[1], 0, 1); // a full building leans on the crew; an empty one doesn't
   const PL = [null, null], DP = [null, null];
   const B = { x: 47, y: 25, z: 0, vx: 0, vy: 0, vz: 0, mode: "dead", holder: null, shot: null, pass: null, t: 0, lastTouch: -1 };
   function newTS() { return { pts: 0, poss: 0, a2: 0, m2: 0, a3: 0, m3: 0, a4: 0, m4: 0, forced: 0, broken: 0, hitFouls: 0, tackled: 0, tov: 0, covA: 0, covP: 0 }; }
@@ -1372,6 +1375,7 @@ function simulateGame(home, away, rosters, seed, opts) {
         s = Math.max(shotV, swing) - risk * (shotV < swing ? 1.4 : 0.9) - (far > 45 ? 0.3 : 0) + pressure * 0.2
           + ((M.cutT > 0 || (M.screen && M.screen.phase === "roll") || M.curl) && e.cd > 3 ? 0.25 : 0);
         if (e.val === 4 && M.p.r.fr < 55) s -= 0.25;
+        if (G.feud.size && G.feud.has(H.idx * 64 + M.idx)) s -= 0.14; // he'd rather not give it to him
         if (M.job === "post" && hyp(M.x - h.x, M.y - h.y) < 14 && !H.post) s += 0.06 * S.post;
         // lob: a rim runner by the rim with a step on his man
         if (M.pf.lob > 55 && canDunk(M) && hyp(M.x - h.x, M.y - h.y) < 8 && r.pas > 52 && !M.air && M.st === "ok") {
@@ -2599,8 +2603,8 @@ function simulateGame(home, away, rosters, seed, opts) {
 // ===================== BOX SCORE (derived only from the event log) =====================
 function gameSec(per, clk) { return per <= 4 ? (per - 1) * C.QLEN + (C.QLEN - clk) : 4 * C.QLEN + (per - 5) * C.OTLEN + (C.OTLEN - clk); }
 function boxScore(game, uptoTick, nowPer, nowClk) {
-  const S = game.roster.map(r => ({ idx: r.idx, t: r.t, secs: 0, pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, fpm: 0, fpa: 0, ftm: 0, fta: 0, oreb: 0, dreb: 0, ast: 0, stl: 0, blk: 0, to: 0, tkl: 0, btk: 0, pf: 0, dnk: 0, played: false }));
-  const onSince = new Map();
+  const S = game.roster.map(r => ({ idx: r.idx, t: r.t, secs: 0, pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, fpm: 0, fpa: 0, ftm: 0, fta: 0, oreb: 0, dreb: 0, ast: 0, stl: 0, blk: 0, to: 0, tkl: 0, btk: 0, pf: 0, dnk: 0, pm: 0, played: false }));
+  const onSince = new Map(), pm = (t, v) => { for (const i of onSince.keys()) S[i].pm += S[i].t === t ? v : -v; }; // plus/minus: the score while he was on the floor
   for (const e of game.events) {
     if (e.tk > uptoTick) break;
     const g = gameSec(e.per, e.clk);
@@ -2610,11 +2614,11 @@ function boxScore(game, uptoTick, nowPer, nowClk) {
       case "sub": if (onSince.has(e.out)) { S[e.out].secs += g - onSince.get(e.out); onSince.delete(e.out); } onSince.set(e.inn, g); S[e.inn].played = true; break;
       case "fga": {
         const s = S[e.pid]; s.fga++; if (e.val === 3) s.tpa++; if (e.val === 4) s.fpa++;
-        if (e.made) { s.fgm++; s.pts += e.val; if (e.val === 3) s.tpm++; if (e.val === 4) s.fpm++; if (e.dunk) s.dnk++; if (e.ast >= 0) S[e.ast].ast++; }
+        if (e.made) { pm(s.t, e.val); s.fgm++; s.pts += e.val; if (e.val === 3) s.tpm++; if (e.val === 4) s.fpm++; if (e.dunk) s.dnk++; if (e.ast >= 0) S[e.ast].ast++; }
         if (e.blk >= 0 && e.blk !== undefined) S[e.blk].blk++;
         break;
       }
-      case "ft": { const s = S[e.pid]; s.fta++; if (e.made) { s.ftm++; s.pts++; } break; }
+      case "ft": { const s = S[e.pid]; s.fta++; if (e.made) { pm(s.t, 1); s.ftm++; s.pts++; } break; }
       case "reb": if (e.off) S[e.pid].oreb++; else S[e.pid].dreb++; break;
       case "to": S[e.pid].to++; if (e.kind === "steal" || e.kind === "loose") { if (e.by >= 0) S[e.by].stl++; } break;
       case "tackle": if (e.result === "down" || e.result === "fumble") S[e.pid].tkl++; if (e.result === "broken" || (e.result === "whiff" && e.move)) S[e.on].btk++; break;

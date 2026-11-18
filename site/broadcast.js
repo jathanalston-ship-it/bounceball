@@ -348,6 +348,7 @@ function playEvents(fromTick, toTick) {
     const r = e.pid !== undefined ? GAME.roster[e.pid] : null, col = e.team !== undefined ? COLORS[e.team] : "#f2b134";
     const homeTeam = e.team === 0;
     const call = callFor(e); if (call && call[0]) ANN.say(call[0], call[1]);
+    if (GAME.chase && GAME.chase.length && (e.type === "fga" || e.type === "ft" || e.type === "reb" || e.type === "to" || e.type === "tackle")) chaseCheck(e, i);
     switch (e.type) {
       case "fga":
         if (e.made) {
@@ -441,7 +442,7 @@ function records(ctxx) {
     for (const [tm, won] of [[g[2], g[5] > g[6]], [g[3], g[6] > g[5]]]) if (rec[tm]) rec[tm][won ? 0 : 1]++;
   }
   let series = null;
-  if (type !== 0) {
+  if (type === 1) {
     const w = { [h]: 0, [a]: 0 }; let n = 0;
     for (const g of sd.games) if (g[8] !== 0 && g[0] < gid && ((g[2] === h && g[3] === a) || (g[2] === a && g[3] === h))) { n++; w[g[5] > g[6] ? g[2] : g[3]]++; }
     series = n === 0 ? "Game 1" : w[h] === w[a] ? `Series tied ${w[h]}-${w[a]}` : w[h] > w[a] ? `${h} leads ${w[h]}-${w[a]}` : `${a} leads ${w[a]}-${w[h]}`;
@@ -467,15 +468,47 @@ function storylines() {
   (c.b2b || []).forEach((b, t) => { if (b) out.push(`The ${tn(t)} are on the second night of a back-to-back`); });
   (c.mi || []).forEach((m, t) => { if (m >= 900 && !(c.b2b && c.b2b[t])) out.push(`The ${tn(t)} flew ${m.toLocaleString()} miles to get here`); });
   for (const r of GAME.restNames || []) out.push(`${esc(r.name)} sits tonight for the ${tn(r.t)} (rest)`);
+  // v0.7
+  if (GAME.allstar) out.unshift(`All-Star Sunday: East against West under full rules. The hits are real.`);
+  const pri = { record: 0, season: 1, pass: 2, mile: 3 };
+  for (const c of (GAME.chase || []).slice().sort((a, b) => pri[a.kind] - pri[b.kind]).slice(0, 2)) out.push(chaseLine(c));
+  for (const l of (GAME.feudLines || []).slice(0, 1)) out.push(l);
+  for (const l of (GAME.demandLines || []).slice(0, 1)) out.push(l);
+  if (GAME.att) { const [n, cap] = GAME.att, f = n / cap; if (f >= 0.985) out.push(`A sellout: ${n.toLocaleString()} in the building`); else if (f < 0.5) out.push(`Plenty of empty seats: ${n.toLocaleString()} in a building that holds ${cap.toLocaleString()}`); }
   return out;
+}
+const CHASE_STAT = { pts: "points", reb: "rebounds", ast: "assists", stl: "steals", blk: "blocks", tkl: "tackles", btk: "broken tackles", dnk: "dunks", fpm: "fours", tpm: "threes" };
+function chaseLine(c) {
+  const nm = esc(GAME.roster[c.idx].name), st = CHASE_STAT[c.k];
+  return c.kind === "mile" ? `${nm} needs ${c.need} ${st} for ${c.target.toLocaleString()} in his career`
+    : c.kind === "record" ? `${nm} needs ${c.need} ${st} to pass ${esc(c.other)} for the all-time record`
+    : c.kind === "season" ? `${nm} needs ${c.need} ${st} to break ${esc(c.other)}'s single-season record`
+    : `${nm} needs ${c.need} ${st} to pass ${esc(c.other)} for No. ${c.rank} all-time`;
+}
+// the moment a chase ends, on the air
+function chaseCheck(e, i) {
+  if (!GAME.chase || !GAME.chase.length) return;
+  const who = new Set([e.pid, e.ast, e.by, e.blk, e.on].filter(x => x !== undefined && x >= 0));
+  const live = GAME.chase.filter(c => !c.done && who.has(c.idx)); if (!live.length) return;
+  const box = boxScore(GAME, e.tk);
+  for (const c of live) {
+    const b = box[c.idx], v = c.k === "reb" ? b.oreb + b.dreb : b[c.k];
+    if (v < c.need) continue;
+    c.done = true;
+    const nm = GAME.roster[c.idx], st = CHASE_STAT[c.k].toUpperCase();
+    const title = c.kind === "mile" ? `${c.target.toLocaleString()} CAREER ${st}` : c.kind === "record" ? `THE ALL-TIME ${st} RECORD` : c.kind === "season" ? `SINGLE-SEASON ${st} RECORD` : `NO. ${c.rank} ALL-TIME IN ${st}`;
+    setTimeout(() => lowerThird("#d4af37", title, `${esc(nm.short)}${c.other ? " passes " + esc(c.other) : ""}`, 5200, true), 900);
+    ANN.say(c.kind === "mile" ? `And that's ${c.target.toLocaleString()} career ${CHASE_STAT[c.k]} for ${nm.name}!` : c.kind === "record" ? `${nm.name} has done it! The all-time ${CHASE_STAT[c.k]} record belongs to him!` : c.kind === "season" ? `There it is: ${nm.name} breaks the single-season record!` : `${nm.name} moves past ${c.other} into number ${c.rank} all-time!`, 3);
+    if (AUDIO) AUDIO.excite(1);
+  }
 }
 function introHTML() {
   const R = records(V.ctx), H = TB[GAME.home], A = TB[GAME.away];
   const tm = t => { const T = t ? A : H, rec = R && R.rec[T.id]; return `<div class="tm" style="--c:${COLORS[t]}"><span class="cty">${esc(T.city)}</span><b>${esc(T.name)}</b><span class="rec">${rec ? rec[0] + "-" + rec[1] : ""}${R && R.coach[t] ? " · " + esc(R.coach[t]) : ""}</span></div>`; };
   const lu = t => `<ul style="--c:${COLORS[t]}">${GAME.roster.filter(r => r.t === t && r.starter).map(r => `<li><span class="num">${r.num}</span>${esc(r.short)}<em>${r.role === "SNIPER" ? "SN" : r.role === "BRUISER" ? "BR" : r.role}</em></li>`).join("")}</ul>`;
-  const kick = R ? `${R.season} · ${R.type ? "PLAYOFFS · " + esc(R.series) : "DAY " + (R.day + 1)}` : "UBL";
+  const kick = R ? `${R.season} · ${R.type === 2 ? "ALL-STAR SUNDAY" : R.type ? "PLAYOFFS · " + esc(R.series) : "DAY " + (R.day + 1)}` : "UBL";
   return `<div class="cin"><div class="ck">UBL ON TV · ${kick}</div><div class="mu">${tm(1)}<div class="at">at</div>${tm(0)}</div>
-    <div class="arena">${esc(H.arena || H.city + " Arena")} · ${esc(H.city)}</div>
+    <div class="arena">${esc(H.arena || H.city + " Arena")} · ${esc(GAME.allstar && GAME.allstar.host && TB[GAME.allstar.host] ? TB[GAME.allstar.host].city : H.city)}${GAME.att ? ` · attendance ${GAME.att[0].toLocaleString()}${GAME.att[0] >= GAME.att[1] ? " (sellout)" : ""}` : ""}</div>
     <div class="lus">${lu(1)}${lu(0)}</div>
     ${crewNames().length ? `<div class="crew"><b>Officials</b> ${crewNames().map((n, i) => esc(n) + (i === 0 ? " <em>(crew chief)</em>" : "")).join(" · ")}<span>${esc(crewStyle())}</span></div>` : ""}
     ${storylines().length ? `<ul class="story">${storylines().slice(0, 4).map(x => `<li>${x}</li>`).join("")}</ul>` : ""}
@@ -993,9 +1026,18 @@ function simulate(row, seasonData) {
   game.ctx = ctx || null; game.refs = seasonData.refs || {};
   game.restNames = ctx && ctx.rest ? ctx.rest.flatMap((ids, t) => (Array.isArray(ids) ? ids : []).map(id => ps[id] ? { name: ps[id].first + " " + ps[id].last, t } : null)).filter(Boolean) : [];
   game.coachNames = [co[hc] ? co[hc].name : "", co[ac] ? co[ac].name : ""];
-  game.season = seasonData.season;
+  game.season = seasonData.season; game.type = type; game.day = day;
+  // v0.7: the crowd, record chases, feuds and front-office drama around the game
+  game.att = ctx && ctx.att ? ctx.att : null;
+  const pname = id => ps[id] ? ps[id].first + " " + ps[id].last : (window.D && D.pl && D.pl[id] ? D.pl[id].name : "#" + id);
+  const at = {}; hl.concat(al).forEach((id, i) => at[id] = i);
+  game.chase = (seasonData.chase && seasonData.chase[gid] || []).filter(c => at[c[0]] !== undefined).map(c => ({ idx: at[c[0]], k: c[1], need: c[2], kind: c[3], target: c[4], rank: c[5], other: c[3] === "mile" ? null : pname(c[4]) }));
+  game.feudLines = (seasonData.feuds || []).filter(f => f.season === seasonData.season && f.day <= day && (!f.end || f.end.season > seasonData.season || type) && (at[f.a] !== undefined))
+    .map(f => f.kind === "coach" ? `${esc(pname(f.a))} and his coach aren't speaking` : at[f.b] !== undefined ? `${esc(pname(f.a))} and ${esc(pname(f.b))} are feuding` : null).filter(Boolean);
+  game.demandLines = (seasonData.tx || []).filter(t => t.type === "demand" && t.day >= 0 && t.day <= day && at[t.pid] !== undefined).map(t => `${esc(pname(t.pid))} has asked to be traded`);
+  if (type === 2 && seasonData.allstar) game.allstar = seasonData.allstar;
   const match = game.score[0] === hs && game.score[1] === as;
-  game.note = `${seasonData.season} ${type ? "playoffs" : "day " + (day + 1)} · seed ${seed} · ${match ? '<span class="ok">✓ replay matches the record</span>' : `<span class="bad">replay differs from the record (engine ${ENGINE_VERSION} vs ${seasonData.engineVersion})</span>`}`;
+  game.note = `${seasonData.season} ${type === 2 ? "All-Star game" : type ? "playoffs" : "day " + (day + 1)} · seed ${seed} · ${match ? '<span class="ok">✓ replay matches the record</span>' : `<span class="bad">replay differs from the record (engine ${ENGINE_VERSION} vs ${seasonData.engineVersion})</span>`}`;
   return game;
 }
 function resetShow() { stopReplay(); V.intro = null; V.hold = 0; hideCard(); ANN.stop(); $("skipIntro").hidden = true; }
