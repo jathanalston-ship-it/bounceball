@@ -403,7 +403,7 @@ function playEvents(fromTick, toTick) {
           if (run >= 8 && Math.floor(run / 4) > Math.floor((run - e.val) / 4)) { lowerThird(col, `${run}-0 RUN`, `${esc(tm.city)} ${esc(tm.name)}`); ANN.say("The " + tm.name + " are on a " + run + " to nothing run.", 2); }
           else lowerThird(col, `#${r.num} ${esc(r.short)}`, `${pts[e.pid].pts} PTS${e.val === 4 ? " · FOUR!" : e.dunk ? " · DUNK" : ""}`);
         } else if (e.blk !== undefined && e.blk >= 0) { if (AUDIO) { AUDIO.excite(0.7); if (e.team === 1) AUDIO.chant("ooh"); } }
-        else if (AUDIO && !e.dunk) { AUDIO.clank(); if (e.val === 4 && Math.random() < 0.7) AUDIO.chant("ooh"); }
+        else if (AUDIO && !e.dunk) { if (!(V.view3d && B3)) AUDIO.clank(); /* the 3D court plays the rim where the ball hits it */ if (e.val === 4 && Math.random() < 0.7) AUDIO.chant("ooh"); }
         break;
       case "tackle":
         if (e.move && !e.moveFail && (e.result === "whiff" || e.result === "broken")) { if (AUDIO) AUDIO.excite(e.team === 0 ? 0.5 : 0.9); lowerThird(COLORS[1 - e.team], `${MOVE_LABEL[e.move]} · ${esc(GAME.roster[e.on].short)}`, `${e.move === "hurdle" ? "right over" : e.move === "stiff" ? "plants" : "leaves"} ${esc(r.short)}${e.move === "stiff" ? " on the floor" : e.move === "hurdle" ? " on the dive" : " grabbing air"}`); }

@@ -100,24 +100,25 @@ function courtTexture(home, aniso, rough, four) {
     }
   }, aniso, rough);
 }
-function ballTextures() {
-  const seams = (g, W, H) => {
-    g.strokeStyle = "#140a04"; g.lineWidth = 5;
+function ballTextures() { // pebbled leather, recessed black seams, the league stamp
+  const W = 1024, H = 512;
+  const seams = (g, lw) => {
+    g.lineWidth = lw;
     g.beginPath(); g.moveTo(0, H / 2); g.lineTo(W, H / 2); g.stroke();
     for (const x of [W / 4, 3 * W / 4]) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
-    for (const x of [0, W / 2]) { g.beginPath(); g.ellipse(x + W / 4, H / 2, W / 6, H / 2, 0, 0, 7); g.stroke(); }
+    for (const x of [0, W / 2]) { g.beginPath(); g.ellipse(x + W / 4, H / 2, W / 6, H / 2, 0, 0, TAU); g.stroke(); }
   };
-  const map = canvasTex(512, 256, (g, W, H) => {
-    const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, "#c95a12"); gr.addColorStop(0.5, "#e2721f"); gr.addColorStop(1, "#c95a12");
-    g.fillStyle = gr; g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 9000; i++) { g.fillStyle = Math.random() < 0.5 ? "rgba(90,30,0,0.22)" : "rgba(255,190,120,0.12)"; g.fillRect(Math.random() * W, Math.random() * H, 1.6, 1.6); }
-    seams(g, W, H);
-  });
-  const bump = canvasTex(512, 256, (g, W, H) => {
-    g.fillStyle = "#808080"; g.fillRect(0, 0, W, H);
-    for (let i = 0; i < 26000; i++) { const v = 150 + Math.random() * 105 | 0; g.fillStyle = `rgb(${v},${v},${v})`; g.beginPath(); g.arc(Math.random() * W, Math.random() * H, 0.9, 0, TAU); g.fill(); }
-    g.strokeStyle = "#202020"; g.lineWidth = 6; seams(g, W, H);
-  }, 4, true);
+  const map = canvasTex(W, H, g => {
+    const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, "#b4501c"); gr.addColorStop(0.5, "#d8661f"); gr.addColorStop(1, "#b4501c"); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    for (let i = 0; i < 16000; i++) { g.fillStyle = Math.random() < 0.5 ? "rgba(110,40,6,0.09)" : "rgba(255,205,150,0.06)"; g.fillRect(Math.random() * W, Math.random() * H, 2, 2); }
+    g.strokeStyle = "#1b0d05"; seams(g, 7);
+    g.save(); g.translate(W * 0.375, H * 0.33); g.fillStyle = "rgba(24,12,4,0.82)"; g.textAlign = "center"; g.font = "bold 34px Impact, Oswald, sans-serif"; g.fillText("UBL", 0, 0); g.font = "bold 12px Arial, sans-serif"; g.fillText("OFFICIAL GAME BALL", 0, 18); g.restore();
+  }, 8);
+  const bump = canvasTex(W, H, g => {
+    g.fillStyle = "#9c9c9c"; g.fillRect(0, 0, W, H);
+    for (let i = 0; i < 70000; i++) { const v = 156 + Math.random() * 56 | 0; g.fillStyle = `rgb(${v},${v},${v})`; g.beginPath(); g.arc(Math.random() * W, Math.random() * H, 1.15, 0, TAU); g.fill(); }
+    g.strokeStyle = "#1e1e1e"; seams(g, 9);
+  }, 8, true);
   return { map, bump };
 }
 // player uniform atlas: top half jersey (neck at top, hem at bottom), bottom half shorts (waist to hem).
@@ -1281,6 +1282,12 @@ function makeAudio() {
     sfx: {
       dribble(v, pan, r) { if (!on) return; const t = ctx.currentTime; thumpAt(t, 160, 70, 0.14, 0.34 * v, pan, r); burstAt(t, 0.05, "lowpass", 900, 0.7, 0.2 * v, pan, r); },
       bounce(v, pan, r) { if (!on) return; const t = ctx.currentTime; thumpAt(t, 140, 60, 0.22, 0.4 * v, pan, r); burstAt(t, 0.07, "lowpass", 800, 0.7, 0.22 * v, pan, r); },
+      rim(v, pan, r) { // a clang: a few bright metal partials ringing down, and the tick of the hit
+        if (!on) return; r = r || 1; const t = ctx.currentTime, g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.13 * v + 0.001, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5 / r); g.connect(out(pan));
+        for (const [f, w] of [[612, 1], [1187, 0.55], [1866, 0.32], [2711, 0.18]]) { const o = ctx.createOscillator(), og = ctx.createGain(); o.type = "triangle"; o.frequency.value = f * r * (0.97 + Math.random() * 0.06); og.gain.value = w; o.connect(og); og.connect(g); o.start(t); o.stop(t + 0.55 / r); }
+        burstAt(t, 0.03, "bandpass", 2600, 1.4, 0.16 * v, pan, r);
+      },
+      board(v, pan, r) { if (!on) return; const t = ctx.currentTime; thumpAt(t, 230, 140, 0.12, 0.32 * v, pan, r); burstAt(t, 0.06, "bandpass", 1300, 0.9, 0.16 * v, pan, r); },
       land(v, pan, r) { if (!on) return; const t = ctx.currentTime; thumpAt(t, 95, 42, 0.24, 0.42 * v, pan, r); burstAt(t, 0.11, "lowpass", 520, 0.7, 0.24 * v, pan, r); },
       squeak(v, pan, r) {
         if (!on) return; r = r || 1; const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain(), f = (2300 + Math.random() * 900) * r;
@@ -1818,7 +1825,7 @@ function create(canvas, opts) {
   const confetti = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.42, 0.26), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }), 600); confetti.frustumCulled = false; confetti.visible = false; scene.add(confetti);
   // ---------- ball, contact shadows, slow-motion ghosts, flashes ----------
   const BT = ballTextures();
-  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.39, 28, 20), new THREE.MeshStandardMaterial({ map: BT.map, bumpMap: BT.bump, bumpScale: 0.6, roughness: 0.62, envMapIntensity: 0.6 })); ball.castShadow = true; scene.add(ball);
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.39, 28, 20), new THREE.MeshStandardMaterial({ map: BT.map, bumpMap: BT.bump, bumpScale: 0.32, roughness: 0.66, envMapIntensity: 0.6 })); ball.castShadow = true; scene.add(ball);
   const ghosts = []; for (let i = 0; i < 7; i++) { const g = new THREE.Mesh(new THREE.SphereGeometry(0.39, 12, 10), new THREE.MeshBasicMaterial({ color: glow("#ff9a3c", 1.5), transparent: true, opacity: 0, depthWrite: false })); scene.add(g); ghosts.push(g); }
   const blobMat = new THREE.MeshBasicMaterial({ map: radialTex("rgba(0,0,0,0.75)", "rgba(0,0,0,0)"), transparent: true, depthWrite: false });
   const blobs = []; for (let i = 0; i < 11; i++) { const s = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), blobMat); s.rotation.x = -PI / 2; s.position.y = 0.02; s.renderOrder = 1; scene.add(s); blobs.push(s); }
@@ -1904,6 +1911,116 @@ function create(canvas, opts) {
     return m.gh;
   }
   const ballHist = []; let lastHolderIdx = -1;
+  // ---------- ball physics (visual) ----------
+  // The engine decides every outcome; it moves the ball at 20 Hz, records it at 10 Hz, sends shots at the rim
+  // and moves misses to the rim's edge. Here the renderer works out how it looked: arcs that end on a real
+  // contact (front, back or side of the rim, the glass, straight through), rattles and roll-ins, the drop
+  // through the net and the bounces on the rubber floor, crisp bounces between frames, and no jumps when the
+  // ball changes hands. Everything is a function of the game clock, so replays and slow motion match.
+  const BR = 0.39, GV = (BB.C && BB.C.G) || 32.2, FE = (BB.C && BB.C.FLOOR_E) || 0.8;
+  const bfx = { hold: -2, off: new V3(), offT: 0, offD: 0.12, prev: new V3(), vel: new V3(), init: false, rate: 0, sx: null, phase: "" };
+  const _fa = [0, 0, 0], _fv = new V3();
+  // where a ball dropped from P with velocity V is s seconds later: gravity, rubber-floor bounces, then a roll
+  function flyFrom(P, V, sec, out) {
+    let x = P[0], h = P[1], y = P[2], vx = V[0], vh = V[1], vy = V[2], t = sec, n = 0;
+    while (t > 0 && n < 16) {
+      const tf = (vh + Math.sqrt(Math.max(0, vh * vh + 2 * GV * (h - BR)))) / GV;
+      if (!(tf > 0) || tf > t) { x += vx * t; y += vy * t; h += vh * t - GV * t * t / 2; t = 0; break; }
+      x += vx * tf; y += vy * tf; h = BR; t -= tf; vh = -(vh - GV * tf) * FE; vx *= 0.86; vy *= 0.86; n++;
+      if (vh < 1.6) { const k = Math.exp(-1.4 * t), d = (1 - k) / 1.4; x += vx * d; y += vy * d; t = 0; break; } // rolling to a stop
+    }
+    return out.set(x, Math.max(BR, h), y);
+  }
+  const vis = z => z + BR * (1 - sstep(z / 3)); // the engine's floor is the ball's bottom; draw its center
+  // the engine's free ball between two frames, with any floor bounce in between put back
+  function ballAt(tick) {
+    const b = sampleBall(tick); if (b.holder >= 0) return b;
+    const n = G.nFrames - 1, ff = clamp(tick / 2, 0, n - 1e-4), f1 = Math.floor(ff), a = ff - f1, f2 = Math.min(n, f1 + 1), f0 = Math.max(0, f1 - 1), F = G.frames, o = f => f * FS + BO, m1 = F[o(f1) + 4];
+    if ((m1 === 1 || m1 === 3 || m1 === 4) && F[o(f2) + 4] === m1 && F[o(f2) + 3] < 0) {
+      const D = 0.1, t = a * D, z1 = F[o(f1) + 2], z2 = F[o(f2) + 2];
+      const v1 = f0 < f1 && F[o(f0) + 4] === m1 ? (z1 - F[o(f0) + 2]) / D - GV * D / 2 : (z2 - z1) / D + GV * D / 2;
+      const tc = (v1 + Math.sqrt(Math.max(0, v1 * v1 + 2 * GV * Math.max(0, z1)))) / GV;
+      let z;
+      if (z1 + v1 * D - GV * D * D / 2 < 0 && tc > 0 && tc < D && v1 - GV * tc < -1.5) { // down to the floor, then back up
+        const u = -FE * (v1 - GV * tc), dD = D - tc, zE = u * dD - GV * dD * dD / 2;
+        if (t < tc) z = z1 + v1 * t - GV * t * t / 2; else { const q = t - tc; z = u * q - GV * q * q / 2 + (z2 - zE) * q / Math.max(1e-3, dD); }
+      } else z = z1 + (z2 - z1) * a + 0.5 * GV * t * (D - t);
+      b.z = Math.max(0, z);
+    }
+    return b;
+  }
+  // a shot's script: how it left the hand, what it hit and when, and where it went
+  function frameBall(f) { const o = Math.max(0, Math.min(G.nFrames - 1, f)) * FS + BO, F = G.frames; return [F[o], F[o + 1], F[o + 2], F[o + 3], F[o + 4]]; }
+  function shotFx(e) {
+    if (e._sx !== undefined) return e._sx;
+    let sx = null;
+    try {
+      const ft = e.type === "ft", ta = e.tk, right = attRight(e.team, e.per), hx = right ? 88.75 : 5.25, din = right ? -1 : 1, mode = ft ? 5 : 2;
+      let fr = Math.ceil(ta / 2) - 1; if (frameBall(fr)[4] !== mode) fr--; if (frameBall(fr)[4] !== mode) { e._sx = null; return null; }
+      while (fr > 0 && frameBall(fr - 1)[4] === mode) fr--;
+      const R = frameBall(fr), tr = fr * 2, aS = Math.atan2(R[1] - 25, R[0] - hx), h = hash(ta * 0.613 + (e.pid || 0) * 1.7);
+      let fa = Math.ceil(ta / 2); if (frameBall(fa)[4] === mode) fa++;
+      const A = frameBall(fa);
+      sx = { tr, ta, hx, din, aS, h, made: !!e.made, R: [R[0], R[2], R[1]], contacts: [], hoop: right ? 1 : 0 };
+      if (e.made) {
+        const ang = Math.abs(angDiff(aS, din > 0 ? 0 : PI)), dist = Math.hypot(R[0] - hx, R[1] - 25);
+        sx.kind = e.dunk ? "slam" : !ft && ang > 0.45 && ang < 1.3 && dist > 3 && dist < 21 && h < (e.layup ? 0.5 : 0.17) ? "bank" : h < (ft ? 0.6 : 0.52) ? "swish" : h < 0.8 ? "rimin" : "roll";
+      } else if (A[4] === 3 || A[4] === 0) { sx.a = A[4] === 3 ? Math.atan2(A[1] - 25, A[0] - hx) : aS + (h - 0.5); sx.kind = h < 0.24 ? "rattle" : "miss"; }
+      else { sx.kind = "deadmiss"; sx.a = aS + (h - 0.5) * 2.2; }
+      // when the ball is next in someone's hands (the dead ball after a make or a whistle)
+      sx.tEnd = ta + 4;
+      if (sx.made || sx.kind === "deadmiss") { let f = fa; while (f < fa + 30 && frameBall(f)[3] < 0) f++; sx.tEnd = Math.min(f * 2, ft || sx.kind === "deadmiss" ? ta + 18 : ta + 60); } // free throws: back to the shooter before his next one
+      // contact points (x, height, court y)
+      const rim = (ang, r, z) => [hx + Math.cos(ang) * r, z, 25 + Math.sin(ang) * r];
+      const rRad = ang => lerp(0.97, 0.56, (1 - Math.cos(ang - aS)) / 2); // the front of the rim from outside, the back from inside
+      const k = sx.kind;
+      if (k === "miss" || k === "deadmiss") { sx.tHit = ta; sx.P = rim(sx.a, rRad(sx.a), 10.36); sx.contacts.push({ tk: ta, kind: "rim", a: sx.a, k: 1 }); }
+      else if (k === "rattle") { const a0 = sx.a + PI + (h - 0.12) * 1.5; sx.tHit = ta - 4; sx.P = rim(a0, 0.78, 10.38); sx.P2 = rim(sx.a, rRad(sx.a), 10.36); sx.contacts.push({ tk: ta - 4, kind: "rim", a: a0, k: 0.7 }, { tk: ta, kind: "rim", a: sx.a, k: 1 }); }
+      else if (k === "swish" || k === "slam") { sx.tHit = ta; sx.P = [hx, 10.1, 25]; }
+      else if (k === "rimin") { sx.tHit = ta; sx.P = rim(aS + PI, 0.55, 10.38); sx.contacts.push({ tk: ta, kind: "rim", a: aS + PI, k: 0.55 }); }
+      else if (k === "roll") { sx.side = h * 97 % 1 < 0.5 ? 1 : -1; sx.sweep = sx.side * PI * (0.7 + (h * 31 % 1) * 0.9); sx.a0 = aS + PI * 0.75 * sx.side; sx.tHit = ta; sx.P = rim(sx.a0, 0.74, 10.4); sx.rollT = 10 + Math.round((h * 53 % 1) * 6); sx.contacts.push({ tk: ta, kind: "rim", a: sx.a0, k: 0.35 }); }
+      else if (k === "bank") { const bx = right ? 89.925 - BR : 4.075 + BR; sx.tHit = ta - 3; sx.P = [bx, 10.95 + h * 0.4, 25 + Math.sin(aS) * 0.75]; sx.contacts.push({ tk: ta - 3, kind: "board", a: 0, k: 0.8 }); }
+      // the flight: a clean arc from the release to the first contact, in the engine's flight time
+      const T = (sx.tHit - tr) / 20, P = sx.P; sx.T = Math.max(0.15, T);
+      if (T < 0.18 && k !== "slam") { e._sx = null; return null; } // a tip at the rim: too quick to script, the engine's path will do
+      sx.v0 = [(P[0] - sx.R[0]) / sx.T, (P[1] - sx.R[1] + GV * sx.T * sx.T / 2) / sx.T, (P[2] - sx.R[2]) / sx.T];
+      // the drop through the net, and the rest of the dead ball
+      const hv = [sx.v0[0] * 0.12, sx.v0[2] * 0.12];
+      sx.dropV = k === "slam" ? -17 : k === "swish" ? -9 : k === "bank" ? -7 : -4.5;
+      sx.dropAt = ta + (k === "rimin" ? 5 : k === "roll" ? sx.rollT : 0);
+      sx.hv = hv;
+    } catch (er) { sx = null; }
+    e._sx = sx; return sx;
+  }
+  // where the scripted ball is at this tick (null when the engine's own path should be drawn)
+  function scriptPos(sx, tick, out) {
+    const t = tick, k = sx.kind;
+    if (t < sx.tr || t > sx.tEnd) return null;
+    if (t <= sx.tHit) { const q = (t - sx.tr) / 20; bfx.phase = "flight"; return out.set(sx.R[0] + sx.v0[0] * q, sx.R[1] + sx.v0[1] * q - GV * q * q / 2, sx.R[2] + sx.v0[2] * q); }
+    bfx.phase = "rim";
+    if (k === "rattle" && t <= sx.ta) { const u = (t - sx.tHit) / (sx.ta - sx.tHit); return out.set(lerp(sx.P[0], sx.P2[0], u), lerp(sx.P[1], sx.P2[1], u) + 0.55 * 4 * u * (1 - u), lerp(sx.P[2], sx.P2[2], u)); }
+    if (k === "miss" || k === "rattle") { // off the rim: ease into the engine's rebound
+      const P = k === "rattle" ? sx.P2 : sx.P, e = ballAt(t), w = 1 - sstep((t - sx.ta) / 4);
+      return out.set(e.x + (P[0] - e.x) * w, vis(e.z) + (P[1] - vis(e.z)) * w, e.y + (P[2] - e.y) * w);
+    }
+    if (k === "deadmiss") { const q = (t - sx.ta) / 20, a = sx.a; return flyFrom(sx.P, [Math.cos(a) * 6.5, 6 + sx.h * 4, Math.sin(a) * 6.5], q, out); }
+    if (k === "bank" && t <= sx.ta) { const u = (t - sx.tHit) / (sx.ta - sx.tHit); return out.set(lerp(sx.P[0], sx.hx, u), lerp(sx.P[1], 10.15, u) + 0.25 * 4 * u * (1 - u), lerp(sx.P[2], 25, u)); }
+    if (k === "rimin" && t < sx.dropAt) { const u = (t - sx.ta) / (sx.dropAt - sx.ta); return out.set(lerp(sx.P[0], sx.hx, u), lerp(sx.P[1], 10.12, u) + 0.5 * 4 * u * (1 - u), lerp(sx.P[2], 25, u)); }
+    if (k === "roll" && t < sx.dropAt) { const u = (t - sx.ta) / (sx.dropAt - sx.ta), a = sx.a0 + sx.sweep * (1 - (1 - u) * (1 - u)), r = lerp(0.74, 0.5, u * u); return out.set(sx.hx + Math.cos(a) * r, 10.4 - 0.18 * u * u, 25 + Math.sin(a) * r); }
+    // through the net (it slows the ball), then free fall onto the rubber
+    const start = k === "roll" ? [sx.hx + Math.cos(sx.a0 + sx.sweep) * 0.5, 10.22, 25 + Math.sin(sx.a0 + sx.sweep) * 0.5] : [sx.hx, 10.12, 25];
+    const q = (t - sx.dropAt) / 20, tn = 1.7 / -sx.dropV; bfx.phase = "drop";
+    if (q < tn) return out.set(start[0] + sx.hv[0] * q, start[1] + sx.dropV * q, start[2] + sx.hv[1] * q);
+    return flyFrom([start[0] + sx.hv[0] * tn, start[1] + sx.dropV * tn, start[2] + sx.hv[1] * tn], [sx.hv[0] * 0.8 + sx.din * 0.4, sx.dropV, sx.hv[1] * 0.8], q - tn, out);
+  }
+  // the shot (or free throw) whose script covers this tick
+  function activeShot(tick) {
+    for (let i = evIndex(tick + 40) - 1; i >= 0 && EVT[i] > tick - 200; i--) {
+      const e = EV[i]; if (!((e.type === "fga" && !(e.blk >= 0) && e.gt === undefined && e.ci === undefined) || e.type === "ft")) continue;
+      const sx = shotFx(e); if (sx && tick >= sx.tr && tick <= sx.tEnd) return sx;
+    }
+    return null;
+  }
   function shotEvent(idx, a0) { for (let i = evIndex(a0 - 6); i < EV.length && EVT[i] <= a0 + 70; i++) { const e = EV[i]; if (e.type === "fga" && e.pid === idx) return e; } return null; }
   function passKind(idx, a0) { // read the ball's flight: off the floor, over everyone, or a long way
     const b0 = sampleBall(a0); let minZ = 99, maxZ = 0, far = 0;
@@ -2261,7 +2378,7 @@ function create(canvas, opts) {
     if (!w || !h) return null;
     if (canvas.width !== Math.floor(w * pr) || canvas.height !== Math.floor(h * pr)) { renderer.setSize(w, h, false); camera.aspect = w / h; }
     if (!G) { renderer.render(scene, camera); return null; }
-    const jump = lastTick < 0 || Math.abs(tick - lastTick) > 12;
+    const jump = lastTick < 0 || Math.abs(tick - lastTick) > 12, lastTickPrev = lastTick;
     const gdt = jump ? 0 : clamp((tick - lastTick) / 20, 0, 0.25); lastTick = tick;
     const adt = gdt || (view.ambient ? rdt : 0);
     vt += adt;
@@ -2272,6 +2389,8 @@ function create(canvas, opts) {
     const b = sampleBall(tick), arcadeOn = !(view.era > 0);
     const seen = new Set(), pos = []; let holder = null, holderS = null, minX = 1e9, maxX = -1e9;
     for (let k = 0; k < 10; k++) pos.push(samplePlayer(k, tick));
+    const sxNow = b.holder < 0 ? activeShot(tick) : null; let ftCarrier = -1;
+    if (!sxNow && b.holder < 0 && b.mode === 4 && mt.phase === 2 && Math.abs(b.z - 3.5) < 0.4) { let bd = 1.4; for (const q of pos) { const d = Math.hypot(q.x + 0.6 - b.x, q.y - b.y); if (d < bd) { bd = d; ftCarrier = q.idx; } } }
     const sweat = clamp(tick / G.ticks * 1.4, 0, 1);
     for (let k = 0; k < 10; k++) {
       const s = pos[k], m = model(s.idx); seen.add(s.idx);
@@ -2286,7 +2405,7 @@ function create(canvas, opts) {
         m.land = Math.max(0, m.land - gdt * 3.2); m.prevZ = s.z;
         const acc = (sp - m.lastSp) / gdt; m.lastSp = sp; m.lean = lerp(m.lean, clamp(acc * 0.012, -0.12, 0.18), 1 - Math.exp(-gdt * 6));
       }
-      const isHolder = b.holder === s.idx;
+      const isHolder = b.holder === s.idx || ftCarrier === s.idx;
       if (gdt > 0) { // sneaker squeaks on hard cuts and stops, thuds on landings
         const hd = Math.atan2(s.vy, s.vx), dh = m.vh === undefined ? 0 : Math.abs(angDiff(m.vh, hd)) / gdt; m.vh = hd;
         if (vt - (m.sqT || -9) > 0.5 && ((sp > 7 && dh > 3.2) || ((m.sp2 === undefined ? sp : m.sp2) - sp) / gdt > 24) && s.z < 0.1) { m.sqT = vt; cues.push(["squeak", s.x, 0.1, s.y]); }
@@ -2295,7 +2414,7 @@ function create(canvas, opts) {
       if (isHolder) {
         const pd = m.dph;
         m.dph = (m.dph + gdt * (2.1 + sp * 0.07)) % 1;
-        if ((s.act === ACT.DRIBBLE || s.act === ACT.CALL || s.act === ACT.POST) && pd < 0.5 && m.dph >= 0.5) cues.push(["dribble", s.x, 0.3, s.y]);
+        if ((s.act === ACT.DRIBBLE || s.act === ACT.CALL || s.act === ACT.POST) && pd < 0.42 && m.dph >= 0.42) cues.push(["dribble", s.x, 0.3, s.y]);
         if (Math.abs(left) > 5 && Math.sign(left) !== m.lastSide && tick - m.lastFlip > 18) { m.hand = -m.hand; const mk = hash(s.idx * 7.7 + Math.floor(tick / 40) * 3.3), old = era < 1970; m.moveKind = mk < (old ? 0.75 : 0.42) ? 0 : mk < (old ? 0.88 : 0.7) ? 1 : mk < (old ? 0.97 : 0.9) ? 2 : 3; m.crossDur = m.moveKind === 3 ? 0.42 : m.moveKind === 2 ? 0.34 : 0.28; m.crossT = m.crossDur; m.lastFlip = tick; }
         m.lastSide = Math.sign(left) || m.lastSide; m.crossT = Math.max(0, m.crossT - gdt);
       } else m.crossT = 0; // gave it up mid-move
@@ -2373,13 +2492,16 @@ function create(canvas, opts) {
       try { renderer.compile(scene, camera); } catch (er) { /* compiled on first use instead */ } for (const o of hid) o.visible = false;
     }
     // ball: in the hands while held; the renderer owns the dribble so hand and ball stay in sync
-    let bx = b.x, by = b.y, bz = b.z;
+    let bx = b.x, by = b.y, bz = b.z; bfx.phase = ""; bfx.sx = null;
+    let holdKey = -1;
+    if (!holder) { const bb = ballAt(tick); bx = bb.x; by = bb.y; bz = vis(bb.z); const sx = sxNow; if (sx && scriptPos(sx, tick, _fv)) { bfx.sx = sx; bx = _fv.x; bz = _fv.y; by = _fv.z; } }
     if (holder) {
       const yaw = holder.root.rotation.y, fx = Math.sin(yaw), fz = Math.cos(yaw), lx = Math.cos(yaw), lz = -Math.sin(yaw);
       const act = holderS.act;
       const dribbling = !(holder && holder.chin) && (act === ACT.DRIBBLE || act === ACT.CALL || act === ACT.POST) || (act === ACT.FT && b.mode !== 5 && holderS.actT % 3.2 < (holder.ftWin || 1.3));
+      holdKey = holderS.idx * 2 + (dribbling ? 1 : 0);
       if (dribbling) {
-        const H = holder.H, top = H * 0.4, u = Math.abs(Math.cos(PI * holder.dph)), hgt = 0.39 + (top - 0.39) * Math.pow(u, 1.25);
+        const H = holder.H, top = H * 0.4, ph = holder.dph % 1, dn = 0.42, hgt = ph < dn ? top - (top - 0.39) * (0.35 * (ph / dn) + 0.65 * (ph / dn) * (ph / dn)) : 0.39 + (top - 0.39) * (1 - Math.pow(1 - (ph - dn) / (1 - dn), 2)); // pushed down hard, a sharp bounce, then it rises and slows into the hand
         let side = holder.hand * 0.75 * (act === ACT.POST ? 1.3 : 1), fwdD = act === ACT.POST ? -0.4 : 0.85 + Math.min(1.2, Math.hypot(holderS.vx, holderS.vy) * 0.05), mz = hgt;
         if (holder.crossT > 0) { // dribble moves: crossover, between the legs, behind the back, double cross
           const u = 1 - holder.crossT / (holder.crossDur || 0.22), kd = act === ACT.POST ? 0 : holder.moveKind || 0, hd = holder.hand, bell = Math.sin(PI * u);
@@ -2395,6 +2517,24 @@ function create(canvas, opts) {
         const one = act === ACT.LAYUP || (act === ACT.DUNK && holderS.z > 0.2);
         const c = one ? tmpV2 : tmpV.add(tmpV2).multiplyScalar(0.5);
         bx = c.x + fx * 0.32; by = c.z + fz * 0.32; bz = c.y + (one ? 0.32 : 0.06);
+      }
+    }
+    { // no jumps when the ball changes hands: ease from where it was last drawn
+      const hNow = holder ? holdKey : bfx.sx ? 1e7 + bfx.sx.ta : -1; // hands, a shot's script, or the engine's free ball: ease across any switch
+      if (jump || !bfx.init) { bfx.hold = hNow; bfx.offT = 0; bfx.init = true; bfx.prev.set(bx, bz, by); }
+      else if (hNow !== bfx.hold) { bfx.off.set(bfx.prev.x - bx, bfx.prev.y - bz, bfx.prev.z - by); const d = bfx.off.length(); bfx.offD = clamp(0.07 + d * 0.025, 0.07, 0.32); bfx.offT = d > 0.05 && d < 30 ? bfx.offD : 0; bfx.hold = hNow; }
+      if (bfx.offT > 0) { const k = sstep(bfx.offT / bfx.offD); bx += bfx.off.x * k; bz += bfx.off.y * k; by += bfx.off.z * k; bfx.offT = Math.max(0, bfx.offT - gdt); }
+      if (gdt > 0) bfx.vel.set((bx - bfx.prev.x) / gdt, (bz - bfx.prev.y) / gdt, (by - bfx.prev.z) / gdt);
+      bfx.prev.set(bx, bz, by);
+    }
+    // contacts on the rim and the glass: the rim dips toward the hit, the board shivers, and you hear it
+    for (const hp of hoops) { hp.tiltX = 0; hp.tiltZ = 0; hp.board = 0; }
+    for (let i = evIndex(tick + 1) - 1; i >= 0 && EVT[i] > tick - 60; i--) {
+      const e = EV[i]; if (!((e.type === "fga" && !(e.blk >= 0) && e.gt === undefined && e.ci === undefined) || e.type === "ft")) continue; const sx = shotFx(e); if (!sx) continue;
+      for (const c of sx.contacts) {
+        const age = tick - c.tk; if (age < 0 || age > 30) continue; const hp = hoops[sx.hoop], amp = c.k * Math.exp(-age / 5) * Math.sin(age * 1.7 + 0.3);
+        if (c.kind === "rim") { hp.tiltZ += -Math.cos(c.a) * amp * 0.045; hp.tiltX += Math.sin(c.a) * amp * 0.045; } else hp.board += amp * 0.01;
+        if (!jump && gdt > 0 && lastTickPrev < c.tk && tick >= c.tk) cues.push([c.kind, sx.hx, 10, 25]);
       }
     }
     ball.position.set(bx, Math.max(0.39, bz), by);
@@ -2420,10 +2560,11 @@ function create(canvas, opts) {
       if (did) m.root.updateMatrixWorld(true);
     }
     if (gdt > 0) { // spin: backspin in flight, topspin rolling or dribbling
-      const vx = b.vx, vz = b.vy, sp = Math.hypot(vx, vz);
+      const vx = holder ? b.vx : bfx.vel.x, vz = holder ? b.vy : bfx.vel.z, sp = Math.hypot(vx, vz);
+      if (!holder) { if (bfx.phase === "flight" || (!bfx.phase && (b.mode === 2 || b.mode === 5))) bfx.rate = -15; else if (bfx.phase === "rim") bfx.rate = lerp(bfx.rate, 9 * (hash(Math.floor(tick / 6) * 0.37) - 0.3), 0.2); else if (b.mode === 1) bfx.rate = -9; if (ball.position.y < 0.47) bfx.rate = lerp(bfx.rate, sp / 0.39, 0.35); } // backspin in flight, a kick off the rim, rolling on the floor
       if (sp > 0.5 || holder) {
         tmpV.set(vx, 0, vz).normalize(); const ax = new V3().crossVectors(up, tmpV); if (ax.lengthSq() < 1e-6) ax.set(1, 0, 0); ax.normalize();
-        const rate = b.mode === 2 || b.mode === 5 ? -15 : b.mode === 1 ? -9 : holder ? 7 : sp / 0.39;
+        const rate = holder ? 7 : bfx.rate;
         qSpin.setFromAxisAngle(ax, rate * gdt); ball.quaternion.premultiply(qSpin);
       }
     }
@@ -2451,6 +2592,7 @@ function create(canvas, opts) {
       if (age < 20) hp.strip.material.color.copy(glow(G.colors[e.team], 3 * (1 - age / 20)));
       if (e.dunk) { const sk = Math.exp(-age / 5) * Math.sin(age * 1.6) * 0.05; hp.shake.rotation.z = sk * (side ? 1 : -1); hp.rimG.rotation.z = sk * 2.2 * (side ? 1 : -1); }
     });
+    for (const hp of hoops) { hp.rimG.rotation.z += hp.tiltZ || 0; hp.rimG.rotation.x = hp.tiltX || 0; hp.shake.rotation.y = hp.board || 0; }
     if (jump) for (const hp of hoops) hp.net.reset();
     else if (gdt > 0) { const nsub = Math.min(6, Math.ceil(gdt / (1 / 90))); for (let i = 0; i < nsub; i++) for (const hp of hoops) hp.net.step(gdt / nsub, bx, Math.max(0.39, bz), by); for (const hp of hoops) hp.net.draw(); }
     // refs follow the play and signal calls
@@ -2726,6 +2868,7 @@ function create(canvas, opts) {
     get camera() { return userCam; },
     get shot() { return dir.shot; },
     get gl() { return renderer; }, // tests: shader programs, frame stats
+    get ballPos() { return ball.position; }, shotScript(e) { return shotFx(e); }, // tests: the drawn ball and a shot's script
     dispose() { renderer.dispose(); }
   };
 }
