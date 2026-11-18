@@ -2304,6 +2304,7 @@ function create(canvas, opts) {
       case "fight": { const q = s.fight; P.set(clamp(q.x + 7, -3, 97), 6.4, 58); L.set(q.x, 4.4, q.y); fov = clamp(2 * Math.atan(8 / P.distanceTo(L)) * 180 / PI, 10, 34) * (portrait ? 1.6 : 1); break; } // courtside, handheld, in the middle of it
       case "tipoff": { P.set(47, 5.4, 63); L.set(47, 8.5, 25); fov = portrait ? 62 : 38; break; } // low at center court for the jump
       case "shotcam": { // v12: from behind and beside the shooter, on the broadcast side: follow the ball and close in on it as it reaches the rim
+        if (!s.shotAir) { P.set(47, 36, 101); L.set(bx, 2, bz); fov = 30; break; } // the shot is down (or a forced angle with no shot): never read a missing shot
         const q = s.shotAir, dx = q.hx - q.rx, dy = 25 - q.ry, dl = Math.hypot(dx, dy) || 1, ux = dx / dl, uy = dy / dl;
         let px = -uy, py = ux; if (py < 0) { px = -px; py = -py; }
         const back = 11 + Math.min(9, dl * 0.22), side = 8 + Math.min(6, dl * 0.12);
@@ -2349,7 +2350,7 @@ function create(canvas, opts) {
       const story = want === "shotcam" || want === "fight" || want === "hero" || want === "ftclose" || want === "ft" || want === "refcam" || want === "tipoff" || want === "huddle" || want === "dance" || want === "coach" || want === "bench";
       const minHold = cur === main ? 1.1 : (cur === "baseline" || cur === "rail" || cur === "sky") ? 1.3 : cur === "low" ? 2.4 : 0.9;
       if (cur === null || want === cur || dir.forced) shot = want; // coming out of a replay or a forced angle: cut straight back
-      else if (story || cur === "huddle" || cur === "crowd" || cur === "dance" || cur === "intro" || cur === "orbit" || cur === "tipoff" || cur === "ftclose" || cur === "ft" || cur === "fight") shot = want; // cut on the action
+      else if (story || cur === "huddle" || cur === "crowd" || cur === "dance" || cur === "intro" || cur === "orbit" || cur === "tipoff" || cur === "ftclose" || cur === "ft" || cur === "fight" || cur === "shotcam") shot = want; // cut on the action (the shot camera has nothing to hold once the shot is down)
       else if (held > minHold) shot = want;
       else { shot = cur; subj = dir.subj; kind = dir.subjKind; }
       if (shot === "low" && cur !== "low") dir.lastIso = s.now;
