@@ -62,6 +62,7 @@ async function vLeaders(y) {
     ["Points", r => r.pts / r.gp, 1], ["Rebounds", r => (r.oreb + r.dreb) / r.gp, 1], ["Assists", r => r.ast / r.gp, 1],
     ["Fours made", r => r.fpm, 0], ["Threes made", r => r.tpm, 0], ["Tackles (turnovers forced)", r => r.tkl / r.gp, 2],
     ["Blocks & swats", r => r.blk / r.gp, 2], ["Steals", r => r.stl / r.gp, 2], ["Broken tackles", r => r.btk / r.gp, 2],
+    ...(S.statKeys.includes("dnk") ? [["Dunks", r => r.dnk, 0]] : []),
     ["FG% (300+ att)", r => r.fga >= 300 ? r.fgm / r.fga * 100 : -1, 1], ["Four % (100+ att)", r => r.fpa >= 100 ? r.fpm / r.fpa * 100 : -1, 1], ["Minutes", r => r.min / 60 / r.gp, 1]
   ];
   let h = `<div class="vh"><h2>${y} leaders</h2>${seasonPicker(y, "leaders")}</div><p class="m small">Per game unless noted. Minimum 60% of games played.</p><div class="lgrid">`;
@@ -108,33 +109,12 @@ async function vTeam(id) {
   }
   const roster = Object.values(D.pl).filter(p => p.team === id).sort((a, b) => b.ovr - a.ovr);
   h += `<h3>Current roster (${D.lg.nextSeason})</h3><div class="tw"><table class="box"><thead><tr><th class="pn">Player</th><th>Pos</th><th>Type</th><th>Age</th><th>OVR</th><th>Contract</th></tr></thead><tbody>`;
-  for (const p of roster) { const ar = p.r && BB.archetype ? BB.archetype(p, D.lg.nextSeason) : null; h += `<tr><td class="pn"><span class="num">${p.num}</span>${plink(p.id)}${p.injury ? ` <span class="inj">${esc(p.injury.name)}</span>` : ""}</td><td>${BB.ROLES[p.role].name}</td><td class="m small">${ar ? ar.offName + " / " + ar.defName : ""}</td><td>${D.lg.nextSeason - p.born}</td><td class="b">${p.ovr}</td><td>${p.contract ? money(p.contract.salary) + " thru " + p.contract.thru : "–"}</td></tr>`; }
+  for (const p of roster) { const ar = p.r && BB.archetype ? BB.archetype(p, D.lg.nextSeason) : null; h += `<tr><td class="pn"><span class="num">${p.num}</span>${plink(p.id)}${p.injury ? ` <span class="inj">${esc(p.injury.name)}</span>` : ""}</td><td>${BB.ROLES[p.role].name}</td><td class="m small">${ar ? ar.offName + " / " + ar.defName : ""}</td><td>${D.lg.nextSeason - p.born}</td><td><span class="ovrc t-${BB.CARDS.tierFor(p.ovr).key}">${p.ovr}</span></td><td>${p.contract ? money(p.contract.salary) + " thru " + p.contract.thru : "–"}</td></tr>`; }
   h += `</tbody></table></div><h3>Season by season</h3><div class="tw"><table class="box"><thead><tr><th>Season</th><th>W-L</th><th>Finish</th><th>Playoffs</th></tr></thead><tbody>`;
   for (const s of tm.hist.slice().reverse()) h += `<tr class="${s.res === "Champion" ? "po" : ""}"><td><a href="#standings-${s.season}">${s.season}</a></td><td>${s.w}-${s.l}</td><td>${s.rank}</td><td>${s.res === "-" ? "missed" : s.res.startsWith("R") ? "round " + s.res.slice(1) : s.res}</td></tr>`;
   return h + `</tbody></table></div>`;
 }
-async function vPlayer(id) {
-  const p = D.pl[id]; if (!p) return `<p>Unknown player.</p>`;
-  const reg = (D.idx.regular[id] || []), keys = D.idx.keys;
-  const L = r => Object.fromEntries(keys.map((k, i) => [k, r[i]]));
-  let h = `<h2>${esc(p.name)} ${p.hof ? `<span class="tag gen">Hall of Fame ${p.hof}</span>` : ""}</h2>`;
-  const ar = p.r && BB.archetype ? BB.archetype(p, D.lg.nextSeason) : null;
-  h += `<p class="m">${BB.ROLES[p.role].name}${ar ? ` · <b>${ar.offName}</b> / ${ar.defName}` : ""} · ${Math.floor(p.ht / 12)}'${p.ht % 12}" ${p.wt} lb · born ${p.born}${p.draft ? ` · drafted ${p.draft.season} round ${p.draft.round}, pick ${p.draft.pick} by ${tname(p.draft.team)}` : " · original league player"}${p.retired ? ` · retired ${p.retired}` : p.team ? ` · ${tname(p.team)}` : " · free agent"}</p>`;
-  if (p.awards.length) {
-    const c = {}; for (const [y, a] of p.awards) (c[a] = c[a] || []).push(y);
-    h += `<div class="aw">` + Object.entries(c).map(([a, ys]) => `<div><span class="m">${AWS[a]}${ys.length > 1 ? " ×" + ys.length : ""}</span>${ys.join(", ")}</div>`).join("") + `</div>`;
-  }
-  if (p.r) h += `<details class="rat"><summary>Ratings (OVR ${p.ovr})</summary><div class="bars">${BB.RKEYS.map(k => `<div class="rb"><span>${BB.RLABEL[k]}</span><b style="--v:${p.r[k]}%">${p.r[k]}</b></div>`).join("")}</div></details>`;
-  h += `<h3>Regular season</h3><div class="tw"><table class="box"><thead><tr><th>Year</th><th>Team</th><th>GP</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>FG%</th><th>3P</th><th>4P</th><th>TKL</th><th>BLK</th><th>STL</th></tr></thead><tbody>`;
-  const tot = {};
-  for (const r of reg) {
-    const s = L(r); if (!s.gp) continue; for (const k of keys.slice(2)) tot[k] = (tot[k] || 0) + s[k];
-    h += `<tr><td><a href="#leaders-${s.season}">${s.season}</a></td><td>${s.team}</td><td>${s.gp}</td><td>${(s.min / 60 / s.gp).toFixed(1)}</td><td class="b">${(s.pts / s.gp).toFixed(1)}</td><td>${((s.oreb + s.dreb) / s.gp).toFixed(1)}</td><td>${(s.ast / s.gp).toFixed(1)}</td><td>${pct(s.fgm, s.fga)}</td><td>${s.tpm}-${s.tpa}</td><td>${s.fpm}-${s.fpa}</td><td>${s.tkl}</td><td>${s.blk}</td><td>${s.stl}</td></tr>`;
-  }
-  if (tot.gp) h += `<tr class="tot"><td>Career</td><td></td><td>${tot.gp}</td><td>${(tot.min / 60 / tot.gp).toFixed(1)}</td><td>${(tot.pts / tot.gp).toFixed(1)}</td><td>${((tot.oreb + tot.dreb) / tot.gp).toFixed(1)}</td><td>${(tot.ast / tot.gp).toFixed(1)}</td><td>${pct(tot.fgm, tot.fga)}</td><td>${tot.tpm}-${tot.tpa}</td><td>${tot.fpm}-${tot.fpa}</td><td>${tot.tkl}</td><td>${tot.blk}</td><td>${tot.stl}</td></tr>`;
-  h += `</tbody></table></div><p class="m small">Career totals: ${tot.pts || 0} points, ${tot.tkl || 0} tackles, ${tot.fpm || 0} fours.</p>`;
-  return h;
-}
+async function vPlayer(id, tab) { return vPlayerScreen(id, tab); }
 async function vMoves(y) {
   const S = await season(y);
   const fmt = t => {
@@ -243,7 +223,7 @@ async function route() {
   let html;
   try {
     html = v === "standings" ? await vStandings(y) : v === "leaders" ? await vLeaders(y) : v === "history" ? await vHistory()
-      : v === "hof" ? await vHof() : v === "teams" ? await vTeams() : v === "team" ? await vTeam(a) : v === "player" ? await vPlayer(a)
+      : v === "hof" ? await vHof() : v === "teams" ? await vTeams() : v === "team" ? await vTeam(a) : v === "player" ? await vPlayer(a, b) : v === "cards" ? await vCards(a, b)
       : v === "moves" ? await vMoves(y) : v === "games" ? await vGames(y, b) : v === "watch" ? await vWatch(y, b) : v === "tv" ? await vTv(y, b, hsh.split("-")[3])
       : v === "blotter" ? await vBlotter(y) : v === "coaches" ? await vCoaches() : v === "coach" ? await vCoach(a) : await vStandings(lastSeason());
   } catch (e) { html = `<p class="bad">Couldn't load that: ${esc(e.message)}</p>`; }

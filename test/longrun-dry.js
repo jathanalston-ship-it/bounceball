@@ -6,7 +6,7 @@ function fake(sp, rosters){
   const str=r=>r.slice(0,8).reduce((a,p)=>a+p.ovr,0)/8;
   const rng=E.makeRng(sp.seed); const d=str(rosters[0])-str(rosters[1])+2;
   const hw=rng.next()<1/(1+Math.exp(-d/6));
-  const lines=rosters[0].concat(rosters[1]).map((p,i)=>{const m=i%13<5?32*60:i%13<9?16*60:0;const pts=Math.round(m/60*p.ovr/100*rng.range(0.4,0.9));return [p.id,m?1:0,i%13<5?1:0,m,pts,0,0,0,0,0,0,0,0,Math.round(m/600),Math.round(m/400),Math.round(m/700),0,0,0,Math.round(rng.next()*m/1200),0,0];});
+  const lines=rosters[0].concat(rosters[1]).map((p,i)=>{const m=i%13<5?32*60:i%13<9?16*60:0;const pts=Math.round(m/60*p.ovr/100*rng.range(0.4,0.9));return [p.id,m?1:0,i%13<5?1:0,m,pts,0,0,0,0,0,0,0,0,Math.round(m/600),Math.round(m/400),Math.round(m/700),0,0,0,Math.round(rng.next()*m/1200),0,0,0];});
   return {gid:sp.gid,hs:hw?110:100,as:hw?100:110,per:4,lines,downs:[]};
 }
 const rows=[];

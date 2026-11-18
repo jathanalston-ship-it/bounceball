@@ -1923,7 +1923,7 @@ function simulateGame(home, away, rosters, seed, opts) {
 // ===================== BOX SCORE (derived only from the event log) =====================
 function gameSec(per, clk) { return per <= 4 ? (per - 1) * C.QLEN + (C.QLEN - clk) : 4 * C.QLEN + (per - 5) * C.OTLEN + (C.OTLEN - clk); }
 function boxScore(game, uptoTick, nowPer, nowClk) {
-  const S = game.roster.map(r => ({ idx: r.idx, t: r.t, secs: 0, pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, fpm: 0, fpa: 0, ftm: 0, fta: 0, oreb: 0, dreb: 0, ast: 0, stl: 0, blk: 0, to: 0, tkl: 0, btk: 0, pf: 0, played: false }));
+  const S = game.roster.map(r => ({ idx: r.idx, t: r.t, secs: 0, pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, fpm: 0, fpa: 0, ftm: 0, fta: 0, oreb: 0, dreb: 0, ast: 0, stl: 0, blk: 0, to: 0, tkl: 0, btk: 0, pf: 0, dnk: 0, played: false }));
   const onSince = new Map();
   for (const e of game.events) {
     if (e.tk > uptoTick) break;
@@ -1934,7 +1934,7 @@ function boxScore(game, uptoTick, nowPer, nowClk) {
       case "sub": if (onSince.has(e.out)) { S[e.out].secs += g - onSince.get(e.out); onSince.delete(e.out); } onSince.set(e.inn, g); S[e.inn].played = true; break;
       case "fga": {
         const s = S[e.pid]; s.fga++; if (e.val === 3) s.tpa++; if (e.val === 4) s.fpa++;
-        if (e.made) { s.fgm++; s.pts += e.val; if (e.val === 3) s.tpm++; if (e.val === 4) s.fpm++; if (e.ast >= 0) S[e.ast].ast++; }
+        if (e.made) { s.fgm++; s.pts += e.val; if (e.val === 3) s.tpm++; if (e.val === 4) s.fpm++; if (e.dunk) s.dnk++; if (e.ast >= 0) S[e.ast].ast++; }
         if (e.blk >= 0 && e.blk !== undefined) S[e.blk].blk++;
         break;
       }

@@ -13,7 +13,7 @@ const { clamp, makeRng, hashStr } = E;
 const LEAGUE_VERSION = "0.4.0";
 const GAMES = 82, ROSTER_MIN = 13, ROSTER_MAX = 15, ACTIVE = 13;
 const ROSTER_ROLES = ["PG","WING","SNIPER","BRUISER","BIG","PG","WING","WING","SNIPER","BRUISER","BRUISER","BIG","BIG"];
-const STAT_KEYS = ["gp","gs","min","pts","fgm","fga","tpm","tpa","fpm","fpa","ftm","fta","oreb","dreb","ast","stl","blk","to","tkl","btk","pf"];
+const STAT_KEYS = ["gp","gs","min","pts","fgm","fga","tpm","tpa","fpm","fpa","ftm","fta","oreb","dreb","ast","stl","blk","to","tkl","btk","pf","dnk"];
 
 function rngFor(S, tag) { return makeRng(hashStr(S.masterSeed + ":" + S.season + ":" + tag)); }
 const pl = (S, id) => S.players[id];
@@ -223,9 +223,22 @@ function runGame(sp, rosters, tactics) {
   const g = E.simulateGame({ id: sp.home }, { id: sp.away }, rosters, sp.seed, { frames: false, tactics, season: sp.season });
   const box = E.boxScore(g, 1e12);
   const ids = rosters[0].concat(rosters[1]).map(p => p.id);
-  const lines = box.map((b, i) => [ids[i], b.played ? 1 : 0, g.roster[i].starter ? 1 : 0, Math.round(b.secs), b.pts, b.fgm, b.fga, b.tpm, b.tpa, b.fpm, b.fpa, b.ftm, b.fta, b.oreb, b.dreb, b.ast, b.stl, b.blk, b.to, b.tkl, b.btk, b.pf]);
+  const lines = box.map((b, i) => [ids[i], b.played ? 1 : 0, g.roster[i].starter ? 1 : 0, Math.round(b.secs), b.pts, b.fgm, b.fga, b.tpm, b.tpa, b.fpm, b.fpa, b.ftm, b.fta, b.oreb, b.dreb, b.ast, b.stl, b.blk, b.to, b.tkl, b.btk, b.pf, b.dnk]);
   const downs = g.events.filter(e => e.type === "tackle" && e.result === "down").map(e => ids[e.on]);
   return { gid: sp.gid, hs: g.score[0], as: g.score[1], per: g.periods, lines, downs };
+}
+// Single-game highs and feat counts per player (bookkeeping only: never touches an RNG)
+const HIGH_KEYS = ["pts","reb","ast","stl","blk","tkl","btk","dnk","tpm","fpm"];
+const FEAT_KEYS = ["dd","td","g30","g40","g50"];
+const SI = Object.fromEntries(STAT_KEYS.map((k, i) => [k, i + 1]));
+function addHighs(store, line, gid) {
+  if (!line[1]) return;
+  const id = line[0], v = k => k === "reb" ? line[SI.oreb] + line[SI.dreb] : line[SI[k]];
+  let h = store[id];
+  if (!h) { h = store[id] = []; for (let i = 0; i < HIGH_KEYS.length; i++) h.push(0, -1); for (let i = 0; i < FEAT_KEYS.length; i++) h.push(0); }
+  HIGH_KEYS.forEach((k, i) => { const x = v(k); if (x > h[2 * i]) { h[2 * i] = x; h[2 * i + 1] = gid; } });
+  const tens = ["pts","reb","ast","stl","blk","tkl"].filter(k => v(k) >= 10).length, o = HIGH_KEYS.length * 2, pts = v("pts");
+  if (tens >= 2) h[o]++; if (tens >= 3) h[o + 1]++; if (pts >= 30) h[o + 2]++; if (pts >= 40) h[o + 3]++; if (pts >= 50) h[o + 4]++;
 }
 function addLine(store, line, tid) {
   const id = line[0]; let s = store[id];
@@ -241,6 +254,8 @@ function applyResults(S, specs, results) {
     const sp = specs[i], r = results[i];
     const store = sp.type === 0 ? cur.stats : cur.pstats;
     r.lines.forEach((ln, j) => addLine(store, ln, j < sp.h.length ? sp.home : sp.away));
+    const hstore = sp.type === 0 ? (cur.highs = cur.highs || {}) : (cur.phighs = cur.phighs || {});
+    for (const ln of r.lines) addHighs(hstore, ln, sp.gid);
     cur.games.push([sp.gid, sp.day, sp.home, sp.away, sp.seed, r.hs, r.as, r.per, sp.type, sp.h, sp.a, sp.hc, sp.ac]);
     if (sp.type === 0) {
       const H = cur.standings[sp.home], A = cur.standings[sp.away];
@@ -615,6 +630,7 @@ function exportSeason(S) {
     games: cur.games, standings: cur.standings,
     playoffs: cur.playoffs, awards: cur.awards,
     stats: statArr(cur.stats), pstats: statArr(cur.pstats),
+    highKeys: HIGH_KEYS, featKeys: FEAT_KEYS, highs: cur.highs || {}, phighs: cur.phighs || {},
     players: cur.snapshot, injuries: cur.injuries, tx: cur.tx, blotter: cur.blotter,
     coaches: cur.coachSnap, owners: Object.fromEntries(S.active.map(t => { const o = S.owners[S.teams[t].owner]; return [t, { id: o.id, name: o.first + " " + o.last }]; }))
   };

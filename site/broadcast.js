@@ -288,7 +288,7 @@ function renderBox() {
     const tot = rows.reduce((a, s) => { for (const k in s) if (typeof s[k] === "number") a[k] = (a[k] || 0) + s[k]; return a; }, {});
     const line = (name, s, cls) => `<tr class="${cls || ""}"><td class="pn">${name}</td><td>${s.played === false ? (V.tick >= GAME.ticks ? "DNP" : "–") : Math.floor(s.secs / 60)}</td><td class="b">${s.pts}</td><td>${s.oreb + s.dreb}</td><td>${s.ast}</td><td>${s.fgm}-${s.fga}</td><td>${s.tpm}-${s.tpa}</td><td>${s.fpm}-${s.fpa}</td><td>${s.ftm}-${s.fta}</td><td>${s.tkl}</td><td>${s.btk}</td><td>${s.stl}</td><td>${s.blk}</td><td>${s.to}</td><td>${s.pf}</td></tr>`;
     html += `<h3 style="--c:${COLORS[t]}">${esc(tm.city)} ${esc(tm.name)}</h3><div class="tw"><table class="box"><thead><tr><th class="pn">Player</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>FG</th><th>3P</th><th>4P</th><th>FT</th><th title="Tackles (turnovers forced)">TKL</th><th title="Broken tackles">BTK</th><th>STL</th><th>BLK</th><th>TO</th><th>PF</th></tr></thead><tbody>`;
-    for (const s of rows) { const r = GAME.roster[s.idx]; html += line(`<span class="num">${r.num}</span>${esc(r.short)} <span class="m">${r.role === "SNIPER" ? "SN" : r.role === "BRUISER" ? "BR" : r.role}</span>`, s, r.starter ? "st" : ""); }
+    for (const s of rows) { const r = GAME.roster[s.idx]; html += line(`<span class="num">${r.num}</span>${typeof pcQuick === "function" && GAME.season ? `<a class="plq" tabindex="0" data-pid="${r.id}" data-season="${GAME.season}" title="Player card">${esc(r.short)}</a>` : esc(r.short)} <span class="m">${r.role === "SNIPER" ? "SN" : r.role === "BRUISER" ? "BR" : r.role}</span>`, s, r.starter ? "st" : ""); }
     tot.played = true;
     html += line("<b>Team</b>", tot, "tot") + `</tbody></table></div>`;
   }
@@ -403,6 +403,7 @@ function simulate(row, seasonData) {
   const tactics = hc !== undefined && co[hc] ? [co[hc].tac, co[ac].tac] : undefined;
   const game = simulateGame({ id: h }, { id: a }, [hl.map(id => ps[id]), al.map(id => ps[id])], seed, { tactics, season: seasonData.season });
   game.coachNames = [co[hc] ? co[hc].name : "", co[ac] ? co[ac].name : ""];
+  game.season = seasonData.season;
   const match = game.score[0] === hs && game.score[1] === as;
   game.note = `${seasonData.season} ${type ? "playoffs" : "day " + (day + 1)} · seed ${seed} · ${match ? '<span class="ok">✓ replay matches the record</span>' : `<span class="bad">replay differs from the record (engine ${ENGINE_VERSION} vs ${seasonData.engineVersion})</span>`}`;
   return game;
