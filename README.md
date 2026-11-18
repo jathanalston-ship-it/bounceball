@@ -125,6 +125,27 @@ Season files also carry made dunks (`dnk`) in the stat lines and each player's s
 `phighs`, with the game id), counted from the play log without touching any random number, so they don't
 change a single game.
 
+### Card collections
+
+52 collections, built by `src/cards.js` from the season files (`index/cards.json`):
+
+- **Season leaders**: Posterized (dunks), Swat Team, Wrecking Crew (tackles), Escape Artists (broken tackles), Four Alarm, Splash Zone, Dime Store, Board Room, Pickpockets, Bucket Brigade.
+- **Moments & feats**: Moments (each season's best single game in points, rebounds, assists, tackles, dunks and fours, linked to the replay), Fifty Club, Triple Threat, Postseason Heat.
+- **Holidays & events**: Opening Night, Halloween Haunt, Thanksgiving Feast, Christmas Day, New Year's Eve, Heartbreakers (Valentine's Day), Leap Day, Pi Day, Luck of the Irish (St. Patrick's Day), April Fools, Friday the 13th (the star of the best game played that day), Dunktober (October's three biggest single-game dunk shows) and Game 7 (the winning side's best player in every seventh game).
+- **Awards**: Most Valuable, Finals MVP, Lockdown, Rookie of the Year, Ring Bearers, Dynasty (three titles in a row).
+- **Rising & veterans**: Rookie Card, Number One (first overall picks), Young Guns, Breakout (biggest overall jumps), Bench Mob, Ageless.
+- **Legacies**: Prime, Franchise Icons (ten seasons with one team), Journeymen (six teams), Hall of Fame, Immortals (the 12 best careers by total Game Score).
+- **Eras**: Founders, WBA Originals, Expansion Class.
+- **Built different**: Skyscrapers (7'3"+), Pocket Rockets (6'0" and under), Ironworkers, Rap Sheet.
+
+**League calendar**: the schedule numbers game days, and `seasonCalendar()` in `src/cards.js` spreads them from late October to mid-April with a game day on every holiday (Opening Night is day 0; playoff games follow every other day). Season files record each game's star (best Game Score), its top dunker and the winning side's best player (`pog`), which the holiday, Dunktober and Game 7 cards are built from.
+
+Cards at Ruby (81+) and above, plus Hall of Fame, Immortals, MVP, Finals MVP, Number One and Franchise Icons cards, carry an autograph. Moments, Hall of Fame, Immortals, Founders, Rap Sheet and the holiday sets have their own frames (film strip, marble, nebula, vintage card stock, hazard tape, candy cane, dripping slime, hearts, chalkboard, clovers, harlequin and more), Christmas cards put a Santa hat on the player, April Fools cards are drawn mirrored,, and Diamond cards get a cracked-ice foil. **Player photos**: every card shows the player himself, rendered from the same 3D model the broadcast uses (same face, skin, hair and build, in that season's uniform) and posed for the card: a dunk on the rim, a block, a jumper, a mugshot, a trophy lift. `Broadcast3D.photo()` in `site/broadcast3d.js` shoots each one in a small studio rig and cuts it out; `site/cardart.js` places it with anchors (hands, head, floor, ball) and draws props over it. Photos are shot only for cards on screen, kept in IndexedDB between visits, and fall back to the drawn figure without WebGL (or with `localStorage["ubl-photos"] = "off"`).
+
+Big cards tilt with a moving glare and parallax (background, player and foreground move at different depths). The Cards page features the next holiday on the real calendar.
+
+**Packs**: the Cards page has free packs (Standard, Premium with a Ruby-or-better last card, Leaders, Moments, Holiday, Legends, Oddballs and one per decade). Each card rolls its rarity tier first, then a card from that tier, so the odds are fixed whatever the pool. Pulled cards build **My collection** (set progress for every collection, owned and missing filters), stored in the browser.
+
 ### Era adjustment
 
 Development noise compounds over careers, so without correction the league slowly inflates. Each

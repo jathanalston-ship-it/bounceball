@@ -17,6 +17,7 @@ const readSeason = y => JSON.parse(fs.readFileSync(path.join(OUT, "seasons", y +
 const lines = {}, plines = {}, det = {};
 const D = id => det[id] || (det[id] = { s: [], rk: {}, hi: {}, ph: {}, tl: [], cards: [] });
 const firstSeason = {}, peak = {}, peakOvr = {}, nSeasons = {};
+const ovrBy = {}, teamYears = {}, teamPeak = {}, lastSeason = {}, gmsc = {}, titles = {};
 let statKeys = null, highKeys = null, featKeys = null;
 
 // ---------- pass 1: stat lines, ratings, ranks, highs, timeline ----------
@@ -36,7 +37,13 @@ for (const y of lg.seasons) {
     if (firstSeason[id] === undefined) firstSeason[id] = y;
     nSeasons[id] = (nSeasons[id] || 0) + 1;
     if (peakOvr[id] === undefined || sp.ovr > peakOvr[id]) { peakOvr[id] = sp.ovr; peak[id] = y; }
+    (ovrBy[id] = ovrBy[id] || {})[y] = sp.ovr; lastSeason[id] = y;
+    const ty = (teamYears[id] = teamYears[id] || {}); ty[a[0]] = (ty[a[0]] || 0) + 1;
+    const tp = (teamPeak[id] = teamPeak[id] || {}); if (!tp[a[0]] || sp.ovr > tp[a[0]][1]) tp[a[0]] = [y, sp.ovr];
+    const st = {}; S.statKeys.forEach((k, i) => st[k] = a[i + 1]);
+    gmsc[id] = (gmsc[id] || 0) + st.pts + 0.8 * (st.oreb + st.dreb) + 1.2 * st.ast + 2 * st.stl + 2 * st.blk + 3 * st.tkl + st.btk - 1.2 * st.to - 0.6 * (st.fga - st.fgm) - 0.4 * (st.fta - st.ftm);
   }
+  if (S.awards && S.awards.champion) for (const [id, a] of Object.entries(S.pstats)) if (a[0] === S.awards.champion && a[ix.gp]) (titles[id] = titles[id] || []).push(y);
 
   // league ranks among qualified players (60% of games)
   const rows = Object.entries(S.stats).map(([id, a]) => { const o = { id }; for (const k of S.statKeys) o[k] = a[ix[k]]; return o; }).filter(o => o.gp > 0);
@@ -78,10 +85,21 @@ const hof = {}; for (const p of Object.values(players)) if (p.hof) hof[p.id] = p
 const peakQ = {}; for (const id in peak) if (hof[id] || (nSeasons[id] >= 4 && peakOvr[id] >= 78)) peakQ[id] = peak[id];
 const mergerTeams = new Set(Object.values(lg.teams).filter(t => t.how === "merger").map(t => t.id));
 const mergerSeason = Math.min(...Object.values(lg.teams).filter(t => t.how === "merger").map(t => t.joined));
+// careers: franchise icons, journeymen, the Immortals, dynasties, expansion rosters
+const franchise = {}, journey = {}, immortal = {}, dynasty = {};
+for (const [id, ty] of Object.entries(teamYears)) {
+  const best = Object.entries(ty).sort((a, b) => b[1] - a[1])[0];
+  if (best && best[1] >= 10) franchise[id] = { team: best[0], season: teamPeak[id][best[0]][0], n: best[1] };
+  const nt = (players[id] && players[id].teams ? players[id].teams.length : Object.keys(ty).length);
+  if (nt >= 6) journey[id] = { season: lastSeason[id], n: nt };
+}
+Object.entries(gmsc).sort((a, b) => b[1] - a[1]).slice(0, 12).forEach(([id], i) => immortal[id] = i + 1);
+for (const [id, ys] of Object.entries(titles)) { let run = 1; for (let i = 1; i < ys.length; i++) { run = ys[i] === ys[i - 1] + 1 ? run + 1 : 1; if (run >= 3) dynasty[id + ":" + ys[i]] = run; } }
+const expansion = new Set(Object.values(lg.teams).filter(t => t.how === "expansion").map(t => t.id + ":" + t.joined));
 const allCards = [];
 for (const y of lg.seasons) {
   const S = readSeason(y);
-  for (const c of C.seasonCards(S, { players, firstSeason, peak: peakQ, hof, leagueFirst: lg.seasons[0], mergerSeason, mergerTeams })) { allCards.push(c); D(c[2]).cards.push(c); }
+  for (const c of C.seasonCards(S, { players, firstSeason, peak: peakQ, hof, leagueFirst: lg.seasons[0], mergerSeason, mergerTeams, ovrBy, peakAll: peak, franchise, journey, expansion, immortal, dynasty })) { allCards.push(c); D(c[2]).cards.push(c); }
 }
 
 // ---------- write ----------
@@ -90,7 +108,7 @@ fs.writeFileSync(path.join(OUT, "index", "player-seasons.json"), JSON.stringify(
 const shards = Array.from({ length: SHARDS }, () => ({}));
 for (const [id, d] of Object.entries(det)) { d.tl.sort((a, b) => a[0] - b[0] || a[1] - b[1]); shards[id % SHARDS][id] = d; }
 shards.forEach((s, i) => fs.writeFileSync(path.join(OUT, "index", "players", i + ".json"), JSON.stringify(s)));
-const cardKeys = ["col", "season", "pid", "team", "ovr", "base", "rank", "value", "num"];
+const cardKeys = ["col", "season", "pid", "team", "ovr", "base", "rank", "value", "num", "extra"];
 fs.writeFileSync(path.join(OUT, "index", "cards.json"), JSON.stringify({
   shards: SHARDS, rkeys: P.RKEYS, ratingKeys: ["season", "team", "num", "ovr", "wt"].concat(P.RKEYS),
   highKeys, featKeys, cardKeys, cards: allCards
