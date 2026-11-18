@@ -288,6 +288,11 @@ function buildArc(game) { // the moments that get arcade time
     else if (e.type === "fga" && e.made && e.dunk) out.push(h01(e.tk * 0.71) < 0.3 ? { slow: [e.tk - 16, e.tk - 1], k: 0.35, stop: e.tk, ms: 100 } : { stop: e.tk, ms: 60 }); // dunks are everywhere on this floor: only some get the slow motion
     else if (e.type === "fga" && e.blk !== undefined && e.blk >= 0 && e.swat) out.push({ stop: e.tk, ms: 90 });
     else if (e.type === "tackle" && e.result === "whiff" && (e.move === "juke" || e.move === "spin")) out.push({ slow: [e.tk - 6, e.tk + 18], k: 0.4 });
+    if (e.type === "fga" && !e.dunk && game.frames) { // v12: every shot: a touch of slow motion while the ball is in the air
+      const F = game.frames, FS = BB.C.FS; let f = Math.min(game.nFrames - 1, Math.floor(e.tk / 2)), n = 0;
+      while (f > 0 && F[f * FS + 84] === 2 && n < 120) { f--; n++; }
+      const rel = (f + 1) * 2; if (e.tk - rel >= 8) out.push({ slow: [rel + 2, e.tk + 1], k: 0.62 });
+    }
   }
   return out;
 }
@@ -1267,6 +1272,7 @@ function loop(ts) {
     else if (V.tick >= GAME.ticks - 2) view = { ambient: true, shot: V.card && V.card.kind === "fin" ? "orbit" : undefined, rate: V.speed };
     else view = { rate: V.speed, focus: $("cam").value === "player" ? V.follow : undefined };
     view.era = V.eraOn ? eraMode() : 0;
+    view.hl = V.hl !== false; view.shotcam = !V.channels && V.speed <= 4; // v12: highlights and the shot camera
     const R3 = B3.render(V.replay ? V.replay.t : V.tick, view);
     if (R3 && R3.shot === "hero" && R3.subjKind === "player" && !V.replay && frameVals().phase !== 2) heroGraphic(R3.subj);
     autoQuality(dt);
@@ -1323,6 +1329,7 @@ function initBroadcast() {
   $("snd").onclick = () => { if (!AUDIO) return; const on = AUDIO.toggle(); $("snd").textContent = on ? "🔊" : "🔈"; $("snd").classList.toggle("on", on); };
   $("ann").onclick = () => { const on = ANN.toggle(); $("ann").classList.toggle("on", on); if (on) ANN.say("Announcer on.", 1); };
   $("rpl").onclick = () => { V.autoReplay = !V.autoReplay; $("rpl").classList.toggle("on", V.autoReplay); if (!V.autoReplay) stopReplay(); };
+  if ($("hlb")) $("hlb").onclick = () => { V.hl = V.hl === false; $("hlb").classList.toggle("on", V.hl !== false); };
   $("rlast").onclick = replayLast;
   try { V.eraOn = localStorage.getItem("ubl.era") === "1"; } catch (e) {}
   $("era").onclick = () => { V.eraOn = !V.eraOn; try { localStorage.setItem("ubl.era", V.eraOn ? "1" : "0"); } catch (e) {} applyEra(); if (GAME && V.eraOn) lowerThird("#f2b134", ["MODERN HD", "1990s VIDEO", "1970s FILM", "1950s KINESCOPE"][eraMode()], "the broadcast look of " + (V.ctx && V.ctx.S ? V.ctx.S.season : "this season"), 2400); };
@@ -1359,6 +1366,7 @@ function initBroadcast() {
     else if (k === "m") $("snd").click();
     else if (k === "a") $("ann").click();
     else if (k === "v") $("era").click();
+    else if (k === "h" && $("hlb")) $("hlb").click();
     else if (k === "p") setView($("cam").value === "player" ? "auto" : "player");
     else if (/^[1-3]$/.test(k) && V.channels) flip(+k - 1);
     else if (k === "escape" && V.replay) { stopReplay(); updateAll(true); }

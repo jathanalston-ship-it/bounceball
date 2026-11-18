@@ -128,29 +128,36 @@ function txt(g, s, x, y, size, fill, stroke, font) {
   g.fillStyle = fill; g.fillText(s, x, y);
 }
 function jerseyAtlas(num, name, tm, c1, c2, skin, era) {
+  // v12: the armholes and neck are cut in the geometry; the texture trims them (u = around the body, v = down from the neck)
   return canvasTex(512, 512, g => {
     g.fillStyle = c1; g.fillRect(0, 0, 512, 256);
-    g.fillStyle = "rgba(0,0,0,0.08)"; for (let y = 0; y < 256; y += 3) for (let x = (y / 3) % 2 ? 1 : 0; x < 512; x += 3) g.fillRect(x, y, 1, 1);
-    const sh = g.createLinearGradient(0, 0, 0, 256); sh.addColorStop(0, "rgba(255,255,255,0.06)"); sh.addColorStop(1, "rgba(0,0,0,0.1)"); g.fillStyle = sh; g.fillRect(0, 0, 512, 256);
-    if (era >= 1990) { g.fillStyle = c2; for (const x of [128, 384]) g.fillRect(x - 8, 50, 16, 206); }
-    // armholes and scoop necks show skin, trimmed in the second color
-    g.fillStyle = skin; g.strokeStyle = c2; g.lineWidth = 7;
-    const ell = (cx, cy, rx, ry) => { g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, TAU); g.fill(); g.stroke(); };
-    ell(128, -8, 50, era < 1975 ? 58 : 70); ell(384, -8, 50, era < 1975 ? 58 : 70); ell(256, -6, 48, 30); ell(0, -6, 42, 18); ell(512, -6, 42, 18);
-    g.fillStyle = c2; g.fillRect(0, 249, 512, 7);
-    const sk = "rgba(0,0,0,0.35)";
-    if (era < 1975) txt(g, tm.city.toUpperCase(), 256, 64, 24, c2, sk, "Georgia, serif");
-    else txt(g, tm.name.toUpperCase(), 256, 64, 25, c2, sk);
-    txt(g, String(num), 256, 132, 78, c2, sk, era < 1975 ? "Georgia, serif" : null);
-    for (const x of [0, 512]) { txt(g, String(name).toUpperCase(), x, 52, 23, c2, sk); txt(g, String(num), x, 132, 94, c2, sk, era < 1975 ? "Georgia, serif" : null); }
-    // shorts
+    g.fillStyle = "rgba(0,0,0,0.07)"; for (let y = 0; y < 256; y += 3) for (let x = (y / 3) % 2 ? 1 : 0; x < 512; x += 3) g.fillRect(x, y, 1, 1); // mesh knit
+    const sh = g.createLinearGradient(0, 0, 0, 256); sh.addColorStop(0, "rgba(255,255,255,0.08)"); sh.addColorStop(1, "rgba(0,0,0,0.12)"); g.fillStyle = sh; g.fillRect(0, 0, 512, 256);
+    if (era >= 1990) { g.fillStyle = c2; for (const x of [128, 384]) g.fillRect(x - 9, 100, 18, 156); } // side panels below the armholes
+    if (era >= 2008) { g.fillStyle = "rgba(255,255,255,0.10)"; for (const x of [128, 384]) g.fillRect(x - 18, 112, 6, 144); }
+    // trim: armholes, neck, hem
+    const ring = (cx, cy, rx, ry, w, c) => { g.save(); g.strokeStyle = c; g.lineWidth = w; g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, TAU); g.stroke(); g.restore(); };
+    for (const x of [128, 384]) { ring(x, 61, 58, 48, 13, c2); ring(x, 61, 58, 48, 3, "rgba(255,255,255,0.55)"); }
+    ring(256, 0, 42, 35, 12, c2); ring(0, 0, 34, 17, 10, c2); ring(512, 0, 34, 17, 10, c2);
+    g.fillStyle = c2; g.fillRect(0, 248, 512, 8);
+    const sk = "rgba(0,0,0,0.45)", big = (str, x, y, size, font) => { // bold arcade numbers: a dark keyline, then a light outline, then the fill
+      g.save(); g.font = `900 ${size}px ${font || "Oswald, Impact, sans-serif"}`; g.textAlign = "center"; g.textBaseline = "middle"; g.lineJoin = "round";
+      g.lineWidth = size * 0.2; g.strokeStyle = "rgba(0,0,0,0.55)"; g.strokeText(str, x, y); g.lineWidth = size * 0.1; g.strokeStyle = lumOf(c2) > 0.6 ? "#222" : "#f4f4f4"; g.strokeText(str, x, y); g.fillStyle = c2; g.fillText(str, x, y); g.restore();
+    };
+    if (era < 1975) txt(g, tm.city.toUpperCase(), 256, 70, 24, c2, sk, "Georgia, serif");
+    else txt(g, tm.name.toUpperCase(), 256, 72, 26, c2, sk);
+    big(String(num), 256, 146, 92, era < 1975 ? "Georgia, serif" : null);
+    for (const x of [0, 512]) { txt(g, String(name).toUpperCase(), x, 56, 23, c2, sk); big(String(num), x, 142, 104, era < 1975 ? "Georgia, serif" : null); }
+    // shorts: soft vertical folds, a waistband, side stripes and a hem
     g.fillStyle = c1; g.fillRect(0, 256, 512, 256);
-    g.fillStyle = "rgba(0,0,0,0.13)"; for (let y = 284; y < 512; y += 24) { g.fillRect(0, y, 512, 2); }
-    const sh2 = g.createLinearGradient(0, 256, 0, 512); sh2.addColorStop(0, "rgba(0,0,0,0.12)"); sh2.addColorStop(1, "rgba(255,255,255,0.04)"); g.fillStyle = sh2; g.fillRect(0, 256, 512, 256);
-    g.fillStyle = c2; g.fillRect(0, 256, 512, 20); for (const x of [128, 384]) g.fillRect(x - 10, 256, 20, 256); g.fillRect(0, 496, 512, 16);
-    txt(g, tm.id.slice(0, 1), 300, 340, 36, c2, "rgba(0,0,0,0.3)");
+    for (let x = 0; x < 512; x += 2) { const f = Math.sin(x * 0.11) * 0.5 + Math.sin(x * 0.037 + 1.3) * 0.35 + Math.sin(x * 0.29 + 0.4) * 0.15; g.fillStyle = f > 0 ? `rgba(255,255,255,${(f * 0.07).toFixed(3)})` : `rgba(0,0,0,${(-f * 0.13).toFixed(3)})`; g.fillRect(x, 276, 2, 236); }
+    const sh2 = g.createLinearGradient(0, 256, 0, 512); sh2.addColorStop(0, "rgba(0,0,0,0.16)"); sh2.addColorStop(0.5, "rgba(0,0,0,0)"); sh2.addColorStop(1, "rgba(255,255,255,0.05)"); g.fillStyle = sh2; g.fillRect(0, 256, 512, 256);
+    g.fillStyle = c2; g.fillRect(0, 256, 512, 20); for (const x of [128, 384]) g.fillRect(x - 11, 256, 22, 256); g.fillRect(0, 494, 512, 18);
+    g.fillStyle = "rgba(255,255,255,0.45)"; for (const x of [128, 384]) { g.fillRect(x - 13, 276, 2, 236); g.fillRect(x + 11, 276, 2, 236); } g.fillRect(0, 492, 512, 2);
+    txt(g, tm.id.slice(0, 1), 300, 350, 38, c2, "rgba(0,0,0,0.3)");
   });
 }
+function lumOf(c) { const k = new THREE.Color(c); return 0.299 * k.r + 0.587 * k.g + 0.114 * k.b; }
 function danceAtlas(home, skin) {
   return canvasTex(512, 512, g => {
     g.fillStyle = skin; g.fillRect(0, 0, 512, 256);
@@ -319,6 +326,18 @@ class GB {
     return g;
   }
 }
+// v12: light from above, baked into the vertex colors: undersides, armpits and the inside of the legs sit in shade,
+// which gives the figures volume at broadcast distance for nothing per frame
+function skyAO(geo, k) {
+  const n = geo.attributes.normal, c = geo.attributes.color, p = geo.attributes.position; if (!c) return geo;
+  let y0 = 1e9, y1 = -1e9; for (let i = 0; i < p.count; i++) { y0 = Math.min(y0, p.getY(i)); y1 = Math.max(y1, p.getY(i)); }
+  for (let i = 0; i < c.count; i++) {
+    const up = 0.5 + 0.5 * n.getY(i), side = Math.abs(n.getX(i)), hgt = (p.getY(i) - y0) / Math.max(1e-6, y1 - y0);
+    const f = 1 - k * (1 - up) * (0.75 + 0.25 * side) - 0.06 * (1 - sstep(hgt / 0.25)); // and a touch darker toward the floor
+    c.setXYZ(i, c.getX(i) * f, c.getY(i) * f, c.getZ(i) * f);
+  }
+  return geo;
+}
 // average normals across UV seams so spheres don't show a crease
 function smoothSeams(geo) {
   const p = geo.attributes.position, n = geo.attributes.normal, map = new Map();
@@ -386,7 +405,7 @@ function playerSpec(r, era, tm, c1, c2, idx) {
   const sockC = look.sock === "low" ? (h(11) < 0.6 ? "#f2f2f2" : "#141414") : look.sock === "mid" ? (h(11) < 0.5 ? c1 : "#f2f2f2") : "#f2f2f2";
   const tightsC = h(18) < 0.6 ? "#141414" : c1, kneeC = h(19) < 0.6 ? "#161616" : "#f0f0f0";
   return { arcade: true, H, ws, id, skin, hairC, look, accent: c2, c1, c2, shoe, shoe2, shoeStyle: look.shoe, tightsC, kneeC, sock: { kind: look.sock, c: sockC }, sock2: c1,
-    cloth: { atlas: jerseyAtlas(r.num, String(r.name || "").split(" ").slice(-1)[0], tm, c1, c2, skin, era), top: true, hem: 0.5, shortsLen: look.shortsLen, bag: look.bag } };
+    cloth: { atlas: jerseyAtlas(r.num, String(r.name || "").split(" ").slice(-1)[0], tm, c1, c2, skin, era), top: true, tank: true, hem: 0.5, shortsLen: look.shortsLen, bag: look.bag } };
 }
 
 // ---------- skinned figures (players, referees, coaches) ----------
@@ -411,7 +430,7 @@ function buildFigure(o) {
   for (const b of [neck, head, ...eyes]) b.rotation.order = "YXZ"; // turn, then nod: a proper look-at
   if (AK) head.scale.setScalar(1.07);
   P.add(root); P.updateMatrixWorld(true);
-  const look = o.look || {}, body = new GB(), cloth = new GB(), hairG = new GB(), skin = col(o.skin), seg = 18;
+  const look = o.look || {}, body = new GB(), cloth = new GB(), hairG = new GB(), gearG = new GB(), skin = col(o.skin), seg = 18;
   const inkC = skin.clone().lerp(col("#1a2238"), 0.45), tightsC = col(o.tightsC || "#141414"), kneeC = col(o.kneeC || "#161616"), tSeed = ((o.id || 1) % 97) * 0.37;
   const inked = (k, t, u, fore) => { // tattoo sleeves and armbands, painted on the skin
     const T = look.tat; if (!T || (T !== 2 && k !== 1)) return false;
@@ -491,14 +510,19 @@ function buildFigure(o) {
     body.rigid(shoeS(sw), M, b2, shoe2);
   });
   // head (sculpted from a sphere), face, hair
-  buildHead(body, o, head.matrixWorld, H, skin, look, hairG);
+  buildHead(body, o, head.matrixWorld, H, skin, look, hairG, gearG);
   // clothing
   const tm = o.cloth;
   if (tm) {
     const bag = tm.bag || 1.06, add = 0.004 * H;
     if (tm.top) { // jersey / shirt / jacket
       const hem = tm.hem || 0.5, tt = (yTop - hem) / (yTop - yBot);
-      cloth.tube(22, 24, t => { const r = torsoAt(t * tt, tm.topInf || 1.07, add); if (t === 0) { r.rx *= 1.08; r.rz *= 1.08; } return r; }, t => wprof(TW, t * tt), () => white, (t, u) => [u, 1 - t * 0.5], null, null, (t, a) => 1 + (torsoMod(t * tt, a) - 1) * 0.55);
+      const cut = (t, a) => { // v12: a tank top's armholes and scoop neck, as an ellipse in (around, down) that the trim in the texture follows
+        if (!tm.tank) return 0; const u = (((a - PI) / TAU) % 1 + 1) % 1, e = (du, dv) => Math.max(0, 1 - (du * du + dv * dv));
+        const arm = Math.max(e((u - 0.25) / 0.12, (t - 0.24) / 0.2), e((u - 0.75) / 0.12, (t - 0.24) / 0.2)), neck = e((u - 0.5) / 0.085, t / 0.14), back = Math.max(e(u / 0.07, t / 0.07), e((u - 1) / 0.07, t / 0.07));
+        return 0.26 * sstep(Math.max(arm, neck, back) / 0.25);
+      };
+      cloth.tube(28, 32, t => { const r = torsoAt(t * tt, tm.topInf || 1.07, add); if (t === 0 && !tm.tank) { r.rx *= 1.08; r.rz *= 1.08; } return r; }, t => wprof(TW, t * tt), () => white, (t, u) => [u, 1 - t * 0.5], null, null, (t, a) => 1 + (torsoMod(t * tt, a) - 1) * 0.55 - cut(t, a));
       if (tm.sleeve) arms.forEach((A, k) => {
         const s = k ? -1 : 1, b0 = 6 + k * 3, b1 = b0 + 1, x = s * sW, len = tm.sleeve;
         cloth.tube(10, 14, t => { const tt2 = t * Math.min(1, len); const [rx, rz] = prof(UA, tt2); return { x: x + s * 0.004 * H * (1 - tt2), y: lerp(0.826, 0.63, tt2) * H, z: 0, rx: rx * H * ws * 1.14 + add, rz: rz * H * ws * 1.14 + add }; }, t => { const tt2 = t * Math.min(1, len); return wprof([[0, { 3: .55, [b0]: .45 }], [0.22, { [b0]: 1 }], [0.86, { [b0]: 1 }], [1, { [b0]: .5, [b1]: .5 }]], tt2); }, () => white, (t, u) => [u, 0.53 + t * 0.03], 0.002 * H);
@@ -507,12 +531,12 @@ function buildFigure(o) {
     }
     // shorts or trousers: waist band to crotch, then each leg
     const legEnd = tm.pants ? 1.93 : tm.shortsLen || 0.3;
-    cloth.tube(6, 22, t => { const r = torsoAt(lerp((yTop - 0.548) / (yTop - yBot), 1, t), bag, add); return r; }, t => wprof(TW, lerp((yTop - 0.548) / (yTop - yBot), 1, t)), () => white, (t, u) => [u, 0.5 - t * 0.1], null, 0.004 * H);
+    cloth.tube(6, 22, t => { const r = torsoAt(lerp((yTop - 0.548) / (yTop - yBot), 1, t), tm.pants ? bag : Math.min(bag, 1.09), add); return r; }, t => wprof(TW, lerp((yTop - 0.548) / (yTop - yBot), 1, t)), () => white, (t, u) => [u, 0.5 - t * 0.1], null, 0.004 * H);
     legs.forEach((L, k) => {
       const s = k ? -1 : 1, b0 = 12 + k * 3, b1 = b0 + 1, x = s * hipX;
       cloth.tube(tm.pants ? 18 : 8, 18, t => {
         const tl = t * legEnd, onThigh = tl <= 1;
-        if (onThigh) { const [rx, rz, cz] = prof(TH, tl); const r0 = Math.max(rx * AT, 0.06) * (tm.pants ? 1.12 : bag); return { x: x - s * 0.006 * H * tl, y: lerp(0.53, 0.26, tl) * H, z: cz * H, rx: r0 * H * ws + add + (1 - t) * 0.01 * H, rz: Math.max(rz * AT, 0.058) * (tm.pants ? 1.12 : bag) * H * ws + add }; }
+        if (onThigh) { const [rx, rz, cz] = prof(TH, tl), bk = tm.pants ? 1.12 : 1.05 + (bag - 1.02) * (0.25 + 0.95 * sstep(tl)); const r0 = Math.max(rx * AT, 0.06) * bk; return { x: x - s * 0.006 * H * tl + s * 0.004 * H * tl * (bag - 1) * 4, y: lerp(0.53, 0.26, tl) * H, z: cz * H - 0.004 * H * tl, rx: r0 * H * ws + add + (1 - t) * 0.006 * H, rz: Math.max(rz * AT, 0.058) * bk * H * ws + add }; }
         const ts = tl - 1, [rx, rz, cz] = prof(SH, ts); return { x: x - s * 0.006 * H, y: lerp(0.26, 0.045, ts) * H, z: cz * 0.5 * H, rx: Math.max(rx, 0.042) * 1.14 * H * ws + add, rz: Math.max(rz, 0.044) * 1.14 * H * ws + add };
       }, t => { const tl = t * legEnd; return tl <= 1 ? wprof([[0, { 1: .5, [b0]: .5 }], [0.2, { [b0]: 1 }], [0.86, { [b0]: 1 }], [1, { [b0]: .5, [b1]: .5 }]], tl) : wprof([[0, { [b0]: .5, [b1]: .5 }], [0.15, { [b1]: 1 }], [1, { [b1]: 1 }]], tl - 1); },
       () => white, (t, u) => [u, 0.4 - t * 0.38], null, null);
@@ -522,7 +546,7 @@ function buildFigure(o) {
   const skeleton = new THREE.Skeleton(B);
   const bodyMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.58, metalness: 0, envMapIntensity: 0.55, sheen: 0.35, sheenRoughness: 0.5, sheenColor: new THREE.Color(1, 0.8, 0.7) });
   bodyMat.onBeforeCompile = sh => { rimLight(sh); skinSSS(sh, skin); };
-  const bodyMesh = new THREE.SkinnedMesh(body.build(H), bodyMat);
+  const bodyMesh = new THREE.SkinnedMesh(skyAO(body.build(H), 0.24), bodyMat);
   P.add(bodyMesh); bodyMesh.bind(skeleton);
   let hairMesh = null;
   if (hairG.count > 0) {
@@ -534,16 +558,22 @@ function buildFigure(o) {
   let clothMesh = null;
   const flap = { uTime: { value: 0 }, uFlap: { value: 0 } };
   if (tm) {
-    const cm = new THREE.MeshStandardMaterial({ map: tm.atlas, roughness: 0.8, metalness: 0, envMapIntensity: 0.35, normalMap: knitNormal(), normalScale: new THREE.Vector2(0.3, 0.3) });
+    const cm = new THREE.MeshStandardMaterial({ map: tm.atlas, vertexColors: true, roughness: 0.8, metalness: 0, envMapIntensity: 0.35, normalMap: knitNormal(), normalScale: new THREE.Vector2(0.3, 0.3) });
     // shorts hems flutter with speed and in the air
     cm.onBeforeCompile = sh => { rimLight(sh); sh.uniforms.uTime = flap.uTime; sh.uniforms.uFlap = flap.uFlap; sh.vertexShader = "uniform float uTime, uFlap;\n" + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\n  float hem = 1.0 - smoothstep(0.02, 0.17, uv.y);\n  transformed += objectNormal * hem * uFlap * (0.5 + 0.5 * sin(uTime * 19.0 + position.x * 37.0 + position.z * 23.0 + position.y * 11.0));"); };
-    clothMesh = new THREE.SkinnedMesh(cloth.build(H), cm); P.add(clothMesh); clothMesh.bind(skeleton);
+    clothMesh = new THREE.SkinnedMesh(skyAO(cloth.build(H), 0.3), cm); P.add(clothMesh); clothMesh.bind(skeleton);
+  }
+  let gearMesh = null;
+  if (gearG.count > 0) { // v12: helmets get a clear-coated shell
+    const gm = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.3, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.12, envMapIntensity: 1.1 });
+    gm.onBeforeCompile = sh => rimLight(sh);
+    gearMesh = new THREE.SkinnedMesh(skyAO(gearG.build(H), 0.2), gm); P.add(gearMesh); gearMesh.bind(skeleton);
   }
   const h1 = hash(o.id * 7 + 3), h4 = hash(o.id * 41 + 17);
-  return { root: P, rootBone: root, hips, spine, chest, neck, head, jaw, lids, eyes, fingers, brows, sway, browY: 0.032 * H + 0.02405 * H, shY: 0.135 * H, arms, legs, H, legLen: 0.515 * H, ankleH: 0.045 * H * (AK ? 1.1 : 1), arcade: AK, tR: 0.1 * H * ws, bodyMat, meshes: [bodyMesh, clothMesh, hairMesh].filter(Boolean),
+  return { root: P, rootBone: root, hips, spine, chest, neck, head, jaw, lids, eyes, fingers, brows, sway, browY: 0.032 * H + 0.02405 * H, shY: 0.135 * H, arms, legs, H, legLen: 0.515 * H, ankleH: 0.045 * H * (AK ? 1.1 : 1), arcade: AK, tR: 0.1 * H * ws, bodyMat, meshes: [bodyMesh, clothMesh, hairMesh, gearMesh].filter(Boolean),
     ph: h1 * 6, dph: hash(o.id * 13 + 5), hand: -1, crossT: 0, lastSide: 0, lastFlip: -999, P: null, celeb: Math.floor(h4 * 5), lastAct: -1, fallDir: -1, land: 0, prevZ: 0, lastSp: 0, lean: 0, flap, bag: tm ? tm.bag || 1.06 : 1, lock: [{ on: false, p: new V3(), w: 0 }, { on: false, p: new V3(), w: 0 }] };
 }
-function buildHead(gb, o, M, H, skin, look, hg) {
+function buildHead(gb, o, M, H, skin, look, hg, gear) {
   const r = 0.065 * H, C = new V3(0, 0.032 * H, 0.004 * H), hb = 5;
   const hairC = col(o.hairC || HAIRC[0]), white = col("#f6f3ee"), iris = col(o.iris || "#2a1a10"), lip = skin.clone().lerp(col("#6e2a24"), 0.32), skinD = skin.clone().multiplyScalar(0.86);
   const place = (geo, x, y, z, c, wfn) => { geo.translate(C.x + x, C.y + y, C.z + z); gb.rigid(geo, M, hb, c, wfn); };
@@ -612,13 +642,13 @@ function buildHead(gb, o, M, H, skin, look, hg) {
     const strap = new THREE.TorusGeometry(1.0 * r, 0.045 * r, 5, 28); strap.rotateX(PI / 2); place(strap, 0, 0.14 * r, -0.03 * r, gm);
   }
   if (look.headband) { const b = new THREE.TorusGeometry(1.0 * r, 0.085 * r, 6, 24); b.rotateX(PI / 2 + 0.18); b.scale(0.92, 1, 1.02); place(b, 0, 0.38 * r, -0.03 * r, col(o.accent || "#ffffff")); }
-  if (look.helmet) { // 1986 on: a padded soft-shell helmet in the team color (vertical pad ridges, ear flaps, a chin strap)
-    const hc = col(o.c1 || o.accent || "#888888");
-    const cap = shell(1.13, (x, y, z) => y > -0.12 + 0.2 * sstep(z / 0.7) && !(z > 0.5 && y < 0.42), (x, y, z) => 0.045 * Math.pow(Math.abs(Math.cos(Math.atan2(x, z) * 5)), 0.6) * sstep((y + 0.1) / 0.4));
-    place(cap, 0, 0.02 * r, -0.02 * r, hc);
-    const rim = new THREE.TorusGeometry(1.08 * r, 0.05 * r, 6, 30); rim.rotateX(PI / 2 + 0.38); rim.scale(0.98, 1, 1.03); place(rim, 0, 0.14 * r, -0.12 * r, col(o.accent || "#ffffff"));
-    for (const sd of [-1, 1]) { const flap = new THREE.SphereGeometry(1, 12, 10); flap.scale(0.13 * r, 0.3 * r, 0.25 * r); place(flap, sd * 0.93 * r, -0.02 * r, -0.08 * r, hc); }
-    const strap = new THREE.TorusGeometry(0.86 * r, 0.025 * r, 5, 22, PI); strap.rotateY(PI / 2); strap.rotateX(PI); place(strap, 0, -0.22 * r, 0.12 * r, col("#1a1a1a"), jawW);
+  if (look.helmet) { // 1986 on: a soft-shell helmet in the team color. v12: its own glossy shell, sleeker, with a center stripe, so the face reads
+    const hc = col(o.c1 || o.accent || "#888888"), ac = col(o.accent || "#ffffff"), gp = (geo, x, y, z, c, wfn) => { geo.translate(C.x + x, C.y + y, C.z + z); (gear || gb).rigid(geo, M, hb, c, wfn); };
+    const cap = shell(1.085, (x, y, z) => y > -0.06 + 0.24 * sstep(z / 0.7) && !(z > 0.45 && y < 0.5), (x, y, z) => 0.03 * Math.pow(Math.abs(Math.cos(Math.atan2(x, z) * 4)), 0.8) * sstep((y + 0.05) / 0.4) * sstep(-z / 0.4 + 0.6));
+    gp(cap, 0, 0.03 * r, -0.03 * r, (x, y, z) => Math.abs(x) < 0.13 * r && y > -0.1 * r ? ac : hc);
+    const rim = new THREE.TorusGeometry(1.03 * r, 0.045 * r, 6, 32); rim.rotateX(PI / 2 + 0.42); rim.scale(0.97, 1, 1.03); gp(rim, 0, 0.2 * r, -0.12 * r, ac);
+    for (const sd of [-1, 1]) { const flap = new THREE.SphereGeometry(1, 14, 10); flap.scale(0.11 * r, 0.26 * r, 0.22 * r); gp(flap, sd * 0.9 * r, -0.02 * r, -0.06 * r, hc); const dot = new THREE.SphereGeometry(1, 10, 8); dot.scale(0.03 * r, 0.09 * r, 0.09 * r); gp(dot, sd * 1.0 * r, -0.02 * r, -0.06 * r, ac); }
+    const strap = new THREE.TorusGeometry(0.84 * r, 0.022 * r, 5, 22, PI); strap.rotateY(PI / 2); strap.rotateX(PI); gp(strap, 0, -0.22 * r, 0.12 * r, col("#1a1a1a"), jawW);
   }
 }
 function castShadows(m, on) { m.root.traverse(o => { if (o.isMesh) o.castShadow = on; }); }
@@ -825,6 +855,10 @@ function locomotion(m, c) {
     const p = base(), br = Math.sin(m.ph * 0.4) * 0.03; p.aLz += br; p.aRz -= br;
     if (!c.ftWatch && c.idle && m.celeb % 3 === 0) { p.aLx = p.aRx = 0.35; p.aLz = 0.62; p.aRz = -0.62; p.eL = p.eR = -1.75; p.spineX = 0.0; return p; }
     if (c.ftWatch) { if (m.celeb % 2) { p.spineX = 0.75; p.hLx = p.hRx = -0.75; p.kL = p.kR = 0.75; p.aLx = p.aRx = -0.85; p.eL = p.eR = -0.25; p.crouch = 0.12; p.headX = -0.45; } else { p.aLz = 0.75; p.aRz = -0.75; p.eL = p.eR = -2.0; p.aLx = p.aRx = 0.3; } }
+    else if (!c.idle && m.arcade) { // v12: in live play nobody stands up straight: knees bent, weight forward, hands ready for the ball
+      const sw = Math.sin(m.ph * 0.5 + c.gt * 1.7) * 0.04; p.crouch = 0.08 + sw * 0.3; p.kL = 0.42 + sw; p.kR = 0.38 - sw; p.hLx = -0.26 - sw * 0.5; p.hRx = -0.24 + sw * 0.5; p.hLz = 0.1; p.hRz = -0.1;
+      p.spineX = 0.17; p.aLx = p.aRx = -0.32; p.eL = p.eR = -0.85; p.aLz = 0.26; p.aRz = -0.26; p.wL = p.wR = -0.15; p.headX = -0.05;
+    }
     return p;
   }
   const amp = clamp(sp / 18, 0.25, 1), tot = Math.abs(c.fwd) + Math.abs(c.left) + 0.001;
@@ -833,6 +867,7 @@ function locomotion(m, c) {
   if (wB > 0.05) p = mix(p, backPose(m.ph, amp), wB / (wF + wB + 0.001) * Math.min(1, wB + wF));
   if (wS > 0.35) p = mix(p, c.defending ? slidePose(m.ph, amp, Math.sign(c.left)) : runPose(m.ph, amp * 0.8), clamp((wS - 0.35) * 2, 0, 1));
   if (!c.defending && sp < 6.5 && wF > 0.5) p = mix(p, walkPose(m.ph, clamp(sp / 5, 0.35, 1)), clamp((6.5 - sp) / 2, 0, 1));
+  if (m.arcade && wF > 0.5 && sp > 7) { const k = clamp((sp - 7) / 10, 0, 1); p.aLx = (p.aLx + 0.08) * (1 + 0.3 * k) - 0.08; p.aRx = (p.aRx + 0.08) * (1 + 0.3 * k) - 0.08; p.hLx *= 1 + 0.18 * k; p.hRx *= 1 + 0.18 * k; p.spineX += 0.05 * k; } // v12: arcade sprinters pump harder
   if (sp > 16 && wF > 0.6) { const k = clamp((sp - 16) / 6, 0, 1); p.aLx = (p.aLx + 0.08) * (1 + 0.45 * k) - 0.08; p.aRx = (p.aRx + 0.08) * (1 + 0.45 * k) - 0.08; p.eL -= 0.25 * k; p.eR -= 0.25 * k; p.spineX += 0.08 * k; p.kL *= 1 + 0.15 * k; p.kR *= 1 + 0.15 * k; } // sprint form
   p.roll = clamp(-c.turn * 0.06, -0.18, 0.18) + (p.roll || 0);
   return p;
@@ -1917,6 +1952,7 @@ function create(canvas, opts) {
   const courtCache = new Map();
   function setGame(game, home, away, colors, o) {
     G = game; teams = [home, away]; era = (o && o.season) || 2000;
+    HLC = hlPair(colors ? colors[0] : home.c1, colors ? colors[1] : away.c1); shotT = null;
     for (const k in models) { scene.remove(models[k].root); if (models[k].gh) for (const g of models[k].gh) { scene.remove(g); g.material.dispose(); } disposeFigure(models[k]); }
     models = {};
     const four = !(game.rules && game.rules.four === false), ck = home.id + (four ? "" : "-no4");
@@ -1941,6 +1977,87 @@ function create(canvas, opts) {
     waves = []; for (const per of [2, 3]) { const a = EV.find(e => e.type === "period_start" && e.per === per), z = EV.find(e => e.type === "period_end" && e.per === per); if (a && z) { const t0 = a.tk + (0.3 + 0.35 * hash(G.ticks * 0.37 + per)) * (z.tk - a.tk); waves.push([t0, t0 + 680]); } }
     cam.init = false; dir.shot = null; lastTick = -1; finT0 = -1;
     for (const h of hoops) h.net.reset();
+  }
+  // ---------- v12: highlights ----------
+  // A team-colored outline (an inverted hull: the same skinned meshes, pushed out along their normals, back faces only)
+  // on the ball carrier (always), the shooter while his shot is in the air, and anyone who just made a play.
+  // Each team keeps one highlight color all game, and the two teams in a game never share one.
+  const HL_PAL = ["#ffd21f", "#21e6ff", "#ff3dd8", "#59ff3a", "#ff8a1c", "#ff2e55", "#9a7bff", "#f4f4f4"];
+  let HLC = [new THREE.Color("#ffd21f"), new THREE.Color("#21e6ff")];
+  function hlPair(a, b) { // each team's highlight pops against its own uniform; the two never match
+    const hsl = c => { const o = {}; new THREE.Color(c).getHSL(o); return o; }, hd = (x, y) => { const d = Math.abs(x - y); return Math.min(d, 1 - d); };
+    const pop = (pal, team) => { const t = hsl(team), q = hsl(pal); const hue = t.s < 0.2 || q.s < 0.1 ? 0.25 : hd(q.h, t.h); return hue * 2 + Math.abs(q.l - t.l) * 0.6 + (q.s < 0.1 && t.l > 0.75 ? -1 : 0); };
+    const far = (x, y) => { const p = hsl(x), q = hsl(y); if ((p.s < 0.1) !== (q.s < 0.1)) return true; if (p.s < 0.1) return false; return hd(p.h, q.h) > 0.16; };
+    const ha = HL_PAL.slice().sort((x, y) => pop(y, a) - pop(x, a))[0], hb = HL_PAL.slice().sort((x, y) => pop(y, b) - pop(x, b)).find(x => x !== ha && far(x, ha) && far(x, a)) || HL_PAL.find(x => x !== ha && far(x, ha));
+    return [new THREE.Color(ha), new THREE.Color(hb || "#f4f4f4")];
+  }
+  function outlineFor(m) {
+    if (m.ol) return m.ol;
+    const u = { value: 0.05 }, mat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide, fog: false, toneMapped: false });
+    mat.onBeforeCompile = sh => { sh.uniforms.uOT = u; sh.vertexShader = "uniform float uOT;\n" + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\n  transformed += normal * uOT;"); };
+    const meshes = m.meshes.map(src => { const om = new THREE.SkinnedMesh(src.geometry, mat); om.bind(src.skeleton, src.bindMatrix); om.castShadow = om.receiveShadow = false; om.frustumCulled = false; om.visible = false; src.parent.add(om); return om; });
+    m.ol = { u, mat, meshes, k: 0 }; return m.ol;
+  }
+  const ballOL = new THREE.Mesh(new THREE.SphereGeometry(0.39, 22, 14), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide, fog: false, toneMapped: false })); ballOL.visible = false;
+  const ballGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: radialTex("rgba(255,255,255,0.9)", "rgba(255,255,255,0)"), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false })); ballGlow.visible = false;
+  let ballHL = 0, shotT = null;
+  // the shot in the air: who shot it (the event that ends the flight), from where, and how far along it is
+  function shotState(tick, b) {
+    if (b.mode !== 2) { shotT = null; return null; }
+    if (!shotT || tick < shotT.start || tick > shotT.end + 4) {
+      const F = G.frames; let f = Math.min(G.nFrames - 1, Math.floor(tick / 2)), n = 0;
+      while (f > 0 && F[f * FS + BO + 4] === 2 && n < 120) { f--; n++; }
+      const o = (f + 1) * FS + BO; let e = null;
+      for (let i = evIndex(tick - 1); i < EV.length && EVT[i] < tick + 120; i++) if (EV[i].type === "fga") { e = EV[i]; break; }
+      if (!e) { shotT = null; return null; }
+      const rx = F[o], ry = F[o + 1], hx2 = rx < 47 ? BB.C.HX[0] : BB.C.HX[1];
+      shotT = { start: (f + 1) * 2, end: e.tk, pid: e.pid, team: e.team, dunk: !!e.dunk, rx, ry, rz: F[o + 2], hx: hx2, far: Math.hypot(hx2 - rx, 25 - ry) };
+    }
+    shotT.prog = clamp((tick - shotT.start) / Math.max(4, shotT.end - shotT.start), 0, 1);
+    return shotT;
+  }
+  let hlTick = -1e9;
+  let ftUp = null;
+  function updateHighlights(tick, b, view, shot, rdt) {
+    ftUp = null;
+    const want = new Map(), on = view.hl !== false && !(view.era > 0), snap = Math.abs(tick - hlTick) > 12 || !(rdt > 0); hlTick = tick; // (a seek or a still: no fade)
+    if (on) {
+      const add = (i, k, px) => { if (i === undefined || i === null || i < 0 || !models[i]) return; const c = want.get(i); if (!c || c[0] * c[1] < k * px) want.set(i, [k, px]); };
+      if (b.holder >= 0) add(b.holder, 1, 3.2);
+      if (shot) add(shot.pid, 1, 4.4);
+      if (b.mode === 5) for (let i = evIndex(tick - 1); i < EV.length && EVT[i] < tick + 60; i++) if (EV[i].type === "ft") { add(EV[i].pid, 1, 4); ftUp = EV[i]; break; } // a free throw in the air
+      recent(tick, 44, (e, age) => { // whoever just made a play
+        const k = clamp(1.25 - age / 44, 0, 1);
+        switch (e.type) {
+          case "fga": if (e.made) { add(e.pid, k, 4.4); add(e.ast, k, 3.4); } if (e.blk !== undefined && e.blk >= 0) add(e.blk, k, 4.4); break;
+          case "ft": if (e.made) add(e.pid, k * 0.8, 3.2); break;
+          case "reb": add(e.pid, k, 3.6); break;
+          case "to": if (e.by !== undefined) add(e.by, k, 4.2); break;
+          case "tackle": if (e.result === "down" || e.result === "fumble" || e.result === "flagrant") add(e.pid, k, 4.4); if (e.result === "broken" || (e.result === "whiff" && e.move)) add(e.on, k, 4.4); break;
+          case "foul": add(e.pid, k * 0.6, 2.6); break;
+        }
+      });
+    }
+    const tanH = Math.tan(camera.fov * PI / 360) * 2 / Math.max(1, canvas.clientHeight || canvas.height), pulse = 1 + 0.12 * Math.sin(performance.now() / 120);
+    for (const id in models) {
+      const m = models[id], w = want.get(+id);
+      if (!m.root.visible || (!w && !m.ol)) { if (m.ol) { m.ol.k = 0; for (const om of m.ol.meshes) om.visible = false; } continue; }
+      const ol = outlineFor(m), tgt = w ? w[0] : 0; ol.px = w ? w[1] : ol.px || 2.5;
+      ol.k = snap ? tgt : ol.k + (tgt - ol.k) * (1 - Math.exp(-rdt * (tgt > ol.k ? 20 : 5)));
+      if (ol.k < 0.03) { for (const om of ol.meshes) om.visible = false; continue; }
+      const r = G.roster[+id], c = HLC[r ? r.t : 0], d = camera.position.distanceTo(tmpV.copy(m.root.position).setY(m.root.position.y + m.H * 0.55));
+      ol.u.value = clamp(ol.px * Math.sqrt(ol.k) * d * tanH, 0.02, 0.5);
+      ol.mat.color.copy(c).multiplyScalar((quality === "low" ? 1 : 1.5) * (w && w[0] >= 1 ? pulse : 1));
+      for (const om of ol.meshes) om.visible = true;
+    }
+    // the ball, while a shot is up
+    const bt = (shot || ftUp) && on ? 1 : 0; ballHL = snap ? bt : ballHL + (bt - ballHL) * (1 - Math.exp(-rdt * (bt ? 22 : 6)));
+    if (ballHL > 0.03) {
+      const c = HLC[shot ? shot.team : ftUp ? ftUp.team : 0] || HLC[0], d = camera.position.distanceTo(ball.position), th = clamp(3.2 * d * tanH, 0.03, 0.35);
+      if (ballOL.parent !== ball) ball.add(ballOL); if (ballGlow.parent !== ball) ball.add(ballGlow);
+      ballOL.visible = ballGlow.visible = true; ballOL.scale.setScalar((0.39 + th * ballHL) / 0.39); ballOL.material.color.copy(c).multiplyScalar(quality === "low" ? 1 : 1.6);
+      ballGlow.material.color.copy(c); ballGlow.material.opacity = 0.55 * ballHL; ballGlow.scale.setScalar(2.6 + d * 0.02);
+    } else ballOL.visible = ballGlow.visible = false;
   }
   function model(idx) {
     if (models[idx]) return models[idx];
@@ -2017,16 +2134,16 @@ function create(canvas, opts) {
   const dir = { shot: null, since: 0, ftShot: 0, lastPhase: -1, phaseStart: 0, cut: false, subj: -1, subjKind: "", driveT: 0, isoIdx: -1, isoT: 0, lastIso: 0 };
   // how each camera is operated: [head (pan/tilt) stiffness, damping, body (dolly) stiffness]; others ease the old way
   const OPS = { main: [2.1, 0.96, 0.9], endzone: [2.3, 0.95, 1.0], rail: [3.0, 0.9, 2.2], sky: [2.2, 0.97, 1.4], low: [3.0, 0.9, 2.0], baseline: [3.2, 0.86, 2.4],
-    hero: [4.4, 0.78, 2.6], fight: [4.2, 0.8, 2.4], refcam: [4.0, 0.84, 2.0], coach: [3.6, 0.86, 1.6], ftclose: [2.6, 0.9, 1.0], tipoff: [2.6, 0.92, 1.2] };
+    hero: [4.4, 0.78, 2.6], shotcam: [6.0, 0.8, 3.2], fight: [4.2, 0.8, 2.4], refcam: [4.0, 0.84, 2.0], coach: [3.6, 0.86, 1.6], ftclose: [2.6, 0.9, 1.0], tipoff: [2.6, 0.92, 1.2] };
   // a little auto-iris: darker shots open up, and every cut settles over a moment
-  const EXPO = { fight: 1.05, crowd: 1.16, huddle: 1.1, bench: 1.08, coach: 1.08, hero: 1.05, refcam: 1.05, ftclose: 1.06, low: 1.05, baseline: 1.04, tipoff: 1.04, sky: 1.0, rim: 1.03 };
+  const EXPO = { shotcam: 1.03, fight: 1.05, crowd: 1.16, huddle: 1.1, bench: 1.08, coach: 1.08, hero: 1.05, refcam: 1.05, ftclose: 1.06, low: 1.05, baseline: 1.04, tipoff: 1.04, sky: 1.0, rim: 1.03 };
   // the cameras each era's broadcast actually had (with the era look on): the 1950s had two
   const PKG = [null, { main: 1, endzone: 1, ft: 1, ftclose: 1, hero: 1, fight: 1, refcam: 1, coach: 1, rail: 1, baseline: 1, low: 1, bench: 1, crowd: 1, huddle: 1, dance: 1, tipoff: 1 },
     { main: 1, endzone: 1, ft: 1, hero: 1, fight: 1, baseline: 1, low: 1, bench: 1, crowd: 1, huddle: 1, dance: 1, tipoff: 1 }, { main: 1, endzone: 1, ft: 1, crowd: 1, huddle: 1, dance: 1 }];
   function springV(x, v, t, w, z, dt) { const n = Math.max(1, Math.ceil(dt * w * 4)), h = dt / n; for (let i = 0; i < n; i++) { v.x += ((t.x - x.x) * w * w - 2 * z * w * v.x) * h; v.y += ((t.y - x.y) * w * w - 2 * z * w * v.y) * h; v.z += ((t.z - x.z) * w * w - 2 * z * w * v.z) * h; x.x += v.x * h; x.y += v.y * h; x.z += v.z * h; } }
   const free = { yaw: 0.6, pitch: 0.35, dist: 46, target: new V3(47, 4, 25) };
   let userCam = "auto";
-  const HANDHELD = { low: 1, baseline: 1, iso: 1, rail: 0.7, huddle: 1, crowd: 0.8, ft: 0.6, reverse: 0.8, rim: 0.3, main: 0.15, endzone: 0.2, lineup: 0.35, dance: 0.5, hero: 1.1, fight: 1.4, refcam: 0.9, coach: 0.8, ftclose: 0.35, tipoff: 0.4, sky: 0.25, bench: 0.9 };
+  const HANDHELD = { shotcam: 0.45, low: 1, baseline: 1, iso: 1, rail: 0.7, huddle: 1, crowd: 0.8, ft: 0.6, reverse: 0.8, rim: 0.3, main: 0.15, endzone: 0.2, lineup: 0.35, dance: 0.5, hero: 1.1, fight: 1.4, refcam: 0.9, coach: 0.8, ftclose: 0.35, tipoff: 0.4, sky: 0.25, bench: 0.9 };
   function rig(shot, s) {
     const P = new V3(), L = new V3(); let fov = 30;
     const { bx, bz, bvx, right, hx, minX, maxX, foc, portrait } = s, din = right ? -1 : 1;
@@ -2069,6 +2186,15 @@ function create(canvas, opts) {
       }
       case "fight": { const q = s.fight; P.set(clamp(q.x + 7, -3, 97), 6.4, 58); L.set(q.x, 4.4, q.y); fov = clamp(2 * Math.atan(8 / P.distanceTo(L)) * 180 / PI, 10, 34) * (portrait ? 1.6 : 1); break; } // courtside, handheld, in the middle of it
       case "tipoff": { P.set(47, 5.4, 63); L.set(47, 8.5, 25); fov = portrait ? 62 : 38; break; } // low at center court for the jump
+      case "shotcam": { // v12: from behind and beside the shooter, on the broadcast side: follow the ball and close in on it as it reaches the rim
+        const q = s.shotAir, dx = q.hx - q.rx, dy = 25 - q.ry, dl = Math.hypot(dx, dy) || 1, ux = dx / dl, uy = dy / dl;
+        let px = -uy, py = ux; if (py < 0) { px = -px; py = -py; }
+        const back = 11 + Math.min(9, dl * 0.22), side = 8 + Math.min(6, dl * 0.12);
+        P.set(q.rx - ux * back + px * side, 6.5 + Math.min(5, dl * 0.12), q.ry - uy * back + py * side);
+        const k = 0.2 + 0.25 * q.prog; L.set(lerp(q.bx, q.hx, k), lerp(Math.max(q.bz, 5), 10, 0.25 + 0.3 * q.prog), lerp(q.by, 25, k));
+        const span = Math.max(3.8, Math.hypot(q.bx - q.hx, q.by - 25, q.bz - 10) * 0.55 + 3.2);
+        fov = clamp(2 * Math.atan(span / P.distanceTo(L)) * 180 / PI, 8, 46) * (portrait ? 1.5 : 1); break;
+      }
       case "sky": { // the cable cam, riding behind the break
         const dx = right ? 1 : -1; P.set(clamp(bx - dx * 26, -10, 104), 24, 25 + (bz - 25) * 0.5 + 9); L.set(clamp(bx + dx * 16, 0, 94), 2, bz); fov = portrait ? 64 : 46; break;
       }
@@ -2093,6 +2219,7 @@ function create(canvas, opts) {
       else if (s.phase === 2 && s.ftPid >= 0) { // free throws: the face during the routine, the wide for the shot
         if (s.ftRel) want = "ft"; else { const atLine = s.ftDist > 12 && s.ftDist < 17.5; want = atLine && s.ftN % 2 === 1 ? "ftclose" : "hero"; subj = s.ftPid; kind = "player"; } // follow him to the line, then his face
       }
+      else if (s.shotAir) want = "shotcam"; // v12: every jumper: track the ball and zoom in on it
       else if (s.score && s.score.hero && s.score.age > 0.7 && s.score.age < s.score.heroEnd && !s.fastbreak) { want = "hero"; subj = s.score.idx; kind = "player"; }
       else if (s.reaction >= 0 && !s.fastbreak && !s.drive && !G.show) { if (s.reactCoach) { want = "coach"; subj = s.reaction; kind = "coach"; } else want = "bench"; }
       else if (s.foul && s.foul.age > 0.3 && s.foul.age < 2.3 && s.phase === 1 && s.refNear >= 0) { want = "refcam"; subj = s.refNear; kind = "ref"; }
@@ -2102,7 +2229,7 @@ function create(canvas, opts) {
       if (pk && !pk[want]) { want = main; subj = -1; kind = ""; } // this broadcast didn't have that camera
       if (want === "sky" && !s.modern) want = "rail";
       const cur = dir.shot, held = dir.since; dir.want = want;
-      const story = want === "fight" || want === "hero" || want === "ftclose" || want === "ft" || want === "refcam" || want === "tipoff" || want === "huddle" || want === "dance" || want === "coach" || want === "bench";
+      const story = want === "shotcam" || want === "fight" || want === "hero" || want === "ftclose" || want === "ft" || want === "refcam" || want === "tipoff" || want === "huddle" || want === "dance" || want === "coach" || want === "bench";
       const minHold = cur === main ? 1.1 : (cur === "baseline" || cur === "rail" || cur === "sky") ? 1.3 : cur === "low" ? 2.4 : 0.9;
       if (cur === null || want === cur || dir.forced) shot = want; // coming out of a replay or a forced angle: cut straight back
       else if (story || cur === "huddle" || cur === "crowd" || cur === "dance" || cur === "intro" || cur === "orbit" || cur === "tipoff" || cur === "ftclose" || cur === "ft" || cur === "fight") shot = want; // cut on the action
@@ -2228,6 +2355,10 @@ function create(canvas, opts) {
         else if (A === ACT.BOXOUT || A === ACT.SCREEN) m.lookW = 0.55;
       }
       applyPose(m, poseFor(m, ctx), fin ? adt : gdt, grounded, () => { m.root.position.set(s.x, s.z + m.bumpY + (fin && won && m.celeb % 2 === 0 ? Math.max(0, Math.sin(finT * 6.5 + m.ph)) * 0.9 : 0), s.y); m.root.rotation.y = PI / 2 - th + (m.extraYaw || 0) + m.bumpYaw; });
+      if (m.arcade) { // v12: squash and stretch: a stretch off the floor, a squash on the landing
+        const st = arcadeOn && !fin ? clamp((s.z > 0.05 && s.z < 2.6 && s.vz > 3 ? s.vz * 0.0042 : 0) - 0.085 * m.land, -0.085, 0.065) : 0;
+        m.sq = (m.sq || 0) + (st - (m.sq || 0)) * (1 - Math.exp(-(gdt || 0) * 22)); const sy = 1 + m.sq, sx = 1 / Math.sqrt(sy); m.root.scale.set(sx, sy, sx);
+      }
       if (quality !== "low" && !fin) footLock(m, grounded && ctx.act !== ACT.TACKLE && ctx.act !== ACT.DOWN && ctx.act !== ACT.SPIN, gdt, jump);
       m.flap.uTime.value = vt; m.flap.uFlap.value = (Math.min(1, sp / 16) * 0.035 + (s.z > 0.3 ? 0.03 : 0)) * m.bag;
       m.root.visible = true;
@@ -2267,6 +2398,8 @@ function create(canvas, opts) {
       }
     }
     ball.position.set(bx, Math.max(0.39, bz), by);
+    const shotUp = mt.phase === 0 || mt.phase === 5 ? shotState(tick, b) : (shotT = null); // v12: the shot in the air
+    updateHighlights(tick, b, view, shotUp, rdt);
     for (let k = 0; k < 10; k++) {
       const s = pos[k], m = models[s.idx]; if (!m) continue;
       const yaw = m.root.rotation.y, f = tF.set(Math.sin(yaw), 0, Math.cos(yaw)), l = tL.set(Math.cos(yaw), 0, -Math.sin(yaw)), act = s.act; let did = false;
@@ -2500,6 +2633,7 @@ function create(canvas, opts) {
     dir.driveT = S.drive ? dir.driveT + gdt : 0; S.drive = dir.driveT > 0.3; // cut on the drive once it's committed
     if (holderS && mt.phase === 0 && hsp < 3.5 && hd > 13 && hd < 34) { if (dir.isoIdx === holderS.idx) dir.isoT += gdt; else { dir.isoIdx = holderS.idx; dir.isoT = 0; } } else { dir.isoIdx = -1; dir.isoT = 0; }
     S.iso = dir.isoT > 2.4 && now - dir.lastIso > 25000;
+    S.shotAir = shotUp && !shotUp.dunk && shotUp.far > 7 && view.shotcam !== false ? { rx: shotUp.rx, ry: shotUp.ry, hx: shotUp.hx, bx: ball.position.x, by: ball.position.z, bz: ball.position.y, prog: shotUp.prog, far: shotUp.far } : null;
     if (userCam === "free" && !view.shot) free.target.lerp(new V3(bx, 4, by), 0.08);
     const shot = direct(S, view, rdt);
     S.subj = null; // who the operator is following
