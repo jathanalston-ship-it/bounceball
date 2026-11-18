@@ -720,6 +720,8 @@ function simulateGame(home, away, rosters, seed, opts) {
     const recv = G.lineup[t].slice().sort((a, b) => protect ? (b.p.r.ft * 0.6 + b.p.r.sec * 0.4) - (a.p.r.ft * 0.6 + a.p.r.sec * 0.4) : (b.p.r.pas + b.p.r.sec) - (a.p.r.pas + a.p.r.sec))[0];
     let inb = null, bd = 1e9;
     for (const P of (cands.length ? cands : G.lineup[t])) { if (P === recv) continue; const d = hyp(P.x - spot.x, P.y - spot.y); if (d < bd) { bd = d; inb = P; } }
+    // a big gang tackle can leave everyone but the receiver on the floor: the nearest one gets up and inbounds
+    if (!inb) for (const P of G.lineup[t]) { if (P === recv) continue; const d = hyp(P.x - spot.x, P.y - spot.y); if (d < bd) { bd = d; inb = P; } }
     G.dead = { t, spot, timer: (o.wait || 1.4) + toT, inb, recv, kind: o.kind || "", to: toT };
   }
   function deadStep() {
