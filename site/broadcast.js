@@ -1031,10 +1031,18 @@ function loop(ts) {
     else if (V.tick >= GAME.ticks - 2) view = { ambient: true, shot: V.card && V.card.kind === "fin" ? "orbit" : undefined, rate: V.speed };
     else view = { rate: V.speed, focus: $("cam").value === "player" ? V.follow : undefined };
     view.era = V.eraOn ? eraMode() : 0;
-    B3.render(V.replay ? V.replay.t : V.tick, view);
+    const R3 = B3.render(V.replay ? V.replay.t : V.tick, view);
+    if (R3 && R3.shot === "hero" && R3.subjKind === "player" && !V.replay && frameVals().phase !== 2) heroGraphic(R3.subj);
     autoQuality(dt);
   } else draw2D(V.tick);
   requestAnimationFrame(loop);
+}
+// when the director finds the scorer, put his line under him
+function heroGraphic(idx) {
+  const now = performance.now(); if (V.heroIdx === idx && now - (V.heroAt || 0) < 9000) return;
+  V.heroIdx = idx; V.heroAt = now;
+  const r = GAME.roster[idx], s = r && boxScore(GAME, V.tick).find(x => x.idx === idx); if (!s) return;
+  lowerThird(COLORS[r.t], `#${r.num} ${esc(r.name).toUpperCase()}`, `${statLine(s)} · ${s.fgm}-${s.fga} FG`, 2600);
 }
 function eraMode() { const y = V.ctx && V.ctx.S ? V.ctx.S.season : 2020; return y < 1966 ? 3 : y < 1985 ? 2 : y < 2005 ? 1 : 0; }
 function applyEra() {

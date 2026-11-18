@@ -87,6 +87,17 @@ function courtTexture(home, aniso, rough, four) {
     g.fillStyle = rough ? paint : "rgba(255,255,255,0.8)"; g.font = `700 ${2.3 * S}px Oswald, Impact, sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
     g.fillText(home.city.toUpperCase() + " " + home.name.toUpperCase(), X(47), Y(-M / 2));
     g.fillText("AKRON SPEC RUBBER · +12\" VERTICAL", X(47), Y(50 + M / 2));
+    { // wear: sneaker scuffs around the baskets and the key (dark on the color map, duller in the roughness map)
+      let sd = 99; const rn = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+      g.save(); g.globalAlpha = rough ? 0.22 : 0.085; g.strokeStyle = rough ? "#dadada" : "#08090b"; g.lineCap = "round";
+      for (let i = 0; i < 1100; i++) {
+        const left = rn() < 0.5, hx_ = left ? 5.25 : 88.75, dx = left ? 1 : -1, rr = Math.pow(rn(), 0.75) * 27, a = (rn() - 0.5) * PI * 1.1, x = hx_ + dx * Math.cos(a) * rr, y = 25 + Math.sin(a) * rr * 1.05;
+        if (x < 0.5 || x > 93.5 || y < 0.5 || y > 49.5) continue;
+        const len = (0.4 + rn() * 1.7) * S, an = rn() * TAU; g.lineWidth = (0.05 + rn() * 0.12) * S;
+        g.beginPath(); g.moveTo(X(x), Y(y)); g.quadraticCurveTo(X(x) + Math.cos(an) * len * 0.6, Y(y) + Math.sin(an) * len * 0.6 + (rn() - 0.5) * 6, X(x) + Math.cos(an + 0.45) * len, Y(y) + Math.sin(an + 0.45) * len); g.stroke();
+      }
+      g.restore();
+    }
   }, aniso, rough);
 }
 function ballTextures() {
@@ -1276,8 +1287,8 @@ function makePost(renderer) {
     void main(){ float a = 0.0; for (int x = -2; x <= 2; x++) for (int y = -2; y <= 2; y++) a += texture2D(tSrc, vUv + vec2(float(x), float(y)) * uTexel).r; gl_FragColor = vec4(vec3(a / 25.0), 1.0); }`, { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() } });
   const U = { tScene: { value: null }, tBloom: { value: null }, tBlur: { value: null }, tAO: { value: null }, tDepth: { value: depthRT.depthTexture }, tStreak: { value: null }, tDirt: { value: dirt },
     uBloom: { value: 0.16 }, uExp: { value: 1 }, uVig: { value: 0.32 }, uGrain: { value: 0.022 }, uTime: { value: 0 }, uReplay: { value: 0 }, uBlur: { value: 0 }, uSat: { value: 1.06 }, uRes: { value: new THREE.Vector2(1, 1) },
-    uAO: { value: 0 }, uDof: { value: 0 }, uFocus: { value: 30 }, uStreak: { value: 0 }, uDirt: { value: 0 }, uProjInv: { value: new THREE.Matrix4() }, uEra: { value: 0 }, uPrevVP: { value: new THREE.Matrix4() }, uInvVP: { value: new THREE.Matrix4() }, uMB: { value: 0 }, uSharp: { value: 0 } };
-  const compM = sm(`uniform sampler2D tScene, tBloom, tBlur, tAO, tDepth, tStreak, tDirt; uniform float uBloom, uExp, uVig, uGrain, uTime, uReplay, uBlur, uSat, uAO, uDof, uFocus, uStreak, uDirt, uEra, uMB, uSharp; uniform vec2 uRes; uniform mat4 uProjInv, uPrevVP, uInvVP; varying vec2 vUv;
+    uAO: { value: 0 }, uDof: { value: 0 }, uFocus: { value: 30 }, uStreak: { value: 0 }, uDirt: { value: 0 }, uProjInv: { value: new THREE.Matrix4() }, uEra: { value: 0 }, uPrevVP: { value: new THREE.Matrix4() }, uInvVP: { value: new THREE.Matrix4() }, uMB: { value: 0 }, uSharp: { value: 0 }, uCA: { value: 0 }, tPip: { value: null }, uPip: { value: 0 }, uPipR: { value: new THREE.Vector4() } };
+  const compM = sm(`uniform sampler2D tScene, tBloom, tBlur, tAO, tDepth, tStreak, tDirt, tPip; uniform float uBloom, uExp, uVig, uGrain, uTime, uReplay, uBlur, uSat, uAO, uDof, uFocus, uStreak, uDirt, uEra, uMB, uSharp, uCA, uPip; uniform vec4 uPipR; uniform vec2 uRes; uniform mat4 uProjInv, uPrevVP, uInvVP; varying vec2 vUv;
     vec3 aces(vec3 c) { c *= uExp / 0.6;
       const mat3 I = mat3(0.59719, 0.07600, 0.02840, 0.35458, 0.90834, 0.13383, 0.04823, 0.01566, 0.83777);
       const mat3 O = mat3(1.60475, -0.10208, -0.00327, -0.53108, 1.10813, -0.07276, -0.07367, -0.00605, 1.07602);
@@ -1295,6 +1306,7 @@ function makePost(renderer) {
       vec3 c;
       if (uReplay > 0.01) { vec2 ca = d * 0.007 * uReplay * r; c = vec3(texture2D(tScene, uv + ca).r, texture2D(tScene, uv).g, texture2D(tScene, uv - ca).b); }
       else if (uEra > 0.5 && uEra < 1.5) c = vec3(texture2D(tScene, uv + vec2(0.0018, 0.0)).r, texture2D(tScene, uv).g, texture2D(tScene, uv - vec2(0.0012, 0.0)).b); // video chroma bleed
+      else if (uCA > 0.0) { vec2 ca = d * uCA * r; c = vec3(texture2D(tScene, uv + ca).r, texture2D(tScene, uv).g, texture2D(tScene, uv - ca).b); } // lens fringe toward the edges
       else c = texture2D(tScene, uv).rgb;
       if (uSharp > 0.0) { vec2 tx = 1.0 / uRes; vec3 nb = texture2D(tScene, uv + vec2(tx.x, 0.0)).rgb + texture2D(tScene, uv - vec2(tx.x, 0.0)).rgb + texture2D(tScene, uv + vec2(0.0, tx.y)).rgb + texture2D(tScene, uv - vec2(0.0, tx.y)).rgb; c = max(c + (c - nb * 0.25) * uSharp, 0.0); }
       if (uMB > 0.0) { // camera motion blur: where was this pixel last frame?
@@ -1313,6 +1325,7 @@ function makePost(renderer) {
       c = mix(vec3(l), c, uSat - 0.25 * uReplay);
       c *= mix(vec3(1.0), vec3(1.06, 1.0, 0.9), uReplay);
       c = mix(c, c * c * (3.0 - 2.0 * c), 0.2);
+      if (uEra < 0.5) { float l2 = dot(c, vec3(0.2126, 0.7152, 0.0722)); c = mix(c, c * mix(vec3(0.94, 0.985, 1.06), vec3(1.045, 1.0, 0.95), smoothstep(0.08, 0.7, l2)), 0.55); } // cool shadows, warm highlights
       float vig = uVig + (uEra > 2.5 ? 0.35 : uEra > 1.5 ? 0.18 : 0.0);
       c *= 1.0 - vig * smoothstep(0.4, 1.05, r);
       if (uEra > 2.5) { // 1950s kinescope: black and white, flicker, dust and scratches
@@ -1328,6 +1341,10 @@ function makePost(renderer) {
       } else if (uEra > 0.5) { // 1990s standard-definition video: scanlines, punchy color
         float g = dot(c, vec3(0.2126, 0.7152, 0.0722)); c = mix(vec3(g), c, 1.1);
         c *= 0.93 + 0.07 * sin(vUv.y * uRes.y * 1.5708);
+      }
+      if (uPip > 0.0) { // picture-in-picture box
+        vec2 pq = (vUv - uPipR.xy) / (uPipR.zw - uPipR.xy);
+        if (pq.x > 0.0 && pq.y > 0.0 && pq.x < 1.0 && pq.y < 1.0) { vec2 sz = (uPipR.zw - uPipR.xy) * uRes, bp = pq * sz; float bd = min(min(bp.x, sz.x - bp.x), min(bp.y, sz.y - bp.y)); vec3 pc = bd < 3.0 ? vec3(0.95) : aces(texture2D(tPip, pq).rgb * 1.05); c = mix(c, pc, uPip); }
       }
       c = srgb(c);
       c += (rnd(uv * uRes + fract(uTime) * 61.0) - 0.5) * (uGrain + (uEra > 2.5 ? 0.07 : uEra > 1.5 ? 0.035 : uEra > 0.5 ? 0.015 : 0.0));
@@ -1370,7 +1387,7 @@ function makePost(renderer) {
     if (fx.blur > 0.01 || fx.dof > 0 || fx.era > 0) { src = sceneRT.texture; sw = W; sh = H; for (let i = 0; i < 2; i++) { downM.uniforms.tSrc.value = src; downM.uniforms.uTexel.value.set(1.5 / sw, 1.5 / sh); downM.uniforms.uPre.value = 0; pass(downM, blur[i]); src = blur[i].texture; sw = blur[i].width; sh = blur[i].height; } }
     U.tScene.value = sceneRT.texture; U.tBloom.value = up[0].texture; U.tBlur.value = blur[1].texture; U.tAO.value = ao[1].texture;
     U.uBloom.value = fx.bloom; U.uExp.value = fx.exposure; U.uVig.value = fx.vignette; U.uGrain.value = fx.grain; U.uTime.value = fx.time; U.uReplay.value = fx.replay; U.uBlur.value = fx.blur; U.uSat.value = fx.sat;
-    U.uAO.value = fx.ao; U.uDof.value = useDepth ? fx.dof : 0; U.uFocus.value = fx.focus || 30; U.uStreak.value = fx.streak; U.uDirt.value = fx.dirt; U.uEra.value = fx.era || 0; U.uMB.value = useDepth ? fx.mb || 0 : 0; U.uSharp.value = fx.sharp || 0; if (fx.prevVP) { U.uPrevVP.value.copy(fx.prevVP); U.uInvVP.value.copy(fx.invVP); }
+    U.uAO.value = fx.ao; U.uDof.value = useDepth ? fx.dof : 0; U.uFocus.value = fx.focus || 30; U.uStreak.value = fx.streak; U.uDirt.value = fx.dirt; U.uEra.value = fx.era || 0; U.uMB.value = useDepth ? fx.mb || 0 : 0; U.uSharp.value = fx.sharp || 0; U.uCA.value = fx.ca || 0; U.uPip.value = fx.pip && fx.pipTex ? fx.pip : 0; if (fx.pipTex) U.tPip.value = fx.pipTex; if (fx.pipR) U.uPipR.value.copy(fx.pipR); if (fx.prevVP) { U.uPrevVP.value.copy(fx.prevVP); U.uInvVP.value.copy(fx.invVP); }
     pass(compM, null);
   }
   return { setSize, render };
@@ -1619,7 +1636,12 @@ function create(canvas, opts) {
   for (const z of [6, 25, 44]) for (const x of [22, 47, 72]) { const bar = new THREE.Mesh(new THREE.BoxGeometry(14, 0.6, 3), new THREE.MeshBasicMaterial({ color: glow("#fff4e0", 9) })); bar.position.set(x, 72, z); scene.add(bar); }
   // light haze in the beams (seen from outside, on high quality)
   const hazeMat = new THREE.MeshBasicMaterial({ map: beamTex(), color: glow("#fff2dc", 0.03), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.FrontSide });
-  const haze = []; for (const x of [22, 47, 72]) { const c = new THREE.Mesh(new THREE.CylinderGeometry(3, 16, 70, 24, 1, true), hazeMat); c.position.set(x, 37, 25); scene.add(c); haze.push(c); }
+  const haze = []; for (const z of [6, 25, 44]) for (const x of [22, 47, 72]) { const c = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 10, 70, 20, 1, true), hazeMat); c.position.set(x + (x - 47) * 0.04, 37, z + (z - 25) * 0.05); scene.add(c); haze.push(c); } // a shaft under every light bank
+  hazeMat.color.copy(glow("#fff2dc", 0.016));
+  const DUST = 520, dustPos = new Float32Array(DUST * 3), dustCol = new Float32Array(DUST * 3), dustSeed = [];
+  for (let i = 0; i < DUST; i++) { const bx_ = [22, 47, 72][i % 3], bz_ = [6, 25, 44][Math.floor(i / 3) % 3]; dustSeed.push([bx_ + (hash(i * 3.1) - 0.5) * 16, 8 + hash(i * 5.7) * 58, bz_ + (hash(i * 7.3) - 0.5) * 12, hash(i * 9.1) * TAU]); const k = 0.4 + hash(i * 11.3) * 0.6; dustCol.set([k, k * 0.95, k * 0.85], i * 3); }
+  const dustGeo = new THREE.BufferGeometry(); dustGeo.setAttribute("position", new THREE.BufferAttribute(dustPos, 3)); dustGeo.setAttribute("color", new THREE.BufferAttribute(dustCol, 3));
+  const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ size: 0.055, sizeAttenuation: true, vertexColors: true, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending, color: glow("#ffffff", 1.6) })); dust.frustumCulled = false; scene.add(dust); haze.push(dust);
   // scorer's table, LED boards, benches with subs
   const table = new THREE.Mesh(new THREE.BoxGeometry(16, 3, 2.5), smat("#0c0f14")); table.position.set(47, 1.5, -5); table.castShadow = true; scene.add(table);
   const adTex = stripTex(); adTex.repeat.set(0.35, 1);
@@ -1906,19 +1928,30 @@ function create(canvas, opts) {
   }
 
   // ---------- cameras ----------
-  const cam = { pos: new V3(47, 40, 110), look: new V3(47, 2, 25), fov: 30, init: false };
-  const dir = { shot: null, since: 0, ftShot: 0, lastPhase: -1, phaseStart: 0, cut: false };
+  const cam = { pos: new V3(47, 40, 110), look: new V3(47, 2, 25), fov: 30, init: false, vP: new V3(), vL: new V3(), vF: 0, expo: 1.02 };
+  const dir = { shot: null, since: 0, ftShot: 0, lastPhase: -1, phaseStart: 0, cut: false, subj: -1, subjKind: "", driveT: 0, isoIdx: -1, isoT: 0, lastIso: 0 };
+  // how each camera is operated: [head (pan/tilt) stiffness, damping, body (dolly) stiffness]; others ease the old way
+  const OPS = { main: [2.1, 0.96, 0.9], endzone: [2.3, 0.95, 1.0], rail: [3.0, 0.9, 2.2], sky: [2.2, 0.97, 1.4], low: [3.0, 0.9, 2.0], baseline: [3.2, 0.86, 2.4],
+    hero: [4.4, 0.78, 2.6], refcam: [4.0, 0.84, 2.0], coach: [3.6, 0.86, 1.6], ftclose: [2.6, 0.9, 1.0], tipoff: [2.6, 0.92, 1.2] };
+  // a little auto-iris: darker shots open up, and every cut settles over a moment
+  const EXPO = { crowd: 1.16, huddle: 1.1, bench: 1.08, coach: 1.08, hero: 1.05, refcam: 1.05, ftclose: 1.06, low: 1.05, baseline: 1.04, tipoff: 1.04, sky: 1.0, rim: 1.03 };
+  // the cameras each era's broadcast actually had (with the era look on): the 1950s had two
+  const PKG = [null, { main: 1, endzone: 1, ft: 1, ftclose: 1, hero: 1, refcam: 1, coach: 1, rail: 1, baseline: 1, low: 1, bench: 1, crowd: 1, huddle: 1, dance: 1, tipoff: 1 },
+    { main: 1, endzone: 1, ft: 1, hero: 1, baseline: 1, low: 1, bench: 1, crowd: 1, huddle: 1, dance: 1, tipoff: 1 }, { main: 1, endzone: 1, ft: 1, crowd: 1, huddle: 1, dance: 1 }];
+  function springV(x, v, t, w, z, dt) { const n = Math.max(1, Math.ceil(dt * w * 4)), h = dt / n; for (let i = 0; i < n; i++) { v.x += ((t.x - x.x) * w * w - 2 * z * w * v.x) * h; v.y += ((t.y - x.y) * w * w - 2 * z * w * v.y) * h; v.z += ((t.z - x.z) * w * w - 2 * z * w * v.z) * h; x.x += v.x * h; x.y += v.y * h; x.z += v.z * h; } }
   const free = { yaw: 0.6, pitch: 0.35, dist: 46, target: new V3(47, 4, 25) };
   let userCam = "auto";
-  const HANDHELD = { low: 1, baseline: 1, iso: 1, rail: 0.7, huddle: 1, crowd: 0.8, ft: 0.6, reverse: 0.8, rim: 0.3, main: 0.15, endzone: 0.2, lineup: 0.35, dance: 0.5 };
+  const HANDHELD = { low: 1, baseline: 1, iso: 1, rail: 0.7, huddle: 1, crowd: 0.8, ft: 0.6, reverse: 0.8, rim: 0.3, main: 0.15, endzone: 0.2, lineup: 0.35, dance: 0.5, hero: 1.1, refcam: 0.9, coach: 0.8, ftclose: 0.35, tipoff: 0.4, sky: 0.25, bench: 0.9 };
   function rig(shot, s) {
     const P = new V3(), L = new V3(); let fov = 30;
     const { bx, bz, bvx, right, hx, minX, maxX, foc, portrait } = s, din = right ? -1 : 1;
     switch (shot) {
-      case "main": {
-        const lead = clamp(bx + bvx * 0.5, minX, maxX), cx = clamp((minX + maxX) / 2 * 0.4 + lead * 0.6, 16, 78);
-        const w = clamp(2 * Math.max(cx - minX, maxX - cx) + 14, 36, 72);
-        P.set(cx, 38, 102); L.set(cx, 0, 28 + (bz - 25) * 0.2);
+      case "main": { // the "high one": a fixed camera at midcourt that pans and zooms, leading the play
+        const lead = clamp(bx + bvx * 0.7, 2, 92), near = (s.plx || []).filter(x => Math.abs(x - bx) < 38); near.push(bx, lead);
+        let lo = 1e9, hi = -1e9; for (const x of near) { lo = Math.min(lo, x); hi = Math.max(hi, x); }
+        const cx = clamp((lo + hi) / 2 * 0.45 + lead * 0.55, 14, 80);
+        const w = clamp(2 * Math.max(cx - lo, hi - cx) + (s.transition ? 22 : 13), 40, 76);
+        P.set(47 + (cx - 47) * 0.16, 36, 101); L.set(cx, 1.5, 27 + (bz - 25) * 0.22);
         const dist = P.distanceTo(L), hf = 2 * Math.atan(w / 2 / dist);
         fov = clamp(2 * Math.atan(Math.tan(hf / 2) / s.aspect) * 180 / PI, 16, portrait ? 62 : 28); break;
       }
@@ -1940,6 +1973,19 @@ function create(canvas, opts) {
       case "bench": { const bxx = 47 + (s.benchT ? 15 : -15); P.set(bxx + (s.benchT ? -7 : 7), 7.5, 10); L.set(bxx, 3.4, -7); fov = portrait ? 56 : 36; break; }
       case "dance": { if (portrait) { P.set(47, 6.5, 47); L.set(47, 4.0, 25); fov = 50; } else { P.set(47, 8.5, 59); L.set(47, 4.2, 25); fov = 30; } break; }
       case "intro": { const t = s.rt / 7; P.set(47 + Math.cos(t) * 58, 18 + Math.sin(t * 0.7) * 7, 25 + Math.sin(t) * 46); L.set(47, 6, 25); fov = portrait ? 62 : 38; break; }
+      case "hero": case "refcam": case "coach": { // a courtside operator on a long lens, following one person
+        const q = s.subj; if (!q) { P.set(47, 36, 101); L.set(bx, 2, bz); fov = 30; break; }
+        const far = q.y < 30, half = shot === "hero" ? 3.3 : 2.9; P.set(clamp(q.x + clamp((q.vx || 0) * 0.9, -14, 14), -3, 97), 5.6, far ? 57.5 : 58.5); /* lead the runner to see his face */ L.set(q.x + (q.vx || 0) * 0.22, q.h * 0.8, q.y);
+        fov = clamp(2 * Math.atan(half / P.distanceTo(L)) * 180 / PI, 6, 30) * (portrait ? 1.7 : 1); break;
+      }
+      case "ftclose": { // the shooter's face from the photographers' spot under the basket
+        const q = s.subj; if (!q) { P.set(hx + din * 14.5 + din * 17, 14, 28); L.set(hx, 8.5, 25); fov = 30; break; }
+        P.set(hx - din * 4.0, 8.4, 26.6); L.set(q.x, q.h * 0.87, q.y); /* over the lane, just off the net */ fov = clamp(2 * Math.atan(1.9 / P.distanceTo(L)) * 180 / PI, 4.5, 20) * (portrait ? 1.8 : 1); break;
+      }
+      case "tipoff": { P.set(47, 5.4, 63); L.set(47, 8.5, 25); fov = portrait ? 62 : 38; break; } // low at center court for the jump
+      case "sky": { // the cable cam, riding behind the break
+        const dx = right ? 1 : -1; P.set(clamp(bx - dx * 26, -10, 104), 24, 25 + (bz - 25) * 0.5 + 9); L.set(clamp(bx + dx * 16, 0, 94), 2, bz); fov = portrait ? 64 : 46; break;
+      }
       case "overhead": { P.set(47, 125, 25.1 + (portrait ? 0 : 32)); L.set(47, 0, 25); fov = portrait ? 74 : 40; break; }
       case "free": { const d = free.dist; P.set(free.target.x + Math.cos(free.yaw) * Math.cos(free.pitch) * d, free.target.y + Math.sin(free.pitch) * d, free.target.z + Math.sin(free.yaw) * Math.cos(free.pitch) * d); L.copy(free.target); fov = portrait ? 56 : 38; break; }
     }
@@ -1947,31 +1993,44 @@ function create(canvas, opts) {
     return { P, L, fov };
   }
   function direct(s, view, rdt) {
-    let shot;
+    let shot, subj = -1, kind = "";
     if (view.shot) shot = view.shot;
     else if (userCam === "free") shot = "free";
     else if (userCam === "player") shot = s.focFound ? "chase" : (s.portrait ? "endzone" : "main");
     else if (userCam !== "auto") shot = userCam === "sideline" ? "main" : userCam === "endline" ? "endzone" : userCam === "follow" ? "rail" : userCam;
     else {
-      const main = s.portrait ? "endzone" : "main";
+      const main = s.portrait ? "endzone" : "main", pk = PKG[s.pkg || 0];
       let want = main;
-      if (s.phase === 4) want = s.phaseT < 3 ? "huddle" : s.danceOn ? "dance" : "crowd";
-      else if (s.phase === 2) want = "ft";
-      else if (s.reaction >= 0 && s.phase !== 0) want = "bench";
+      if (s.phase === 4) { const t = s.phaseT; want = t < 3 ? "huddle" : s.danceOn ? "dance" : t % 14 < 9 ? "crowd" : "coach"; if (want === "coach") { subj = s.hudSide; kind = "coach"; } }
+      else if (s.phase === 3) want = "tipoff";
+      else if (s.phase === 2 && s.ftPid >= 0) { // free throws: the face during the routine, the wide for the shot
+        if (s.ftRel) want = "ft"; else { const atLine = s.ftDist > 12 && s.ftDist < 17.5; want = atLine && s.ftN % 2 === 1 ? "ftclose" : "hero"; subj = s.ftPid; kind = "player"; } // follow him to the line, then his face
+      }
+      else if (s.score && s.score.hero && s.score.age > 0.7 && s.score.age < s.score.heroEnd && !s.fastbreak) { want = "hero"; subj = s.score.idx; kind = "player"; }
+      else if (s.reaction >= 0 && !s.fastbreak && !s.drive) { if (s.reactCoach) { want = "coach"; subj = s.reaction; kind = "coach"; } else want = "bench"; }
+      else if (s.foul && s.foul.age > 0.3 && s.foul.age < 2.3 && s.phase === 1 && s.refNear >= 0) { want = "refcam"; subj = s.refNear; kind = "ref"; }
       else if (s.drive) want = "baseline";
-      else if (s.fastbreak) want = s.portrait ? "endzone" : "rail";
-      const cur = dir.shot, minHold = (cur === "baseline" || cur === "rail") ? 1.4 : 1.8;
+      else if (s.fastbreak) want = s.modern && s.possHash < 0.5 && !s.portrait ? "sky" : s.portrait ? "endzone" : "rail";
+      else if (s.iso && !s.portrait) want = "low";
+      if (pk && !pk[want]) { want = main; subj = -1; kind = ""; } // this broadcast didn't have that camera
+      if (want === "sky" && !s.modern) want = "rail";
+      const cur = dir.shot, held = dir.since; dir.want = want;
+      const story = want === "hero" || want === "ftclose" || want === "ft" || want === "refcam" || want === "tipoff" || want === "huddle" || want === "dance" || want === "coach" || want === "bench";
+      const minHold = cur === main ? 1.1 : (cur === "baseline" || cur === "rail" || cur === "sky") ? 1.3 : cur === "low" ? 2.4 : 0.9;
       if (cur === null || want === cur || dir.forced) shot = want; // coming out of a replay or a forced angle: cut straight back
-      else if (want === "ft" || want === "huddle" || want === "dance" || want === "bench" || cur === "ft" || cur === "huddle" || cur === "crowd" || cur === "dance" || cur === "intro" || cur === "orbit") shot = want;
-      else if (dir.since > minHold) shot = want;
-      else shot = cur;
+      else if (story || cur === "huddle" || cur === "crowd" || cur === "dance" || cur === "intro" || cur === "orbit" || cur === "tipoff" || cur === "ftclose" || cur === "ft") shot = want; // cut on the action
+      else if (held > minHold) shot = want;
+      else { shot = cur; subj = dir.subj; kind = dir.subjKind; }
+      if (shot === "low" && cur !== "low") dir.lastIso = s.now;
     }
     dir.forced = !!view.shot || userCam !== "auto";
-    if (shot !== dir.shot) { dir.shot = shot; dir.since = 0; dir.cut = true; } else dir.since += rdt;
+    if (shot !== dir.shot || (subj !== dir.subj && kind && kind === dir.subjKind && (shot === "hero" || shot === "coach"))) { dir.shot = shot; dir.since = 0; dir.cut = true; } else dir.since += rdt;
+    dir.subj = subj; dir.subjKind = kind;
     return shot;
   }
 
   // ---------- render ----------
+  let pipK = 0; const pipR = new THREE.Vector4();
   let pinned = null, ballZ1 = null, ballZ2 = null; const _bT = new THREE.Matrix4(), _bS = new THREE.Matrix4(), _bR = new THREE.Matrix4(); const prevVP = new THREE.Matrix4(), curVP = new THREE.Matrix4(), prevCamPos = new V3();
   let lastT = performance.now(), lastTick = -1, vt = 0, showK = 0, replayK = 0, finT0 = -1, frameNo = 0;
   const tmpV = new V3(), tmpV2 = new V3(), up = new V3(0, 1, 0), qSpin = new THREE.Quaternion(), tA = new V3(), tB = new V3(), tC = new V3(), tD = new V3(), tF = new V3(), tL = new V3();
@@ -2264,6 +2323,7 @@ function create(canvas, opts) {
       }
       confetti.userData.c = 1; confetti.instanceMatrix.needsUpdate = true; if (confetti.instanceColor) confetti.instanceColor.needsUpdate = true;
     }
+    if (dust.visible) { for (let i = 0; i < DUST; i++) { const [x0, y0, z0, ph] = dustSeed[i], t = rtS * 0.06 + ph; dustPos[i * 3] = x0 + Math.sin(t * 1.3) * 1.6; dustPos[i * 3 + 1] = y0 + Math.sin(t * 0.7 + ph) * 1.2 - ((rtS * 0.25 + ph * 9) % 6); dustPos[i * 3 + 2] = z0 + Math.cos(t) * 1.4; } dustGeo.attributes.position.needsUpdate = true; } // motes drifting in the light
     adTex.offset.x = (rtS * 0.02) % 1; adTex2.offset.x = (rtS * 0.012) % 1; ribbonTex.offset.x = (-rtS * 0.01) % 1;
     drawBoard(teams[0], teams[1], mt.s0, mt.s1, mt.per, mt.clock); drawShotClock(mt.shot, mt.clock, mt.phase === 0 && mt.shot <= mt.clock);
     // director and camera
@@ -2278,31 +2338,59 @@ function create(canvas, opts) {
     if (mt.phase === 4) { let tt = -1; recent(tick, 1200, e => { if (tt < 0 && e.type === "timeout") tt = e.team; }); S.hudSide = tt === 1 ? 1 : 0; }
     S.focFound = view.focus !== undefined && view.focus !== null && pos.some(q => q.idx === view.focus);
     if (S.focFound) { dir.chaseA = dir.chaseA === undefined ? foc.face : dir.chaseA + angDiff(dir.chaseA, foc.face) * (1 - Math.exp(-rdt * 1.4)); S.chaseA = dir.chaseA; }
-    S.reaction = -1; // cut to the bench after a big play when there's no replay
-    if (!view.replay && mt.phase !== 0) recent(tick, 46, (e, age) => { if (S.reaction < 0 && age > 6 && ((e.type === "fga" && e.made && (e.val >= 3 || e.dunk)) || (e.type === "tackle" && e.result === "down"))) S.reaction = e.team; });
+    // the story so far: the last basket or big hit, then a reaction from that team's bench or coach straight after the close-up
+    S.score = null; recent(tick, 140, (e, age) => {
+      if (S.score) return; const hit = e.type === "tackle" && e.result === "down"; if (!(e.type === "fga" && e.made) && !hit) return;
+      const big = hit || !!(e.dunk || e.val === 4), hh_ = hash(e.tk * 0.71);
+      S.score = { idx: e.pid, age: age / 20, big, team: e.team, hero: big || (e.val === 3 ? hh_ < 0.7 : hh_ < 0.35), heroEnd: hit ? 2.4 : big ? 4.2 : 3.0, react: big || e.val === 3, tk: e.tk };
+    });
+    S.reaction = -1; if (!view.replay && S.score && S.score.react && S.score.age > S.score.heroEnd && S.score.age < S.score.heroEnd + 1.8) { S.reaction = S.score.team; S.reactCoach = hash(S.score.tk * 1.7) < 0.75; }
     S.benchT = S.reaction === 1 ? 1 : 0;
+    // the story so far: who scored, a whistle, whose free throw, an isolation at the top
+    S.now = now; S.plx = pos.map(q => q.x); S.transition = !!holderS && hsp > 12; S.pkg = view.era || 0; S.modern = era >= 2008; S.possHash = hash(Math.floor(tick / 300) * 3.1);
+    S.foul = null; recent(tick, 60, (e, age) => { if (!S.foul && (e.type === "foul" || e.type === "violation" || (e.type === "tackle" && (e.result === "late" || e.result === "rough")))) S.foul = { age: age / 20 }; });
+    S.refNear = -1; { let bd = 1e9; refs.forEach((f, i) => { const r = f.m.root.position, d = Math.hypot(r.x - bx, r.z - by); if (d < bd) { bd = d; S.refNear = i; } }); }
+    S.ftN = 0; S.ftPid = -1; S.ftTeam = 0; if (mt.phase === 2) for (let i = evIndex(tick - 2); i < EV.length && EVT[i] < tick + 600; i++) if (EV[i].type === "ft") { S.ftN = EV[i].n || 1; S.ftPid = EV[i].pid; S.ftTeam = EV[i].team; break; }
+    S.ftRel = mt.phase === 2 && b.mode === 5;
+    S.ftDist = 99; if (S.ftPid >= 0) { const q = pos.find(p => p.idx === S.ftPid); if (q) S.ftDist = Math.hypot(q.x - hx, q.y - 25); }
+    dir.driveT = S.drive ? dir.driveT + gdt : 0; S.drive = dir.driveT > 0.3; // cut on the drive once it's committed
+    if (holderS && mt.phase === 0 && hsp < 3.5 && hd > 13 && hd < 34) { if (dir.isoIdx === holderS.idx) dir.isoT += gdt; else { dir.isoIdx = holderS.idx; dir.isoT = 0; } } else { dir.isoIdx = -1; dir.isoT = 0; }
+    S.iso = dir.isoT > 2.4 && now - dir.lastIso > 25000;
     if (userCam === "free" && !view.shot) free.target.lerp(new V3(bx, 4, by), 0.08);
     const shot = direct(S, view, rdt);
+    S.subj = null; // who the operator is following
+    if (dir.subjKind === "player") { const q = pos.find(p => p.idx === dir.subj); if (q) S.subj = { x: q.x, y: q.y, vx: q.vx, h: models[q.idx] ? models[q.idx].H : 6.5 }; }
+    else if (dir.subjKind === "ref" && refs[dir.subj]) { const r = refs[dir.subj].m.root.position; S.subj = { x: r.x, y: r.z, vx: 0, h: 6.1 }; }
+    else if (dir.subjKind === "coach" && coaches[dir.subj]) { const r = coaches[dir.subj].m.root.position; S.subj = { x: r.x, y: r.z, vx: 0, h: 5.95 }; }
     let R = rig(shot, S);
     if (pinned) { R = { P: new V3(...pinned.P), L: new V3(...pinned.L), fov: pinned.fov || 30 }; dir.cut = true; } // stills and tests
     let cutNow = false;
-    if (dir.cut || !cam.init) { cam.pos.copy(R.P); cam.look.copy(R.L); cam.fov = R.fov; dir.cut = false; cutNow = true; }
-    else { const k = 1 - Math.exp(-rdt * (shot === "free" ? 12 : shot === "main" || shot === "endzone" ? 2.6 : 3.5)); cam.pos.lerp(R.P, k); cam.look.lerp(R.L, k); cam.fov = lerp(cam.fov, R.fov, k); }
+    const op = OPS[shot];
+    if (dir.cut || !cam.init) { cam.pos.copy(R.P); cam.look.copy(R.L); cam.fov = R.fov; cam.vP.set(0, 0, 0); cam.vL.set(0, 0, 0); cam.vF = 0; dir.cut = false; cutNow = true; }
+    else if (op && rdt > 0) { // an operator: the head pans with momentum, the body dollies slower, the zoom eases
+      springV(cam.pos, cam.vP, R.P, op[2], 1.0, rdt); springV(cam.look, cam.vL, R.L, op[0], op[1], rdt);
+      const wf = op[0] * 0.8; cam.vF += ((R.fov - cam.fov) * wf * wf - 2 * wf * cam.vF) * rdt; cam.fov += cam.vF * rdt;
+    } else { const k = 1 - Math.exp(-rdt * (shot === "free" ? 12 : 3.5)); cam.pos.lerp(R.P, k); cam.look.lerp(R.L, k); cam.fov = lerp(cam.fov, R.fov, k); }
+    cam.expo += ((EXPO[shot] || 1.02) - cam.expo) * (1 - Math.exp(-rdt * 1.6));
     cam.init = true;
     let shk = 0; recent(tick, 16, (e, age) => { if ((e.type === "fga" && e.made && e.dunk) || (e.type === "tackle" && e.result === "down")) shk = Math.max(shk, Math.exp(-age / 4) * (shot === "main" || shot === "endzone" ? 0.35 : 0.6)); });
     const hh = (HANDHELD[shot] || 0) * (shot === "free" ? 0 : 1), T = now / 1000;
     camera.position.copy(cam.pos).add(tmpV.set((Math.sin(T * 0.9 + 1) + Math.sin(T * 2.3) * 0.4) * 0.09 * hh, (Math.sin(T * 1.3) + Math.sin(T * 2.9 + 2) * 0.3) * 0.06 * hh, Math.sin(T * 0.7 + 2) * 0.09 * hh));
     if (shk) camera.position.add(tmpV.set(Math.sin(vt * 90) * shk, Math.sin(vt * 130) * shk, Math.sin(vt * 70) * shk));
-    camera.fov = cam.fov * (1 + Math.sin(T * 0.5) * 0.004 * hh); camera.lookAt(tmpV2.copy(cam.look).add(tmpV.set(Math.sin(T * 1.1) * 0.05 * hh, Math.sin(T * 1.7 + 1) * 0.04 * hh, 0))); camera.updateProjectionMatrix(); camera.updateMatrixWorld();
-    for (const f of refs.concat(coaches)) { const r = f.m.root.position; f.m.root.visible = Math.hypot(r.x - camera.position.x, r.z - camera.position.z) > 22 || camera.position.y > 30; }
+    camera.fov = cam.fov * (1 + Math.sin(T * 0.5) * 0.004 * hh); camera.lookAt(tmpV2.copy(cam.look).add(tmpV.set(Math.sin(T * 1.1) * 0.05 * hh, Math.sin(T * 1.7 + 1) * 0.04 * hh, 0))); if (hh > 0.3) camera.rotateZ((Math.sin(T * 0.8) + Math.sin(T * 1.9 + 1) * 0.4) * 0.005 * hh); camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+    for (const f of refs.concat(coaches)) { const r = f.m.root.position; f.m.root.visible = Math.hypot(r.x - camera.position.x, r.z - camera.position.z) > 22 || camera.position.y > 30 || shot === "refcam" || shot === "coach"; }
     updateAR(view.ar, tick, pos);
     // positional sound: pan by where it is on screen, quieter when far away
     if (cueFn && cues.length) for (const [kind, x, y, z] of cues) { tmpV.set(x, y, z).applyMatrix4(camera.matrixWorldInverse); const dist = tmpV.length(), pan = clamp(tmpV.x / Math.max(4, -tmpV.z) * 1.1, -1, 1), vol = clamp(38 / Math.max(1, dist), 0.12, 1); cueFn(kind, vol, pan, clamp(view.rate || 1, 0.45, 1)); }
     // jumbotron: a live feed from a second camera on high quality, every third frame
-    const feed = quality === "high" && frameNo % 3 === 0;
+    const pipWant = quality === "high" && mt.phase === 2 && !view.replay && !(view.era > 0) && S.ftPid >= 0 && shot !== "ftclose" && coaches[S.ftTeam];
+    pipK += ((pipWant ? 1 : 0) - pipK) * (1 - Math.exp(-rdt * 5)); if (pipK < 0.01 || jump) pipK = 0;
+    { const rw = 0.27, rh = rw * (w / h) * 9 / 16; pipR.set(0.97 - rw, 0.95 - rh, 0.97, 0.95); }
+    const feed = quality === "high" && frameNo % (pipK > 0 ? 2 : 3) === 0;
     jumboMat.map = quality === "high" ? jumboRT.texture : jumboStatic;
     if (feed) {
-      if (mt.phase === 4 || view.dance) { const s2 = seats[Math.floor((Math.floor(vt / 4) * 97) % seats.length)]; jumboCam.position.set(s2.x - s2.ox * 10, s2.y + 3, s2.z - s2.oz * 10); jumboCam.lookAt(s2.x, s2.y + 0.6, s2.z); jumboCam.fov = 24; }
+      if (pipK > 0 && coaches[S.ftTeam]) { const r = coaches[S.ftTeam].m.root.position; jumboCam.position.set(r.x + 3.5, 5.6, r.z + 13); jumboCam.lookAt(r.x, 5.2, r.z); jumboCam.fov = 24; }
+      else if (mt.phase === 4 || view.dance) { const s2 = seats[Math.floor((Math.floor(vt / 4) * 97) % seats.length)]; jumboCam.position.set(s2.x - s2.ox * 10, s2.y + 3, s2.z - s2.oz * 10); jumboCam.lookAt(s2.x, s2.y + 0.6, s2.z); jumboCam.fov = 24; }
       else { const fp = view.focus !== undefined ? pos.find(q => q.idx === view.focus) : null, tx = fp ? fp.x : bx, tz = fp ? fp.y : by, a = fp ? fp.face : now / 9000; jumboCam.position.set(tx + Math.cos(a + 0.7) * 16, 6.5, tz + Math.sin(a + 0.7) * 16); jumboCam.lookAt(tx, 4.5, tz); jumboCam.fov = 30; }
       jumboCam.updateProjectionMatrix(); jumbo.visible = false; AR.visible = false;
       renderer.setRenderTarget(jumboRT); renderer.render(scene, jumboCam);
@@ -2328,16 +2416,18 @@ function create(canvas, opts) {
       post.setSize(W, Hh, quality === "high" ? 4 : 2);
       curVP.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
       replayK += ((view.replay ? 1 : 0) - replayK) * (1 - Math.exp(-rdt * 6));
-      const blurAmt = view.replay && (shot === "iso" || shot === "rim" || shot === "low" || shot === "baseline") ? 0.75 : shot === "iso" ? 0.4 : 0;
+      const blurAmt = view.replay && (shot === "iso" || shot === "rim" || shot === "low" || shot === "baseline") ? 0.75 : shot === "iso" ? 0.4 : (shot === "hero" || shot === "refcam" || shot === "coach" || shot === "ftclose") ? 0.6 : 0;
       let dof = 0, fz = 30;
+      const tele = (shot === "hero" || shot === "refcam" || shot === "coach" || shot === "ftclose") && S.subj;
       const onPlayer = (shot === "spin" || shot === "lineup" || shot === "iso") && view.focus !== undefined, onBall = view.replay && (shot === "rim" || shot === "low" || shot === "baseline");
-      if (quality === "high" && (onPlayer || onBall)) { tmpV.set(onPlayer ? foc.x : ball.position.x, onPlayer ? 4 + foc.z : ball.position.y, onPlayer ? foc.y : ball.position.z).applyMatrix4(camera.matrixWorldInverse); fz = -tmpV.z; dof = shot === "spin" || shot === "lineup" ? 1 : onBall ? 0.5 : view.replay ? 0.8 : 0.6; }
-      post.render(scene, camera, { threshold: 1.0, bloom: quality === "high" ? 0.16 : 0.12, exposure: 1.02, vignette: 0.34 + 0.12 * replayK, grain: quality === "high" ? 0.02 : 0.012, time: now / 1000, replay: replayK, blur: quality === "high" ? (dof ? 0 : blurAmt) : blurAmt, sat: 1.07,
+      if (quality === "high" && tele) { tmpV.set(S.subj.x, S.subj.h * 0.85, S.subj.y).applyMatrix4(camera.matrixWorldInverse); fz = -tmpV.z * (1 + 0.7 * (1 - sstep(dir.since / 0.45))); dof = 0.95; } // rack focus onto the subject
+      else if (quality === "high" && (onPlayer || onBall)) { tmpV.set(onPlayer ? foc.x : ball.position.x, onPlayer ? 4 + foc.z : ball.position.y, onPlayer ? foc.y : ball.position.z).applyMatrix4(camera.matrixWorldInverse); fz = -tmpV.z; dof = shot === "spin" || shot === "lineup" ? 1 : onBall ? 0.5 : view.replay ? 0.8 : 0.6; }
+      post.render(scene, camera, { threshold: 1.0, bloom: quality === "high" ? 0.16 : 0.12, exposure: cam.expo, ca: shot === "low" || shot === "baseline" || shot === "rim" || shot === "sky" || shot === "tipoff" ? 0.0045 : 0.0016, pip: pipK, pipR, pipTex: jumboRT.texture, vignette: 0.34 + 0.12 * replayK, grain: quality === "high" ? 0.02 : 0.012, time: now / 1000, replay: replayK, blur: quality === "high" ? (dof ? 0 : blurAmt) : blurAmt, sat: 1.07,
         ao: quality === "high" ? 0.7 : 0, dof, focus: fz, streak: 0.1, dirt: 1.1, hide: transients(), era: view.era || 0,
         mb: quality === "high" && !cutNow && !jump && camera.position.distanceTo(prevCamPos) < 3 ? 0.5 * Math.min(1, 1 / 60 / Math.max(rdt, 1e-3)) : 0 /* a fixed 1/120 s shutter whatever the frame rate */, sharp: 0.22, prevVP, invVP: curVP.clone().invert() });
       prevVP.copy(curVP); prevCamPos.copy(camera.position);
     } else { renderer.setRenderTarget(null); renderer.render(scene, camera); }
-    return { shot };
+    return { shot, subj: dir.subj, subjKind: dir.subjKind };
   }
   // free camera: drag to orbit, wheel or pinch to zoom
   const ptr = new Map(); let pinch0 = 0;
@@ -2353,7 +2443,7 @@ function create(canvas, opts) {
   canvas.addEventListener("wheel", e => { if (userCam !== "free") return; e.preventDefault(); free.dist = clamp(free.dist * (1 + e.deltaY * 0.001), 8, 140); }, { passive: false });
   setQuality(quality);
   return {
-    setGame, render, setQuality, pin(v) { pinned = v; }, figure: idx => model(idx), get waves() { return waves; }, get quality() { return quality; }, onCue(fn) { cueFn = fn; }, get postActive() { return !!post && quality !== "low"; },
+    setGame, render, setQuality, pin(v) { pinned = v; }, figure: idx => model(idx), get waves() { return waves; }, get director() { return dir; }, get quality() { return quality; }, onCue(fn) { cueFn = fn; }, get postActive() { return !!post && quality !== "low"; },
     setCamera(m) { userCam = m; if (m === "free") { free.target.copy(cam.look); const d = cam.pos.clone().sub(cam.look); free.dist = clamp(d.length(), 12, 120); free.yaw = Math.atan2(d.z, d.x); free.pitch = clamp(Math.asin(d.y / d.length()), 0.08, 1.4); } dir.shot = null; canvas.style.touchAction = m === "free" ? "none" : "pan-y"; },
     get camera() { return userCam; },
     get shot() { return dir.shot; },
