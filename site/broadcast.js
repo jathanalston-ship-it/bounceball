@@ -256,10 +256,50 @@ function lowerThird(color, title, sub, ms, force) {
   el.innerHTML = `<b>${title}</b>${sub ? `<span>${sub}</span>` : ""}`; el.classList.add("on");
   clearTimeout(l3Timer); l3Timer = setTimeout(() => el.classList.remove("on"), ms || 3200);
 }
-function callout(label, col) {
+function callout(label, col, sub) {
   if (V.replay) return;
-  const el = $("callout"); el.textContent = label; el.style.color = col; el.classList.remove("on"); void el.offsetWidth; el.classList.add("on");
-  clearTimeout(coTimer); coTimer = setTimeout(() => el.classList.remove("on"), 1500);
+  const el = $("callout"), arc = arcadeFX();
+  el.classList.toggle("arc", arc);
+  if (arc) { el.innerHTML = `<s class="rays"></s><b>${esc(label)}</b>${sub ? `<i>${esc(sub)}</i>` : ""}`; el.style.color = ""; el.style.setProperty("--cc", col); el.style.setProperty("--ray", hexA(col, 0.5)); }
+  else { el.textContent = label; el.style.color = col; }
+  el.classList.remove("on"); void el.offsetWidth; el.classList.add("on");
+  clearTimeout(coTimer); coTimer = setTimeout(() => el.classList.remove("on"), arc ? 1700 : 1500);
+}
+// ---------- arcade presentation: big callouts, hit-stop, slow motion over the rim ----------
+function arcadeFX() { return !V.eraOn; } // the era look keeps it authentic
+function hexA(hex, a) { const n = parseInt(String(hex).slice(1), 16); return isNaN(n) ? `rgba(255,255,255,${a})` : `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; }
+const h01 = x => { const v = Math.sin(x * 12.9898 + 78.233) * 43758.5453; return v - Math.floor(v); };
+const ARCADE_LINES = { "BIG HIT!": ["BIG HIT!", "LEVELED!", "LIGHTS OUT!", "DESTROYED!"], "SLAM": ["SLAM!", "JAM!", "BOOM!", "THROWN DOWN!"], "SWAT!": ["SWAT!", "REJECTED!", "NOT IN HERE!"], "REJECTED": ["REJECTED!"],
+  "JUKE!": ["ANKLES!", "BROKE HIS ANKLES!", "JUKE!"], "SPIN MOVE!": ["SPUN HIM!", "ANKLES!", "SPIN MOVE!"], "TACKLE!": ["TACKLE!", "STUFFED!", "PLANTED!"], "DIVING TACKLE!": ["DIVING TACKLE!", "SHOESTRING!"],
+  "GANG TACKLE!": ["GANG TACKLE!", "DOGPILE!"], "FOUR!": ["FOUR!", "FROM DOWNTOWN!", "WAY DOWNTOWN!"], "POPPED LOOSE!": ["POPPED LOOSE!", "STRIPPED!"], "HURDLE!": ["HURDLE!", "RIGHT OVER HIM!"], "STIFF-ARM!": ["STIFF-ARM!", "GET OFF ME!"] };
+function arcadeLabel(n) { const L = ARCADE_LINES[n.label]; return L ? L[Math.floor(h01(n.tk) * L.length)] : n.label; }
+function arcadeSub(n) {
+  const e = n.e; let i = e.pid;
+  if (e.type === "tackle" && e.move && (e.result === "whiff" || e.result === "broken")) i = e.on; // the ball handler made the move
+  else if (e.type === "fga" && !e.made && e.blk !== undefined && e.blk >= 0) i = e.blk;
+  const r = i !== undefined && GAME.roster[i]; return r ? r.name.split(" ").slice(-1)[0].toUpperCase() : "";
+}
+let ARC = [];
+function buildArc(game) { // the moments that get arcade time
+  const out = [];
+  for (const e of game.events) {
+    if (e.type === "tackle" && (e.result === "down" || e.result === "fumble" || e.result === "flagrant") && (e.tech === "hit" || e.result === "flagrant")) out.push({ stop: e.tk + 3, ms: 140 });
+    else if (e.type === "tackle" && (e.result === "down" || e.result === "fumble")) out.push({ stop: e.tk + 2, ms: 70 });
+    else if (e.type === "fga" && e.made && e.dunk) out.push(h01(e.tk * 0.71) < 0.3 ? { slow: [e.tk - 16, e.tk - 1], k: 0.35, stop: e.tk, ms: 100 } : { stop: e.tk, ms: 60 }); // dunks are everywhere on this floor: only some get the slow motion
+    else if (e.type === "fga" && e.blk !== undefined && e.blk >= 0 && e.swat) out.push({ stop: e.tk, ms: 90 });
+    else if (e.type === "tackle" && e.result === "whiff" && (e.move === "juke" || e.move === "spin")) out.push({ slow: [e.tk - 6, e.tk + 18], k: 0.4 });
+  }
+  return out;
+}
+function arcadeStep(t0, dt, now) {
+  const step = dt * 20 * V.speed;
+  if (!arcadeFX() || V.arcade === false || V.replay || V.channels || !V.view3d || V.speed > 4 || !B3) return t0 + step;
+  if (V.freezeUntil && now < V.freezeUntil) return t0; // hit-stop: hold the frame a beat
+  V.freezeUntil = 0;
+  let rate = 1; for (const a of ARC) if (a.slow && t0 >= a.slow[0] && t0 < a.slow[1]) rate = Math.min(rate, a.k);
+  let t1 = t0 + step * rate;
+  for (const a of ARC) if (a.stop !== undefined && a.stop > t0 && a.stop <= t1) { t1 = a.stop; V.freezeUntil = now + a.ms; break; }
+  return t1;
 }
 // unanswered points by the team that scored event i
 function runAt(i) {
@@ -293,15 +333,15 @@ function callFor(e) {
       if (e.blk !== undefined && e.blk >= 0) return [pickLine(e.swat ? ["Get that out of here! " + lastName(e.blk) + " with the swat!", "Oh, " + lastName(e.blk) + " slaps it off the glass!"] : ["Rejected by " + lastName(e.blk) + "!", lastName(e.blk) + " says no!"], k), 3];
       if (!e.made) return null;
       if (e.val === 4) return [pickLine([n + " from way downtown... FOUR!", n + " pulls up from thirty... got it! Four points!", "Bang! " + n + " with the four!"], k), 3];
-      if (e.dunk) return [pickLine([n + " throws it down!", "Oh, " + n + " with the hammer!", n + " rocks the rim!", "Flush! " + n + "!"], k), 3];
+      if (e.dunk) return [pickLine([n + " throws it down!", "Oh, " + n + " with the hammer!", n + " rocks the rim!", "Flush! " + n + "!", "BOOM! " + n + " with authority!", n + " takes off... and throws it DOWN!"], k), 3];
       if (e.val === 3) return [pickLine([n + " for three... got it!", n + " buries the three.", n + ", from deep. Yes!"], k), 2];
       return Math.abs(k) % 3 === 0 ? [pickLine([n + " scores.", n + " gets it to go.", "Bucket, " + n + "."], k), 1] : null;
     case "tackle": {
       const o = lastName(e.on);
       if (e.move && !e.moveFail && (e.result === "whiff" || e.result === "broken")) return [e.move === "hurdle" ? pickLine([o + " goes right over the top of " + n + "!", "He hurdled him! " + o + " leaps right over " + n + "!"], k)
         : e.move === "stiff" ? pickLine(["Stiff-arm! " + o + " puts " + n + " on the floor!", o + " with the stiff-arm, and " + n + " wants no part of it!"], k)
-        : e.move === "spin" ? pickLine([o + " spins right out of it!", "Spin move by " + o + ", and " + n + " grabs nothing but air!"], k)
-        : pickLine([o + " makes " + n + " miss!", "What a juke by " + o + "!"], k), e.move === "hurdle" || e.move === "stiff" ? 3 : 2];
+        : e.move === "spin" ? pickLine([o + " spins right out of it!", "Spin move by " + o + ", and " + n + " grabs nothing but air!", o + " spun him around and left him sitting on the floor!"], k)
+        : pickLine([o + " makes " + n + " miss!", "What a juke by " + o + "!", "Oh! " + o + " just broke " + n + "'s ankles!", "Somebody help " + n + " up! " + o + " left him on the floor!"], k), e.move === "hurdle" || e.move === "stiff" ? 3 : 2];
       if (e.result === "flagrant") return [pickLine(["Oh, that's dirty. " + n + " went in way too high. That's a flagrant.", "Flag on " + n + ". That was a cheap shot on " + o + "."], k) + (e.lvl === 2 ? " And he's been thrown out." : ""), 3];
       if (e.result === "fumble" && e.drib) return [pickLine(["Hit him on the dribble, and it's loose!", n + " times it perfectly. Ball on the floor!"], k), 3];
       if (e.result === "down" && e.tech === "hit") return [pickLine(["Oh, what a hit by " + n + "!", n + " blows up " + o + "! You felt that one in the upper deck!", "Boom! " + n + " lays the lumber on " + o + "!"], k), 3];
@@ -328,7 +368,7 @@ function callFor(e) {
     case "ejected": return [e.why === "fight" ? n + " is gone. Ejected for fighting." : e.why === "targeting" ? n + " is ejected for targeting. That was a hit to the head." : n + " has been tossed from this game.", 3];
     case "fight": return [e.brawl ? pickLine(["Here come the benches! This is a full-scale brawl!", "Oh no. Everybody's in it now. Both benches have emptied!"], k) : pickLine([n + " and " + lastName(e.on) + " are going at it! The officials are trying to get in there!", "Punches thrown! " + n + " and " + lastName(e.on) + " have to be separated!"], k), 3];
     case "enforcer": return [pickLine([n + " is going to remember that. Watch number " + GAME.roster[e.pid].num + " the next time " + lastName(e.on) + " has the ball.", "You can bet " + n + " has a message for " + lastName(e.on) + "."], k), 2];
-    case "heat": return e.lvl > 0 ? [pickLine([n + " is heating up!", "Somebody find " + n + "! He's feeling it!"], k), 2] : Math.abs(k) % 2 ? [n + " just can't buy one tonight.", 1] : null;
+    case "heat": return e.lvl > 0 ? [pickLine([n + " is heating up!", "Somebody find " + n + "! He's feeling it!", n + " is on fire!", "Light it up! " + n + " can't miss!"], k), 2] : Math.abs(k) % 2 ? [n + " just can't buy one tonight.", 1] : null;
     case "mood": return e.lvl < 0 ? (Math.abs(k) % 2 ? [n + " looks rattled after those hits.", 1] : null) : [pickLine([n + " is fired up now!", "That woke " + n + " up. He's angry."], k), 1];
     case "timeout": return ["Timeout, " + teamOf(e.team).name + ".", 2];
     case "period_end": return [e.per === 2 ? "That will do it for the first half." : e.per < 4 ? "That's the end of the " + ["first", "second", "third"][e.per - 1] + " quarter." : "", 2];
@@ -378,7 +418,7 @@ function playEvents(fromTick, toTick) {
       case "ejected": lowerThird(col, `EJECTED · ${esc(r.short)}`, e.why === "fight" ? "fighting · he's gone" : e.why === "targeting" ? "targeting · a hit to the head" : "flagrant 2 · he's gone", 4000, true); break;
       case "fight": if (AUDIO) { AUDIO.excite(1); AUDIO.whistle(); } lowerThird("#ff4d4d", e.brawl ? "BENCHES CLEAR" : `FIGHT · ${esc(r.short)} & ${esc(GAME.roster[e.on].short)}`, e.brawl ? `${esc(r.short)} and ${esc(GAME.roster[e.on].short)} started it` : "the officials step in", 4500, true); break;
       case "enforcer": lowerThird(col, `ENFORCER · ${esc(r.short)}`, `has a message for ${esc(GAME.roster[e.on].short)}`, 3200); break;
-      case "heat": psyTag(e.lvl > 0 ? "HEATING UP" : "ICE COLD", r, col, e.lvl > 0 ? "#ff9f43" : "#7cc6ff"); break;
+      case "heat": psyTag(e.lvl > 0 ? "HEATING UP" : "ICE COLD", r, col, e.lvl > 0 ? "#ff9f43" : "#7cc6ff"); if (e.lvl > 0 && arcadeFX() && r) setTimeout(() => callout("ON FIRE!", "#ff8a1c", r.name.split(" ").slice(-1)[0].toUpperCase()), 900); break;
       case "mood": psyTag(e.lvl > 0 ? "FIRED UP" : "RATTLED", r, col, e.lvl > 0 ? "#ff6b6b" : "#c8b6ff"); break;
       case "adjust": lowerThird(col, "ADJUSTMENT · " + TB[e.team === 0 ? GAME.home : GAME.away].id, adjustText(e)); break;
       case "plan": if (e.team === 1 && e.tk <= 0) showPlanCard(); break;
@@ -401,7 +441,7 @@ function playEvents(fromTick, toTick) {
       case "ft": if (e.made && AUDIO) AUDIO.excite(homeTeam ? 0.2 : 0.05); break;
     }
   }
-  for (const n of NOTABLE) if (n.tk > fromTick && n.tk <= toTick) callout(n.label, n.col);
+  for (const n of NOTABLE) if (n.tk > fromTick && n.tk <= toTick) { const a = arcadeFX(); callout(a ? arcadeLabel(n) : n.label, n.col, a ? arcadeSub(n) : ""); }
 }
 // free throw graphic: who's shooting, which attempt, how they've shot tonight
 function maybeFT(n) {
@@ -973,7 +1013,7 @@ function renderChannels() {
 }
 function useGame(game, colors) {
   GAME = game; COLORS = colors; TXT = COLORS.map(c => lum(c) > 0.55 ? "#111" : "#fff");
-  NOTABLE = buildNotable(GAME); V.visCount = -1; V.boxAt = -1; V.replay = null; V.reel = null; V.ftShown = -1; V.marksAt = -1; bugState = { n: -1 };
+  NOTABLE = buildNotable(GAME); ARC = buildArc(GAME); V.freezeUntil = 0; V.visCount = -1; V.boxAt = -1; V.replay = null; V.reel = null; V.ftShown = -1; V.marksAt = -1; bugState = { n: -1 };
   if (B3) { const ssn = V.ctx && V.ctx.S ? V.ctx.S.season : 2000; B3.setGame(GAME, TB[GAME.home], TB[GAME.away], COLORS, { season: ssn, banners: bannersFor(GAME.home, ssn) }); }
   applyEra(); if (V.follow !== undefined && !GAME.roster[V.follow]) V.follow = undefined;
   drawCourtBg();
@@ -1080,7 +1120,7 @@ function loop(ts) {
         if (V.hold && !V.live) { if (now >= V.hold) { V.hold = 0; if (V.card && V.card.kind === "brk") hideCard(); } }
         else {
           const before = V.tick;
-          V.tick += dt * 20 * V.speed;
+          V.tick = arcadeStep(before, dt, now);
           const mt = maxTicks();
           if (V.tick >= mt) { V.tick = mt; if (!V.replay) { V.playing = false; setPlayBtn(); } }
           playEvents(before, V.tick);
