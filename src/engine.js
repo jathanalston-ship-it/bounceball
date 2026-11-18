@@ -1,6 +1,8 @@
 // ===================== BOUNCEBALL GAME ENGINE =====================
 // Pure, seeded, deterministic. No DOM. Same seed + same rosters + same coaches + same season + same
 // ENGINE_VERSION = same game. A stored game only needs {seed, lineups, coaches, season, ctx}; frames are re-derived.
+// v0.7 adds to ctx: md (a player walking in unhappy), fd (feuding teammates who pass to each other less) and att
+// (attendance and capacity: a full building leans on the crew). Box scores gain plus/minus.
 //
 // v0.6: the rules change with the era (the flagrant rule in 1969, the fighting crackdown in 1977, helmets and pads
 // in 1986, the two-man gang limit in 1998, the targeting rule in 2011). Referee crews have tendencies and lean

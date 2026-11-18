@@ -2035,7 +2035,7 @@ function create(canvas, opts) {
         if (s.ftRel) want = "ft"; else { const atLine = s.ftDist > 12 && s.ftDist < 17.5; want = atLine && s.ftN % 2 === 1 ? "ftclose" : "hero"; subj = s.ftPid; kind = "player"; } // follow him to the line, then his face
       }
       else if (s.score && s.score.hero && s.score.age > 0.7 && s.score.age < s.score.heroEnd && !s.fastbreak) { want = "hero"; subj = s.score.idx; kind = "player"; }
-      else if (s.reaction >= 0 && !s.fastbreak && !s.drive) { if (s.reactCoach) { want = "coach"; subj = s.reaction; kind = "coach"; } else want = "bench"; }
+      else if (s.reaction >= 0 && !s.fastbreak && !s.drive && !G.show) { if (s.reactCoach) { want = "coach"; subj = s.reaction; kind = "coach"; } else want = "bench"; }
       else if (s.foul && s.foul.age > 0.3 && s.foul.age < 2.3 && s.phase === 1 && s.refNear >= 0) { want = "refcam"; subj = s.refNear; kind = "ref"; }
       else if (s.drive) want = "baseline";
       else if (s.fastbreak) want = s.modern && s.possHash < 0.5 && !s.portrait ? "sky" : s.portrait ? "endzone" : "rail";

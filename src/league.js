@@ -576,7 +576,8 @@ function allStarWeekend(S) {
   const cur = S.cur, rng = rngFor(S, "allstar"), h = H(S);
   const as = EV.selectAllStars(S, rng, B, h), sd = EV.sides(S, B), st = cur.standings;
   const best = side => S.active.filter(t => sd[side].has(t)).sort((a, b) => st[b][0] - st[a][0] || st[a][1] - st[b][1] || (a < b ? -1 : 1))[0];
-  as.coaches = { east: S.teams[best("east")].coach, west: S.teams[best("west")].coach };
+  const coachOf = side => { for (const t of S.active.filter(t => sd[side].has(t)).sort((a, b) => st[b][0] - st[a][0] || (a < b ? -1 : 1))) if (S.teams[t].coach) return S.teams[t].coach; return null; };
+  as.coaches = { east: S.teams[best("east")].coach || coachOf("east"), west: S.teams[best("west")].coach || coachOf("west") };
   as.teams = { east: [...sd.east], west: [...sd.west] };
   cur.allstar = as;
   for (const side of ["east", "west"]) for (const id of as.sides[side].starters.concat(as.sides[side].reserves)) S.players[id].awards.push([S.season, "as"]);

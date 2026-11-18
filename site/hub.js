@@ -263,6 +263,13 @@ async function vCoach(id) {
   h += `<h3>Seasons</h3><div class="tw"><table class="box"><thead><tr><th>Season</th><th>Team</th><th>W-L</th></tr></thead><tbody>${(c.seasons || []).slice().reverse().map(s => `<tr><td><a href="#standings-${s.season}">${s.season}</a></td><td>${s.team}</td><td>${s.w}-${s.l}${s.partial ? " (fired mid-season)" : ""}</td></tr>`).join("")}</tbody></table></div>`;
   return h;
 }
+async function vDunk(y) {
+  const S = await season(y);
+  if (!S.dunk || !window.Broadcast3D) return `<p class="m">No dunk contest to show for ${y}.</p>`;
+  $("broadcast").hidden = false;
+  loadDunk(S);
+  return `<p><a href="#allstar-${y}">← ${y} All-Star weekend</a> · <span class="m">The contest as it happened: every dunk, every miss, every judge's card.</span></p>`;
+}
 async function vWatch(y, gid) {
   const S = await season(y);
   const row = S.games.find(g => g[0] === +gid);
