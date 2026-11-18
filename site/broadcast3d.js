@@ -1344,8 +1344,8 @@ function walkout(canvas, spec, opts) {
     }
     // the camera starts wide on the tunnel and settles on him at chest height
     const cu = sstep(t / (POSE + 0.6)), dist = narrow ? 14 : 15;
-    cam.position.set(lerp(0, 0.9, cu), lerp(4.6, H * 0.58, cu), lerp(dist + 3, dist, cu));
-    cam.lookAt(0, lerp(3.4, H * 0.56, cu), lerp(-12, 0, cu));
+    cam.position.set(lerp(0, 0.9, cu), lerp(4.6, H * 0.6, cu), lerp(dist + 3, dist, cu));
+    cam.lookAt(0, lerp(3.4, H * 0.62, cu), lerp(-12, 0, cu)); // room above his head for a raised arm
     r.render(scene, cam);
     if (t > END) finish(); else raf = requestAnimationFrame(frame);
   }
