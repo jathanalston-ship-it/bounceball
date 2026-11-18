@@ -36,7 +36,12 @@ function buildNotable(game) {
   for (let i = 0; i < E.length; i++) {
     const e = E[i];
     let label = null, col = "#fff", big = 0;
-    if (e.type === "tackle" && e.result === "down" && e.gang) { label = "GANG TACKLE!"; col = "#ff4d4d"; big = 3; }
+    if (e.type === "tackle" && e.move && !e.moveFail && (e.result === "whiff" || e.result === "broken")) { label = MOVE_LABEL[e.move] + "!"; col = "#7cf"; big = e.move === "hurdle" || e.move === "stiff" ? 3 : 2; }
+    else if (e.type === "tackle" && e.result === "flagrant") { label = "FLAGRANT " + e.lvl; col = "#ff4d4d"; big = 2; }
+    else if (e.type === "tackle" && e.result === "fumble" && e.drib) { label = "POPPED LOOSE!"; col = "#ff4d4d"; big = 3; }
+    else if (e.type === "tackle" && e.result === "down" && e.tech === "hit" && !e.gang) { label = "BIG HIT!"; col = "#ff4d4d"; big = 3; }
+    else if (e.type === "tackle" && e.result === "down" && e.tech === "dive" && !e.gang) { label = "DIVING TACKLE!"; col = "#ff4d4d"; big = 3; }
+    else if (e.type === "tackle" && e.result === "down" && e.gang) { label = "GANG TACKLE!"; col = "#ff4d4d"; big = 3; }
     else if (e.type === "tackle" && e.result === "down") { label = "TACKLE!"; col = "#ff4d4d"; big = 3; }
     else if (e.type === "tackle" && e.result === "fumble") { label = "FUMBLE!"; col = "#ff4d4d"; big = 3; }
     else if (e.type === "tackle" && e.result === "rough") { label = "ROUGHING"; col = "#ffb703"; big = 1; }
@@ -62,9 +67,72 @@ function buildNotable(game) {
       if (e.val === 4) bonus += 1;
     } else if (late && close) bonus += 3;
     if (e.type === "tackle" && e.result === "down") bonus += 1; // the league's signature play
+    if (e.type === "tackle" && e.move === "hurdle" && !e.moveFail) bonus += 2;
     if (label) out.push({ tk: e.tk, label, col, big, impact: big * 3 + bonus, e, i });
   }
   return out;
+}
+
+const MOVE_LABEL = { juke: "JUKE", spin: "SPIN MOVE", stiff: "STIFF-ARM", hurdle: "HURDLE" };
+const BODY = { stinger: "neck", "bruised ribs": "ribs", "sprained ankle": "ankle", concussion: "head", "hamstring strain": "hamstring", "separated shoulder": "shoulder", "broken wrist": "wrist", "torn ACL": "knee" };
+const CUSTOM_SETS = new Set(["horns", "spain", "split", "floppy", "elevator", "dho", "hammer"]);
+const COVTAG = { drop: "DROP", hedge: "HEDGE", switch: "SWITCH", ice: "ICE", trap: "HIT TRAP" };
+const seasonNow = () => V.ctx && V.ctx.S ? V.ctx.S.season : GAME && GAME.season ? GAME.season : 2000;
+const htStr = i => { const h = GAME.roster[i].ht; return h ? Math.floor(h / 12) + "'" + (h % 12) + '"' : ""; };
+
+// ---------- the chalkboard: the called set, drawn the way the coach drew it ----------
+let chId = 0;
+function zig(x1, y1, x2, y2) { // a dribble: the wavy line
+  const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy) || 1, n = Math.max(2, Math.round(L / 2.2)), nx = -dy / L, ny = dx / L;
+  let d = `M${x1.toFixed(1)} ${y1.toFixed(1)}`;
+  for (let i = 1; i <= n; i++) { const t = i / n, a = i === n ? 0 : (i % 2 ? 0.9 : -0.9); d += ` L${(x1 + dx * t + nx * a).toFixed(1)} ${(y1 + dy * t + ny * a).toFixed(1)}`; }
+  return d;
+}
+// the half court with the basket at the top; spots are [feet out from the rim, feet across]
+function setDiagram(key, roles, side, four) {
+  const S = BB.SETS[key]; if (!S || !S.dia) return "";
+  const id = "ah" + (++chId), sd = side || 1, ink = "#f4f1e4", P = q => [q[1] * sd, q[0]];
+  const ln = (a, b) => `M${a[0].toFixed(1)} ${a[1].toFixed(1)} L${b[0].toFixed(1)} ${b[1].toFixed(1)}`;
+  let g = `<g fill="none" stroke="${ink}" stroke-opacity=".42" stroke-width=".4"><rect x="-25" y="-5.25" width="50" height="40"/><rect x="-8" y="-5.25" width="16" height="19"/><circle cx="0" cy="13.75" r="6"/>
+    <path d="M-22 -5.25 L-22 8.95 A23.75 23.75 0 0 0 22 8.95 L22 -5.25"/>${four ? `<path d="M-25 16.58 A30 30 0 0 0 25 16.58" stroke-dasharray="1.4 1"/>` : ""}<path d="M-3 -1.25 L3 -1.25"/><circle cx="0" cy="0" r=".75"/></g>`;
+  // the actions: cuts (solid), dribbles (wavy), passes (dashed), screens (a bar at the end)
+  const spots = {}; for (const r in S.dia.o) spots[r] = P(S.dia.o[r]);
+  for (const [r, f, t, k] of S.dia.a) {
+    let a = P(f), b = P(t); const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L;
+    const st = spots[r] && Math.hypot(a[0] - spots[r][0], a[1] - spots[r][1]) < 0.5 ? 2.4 : 0.4; a = [a[0] + ux * st, a[1] + uy * st];
+    if (k === "s") { b = [b[0] - ux * 0.6, b[1] - uy * 0.6]; g += `<path d="${ln(a, b)} M${(b[0] - uy * 1.6).toFixed(1)} ${(b[1] + ux * 1.6).toFixed(1)} L${(b[0] + uy * 1.6).toFixed(1)} ${(b[1] - ux * 1.6).toFixed(1)}" stroke="${ink}" stroke-width=".55" fill="none" stroke-linecap="round"/>`; continue; }
+    b = [b[0] - ux * 1.2, b[1] - uy * 1.2];
+    const d = k === "d" ? zig(a[0], a[1], b[0], b[1]) : ln(a, b);
+    g += `<path d="${d}" stroke="${ink}" stroke-width=".5" fill="none" stroke-linecap="round" stroke-linejoin="round"${k === "p" ? ` stroke-dasharray="1.3 1"` : ""} marker-end="url(#${id})"/>`;
+  }
+  // the players: their numbers where the coach put them; the ball starts with the handler
+  const hasBall = S.dia.o.h ? "h" : S.dia.o.k ? "k" : null;
+  for (const r in spots) {
+    const [x, y] = spots[r], i = roles && roles[r] !== undefined ? roles[r] : -1, num = i >= 0 && GAME.roster[i] ? GAME.roster[i].num : "";
+    g += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.1" fill="#1f3a2c" stroke="${ink}" stroke-width=".45"/>`;
+    g += num !== "" ? `<text x="${x.toFixed(1)}" y="${(y + 0.95).toFixed(1)}" font-family="Oswald,sans-serif" font-size="2.7" font-weight="700" fill="${ink}" text-anchor="middle">${num}</text>` : `<text x="${x.toFixed(1)}" y="${(y + 0.9).toFixed(1)}" font-family="Oswald,sans-serif" font-size="2.4" fill="${ink}" fill-opacity=".6" text-anchor="middle">${r === hasBall ? "1" : ""}</text>`;
+    if (r === hasBall) g += `<circle cx="${(x + 1.9).toFixed(1)}" cy="${(y - 1.6).toFixed(1)}" r=".75" fill="#f2b134"/>`;
+  }
+  return `<svg viewBox="-26.5 -6.5 53 41" role="img" aria-label="${esc(S.name)} diagram"><defs><marker id="${id}" viewBox="0 0 6 6" refX="4.5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse"><path d="M0 0 L6 3 L0 6 z" fill="${ink}"/></marker></defs>${g}</svg>`;
+}
+let chTimer = 0;
+function showChalk(e, col) {
+  const el = $("chalk"); if (!el || V.replay || V.intro || V.speed > 4 || !e.set) return;
+  const S = BB.SETS[e.set]; if (!S || !S.dia || !(e.ato || e.hunt || CUSTOM_SETS.has(e.set))) return;
+  if ($("plancard") && $("plancard").classList.contains("on")) return;
+  el.style.setProperty("--c", col);
+  el.innerHTML = `<div class="cht">${e.ato ? "<i>ATO</i>" : e.hunt ? "<i>MISMATCH</i>" : `<i>${esc(TB[e.team === 0 ? GAME.home : GAME.away].id)}</i>`}${esc(S.name)}</div>` + setDiagram(e.set, e.roles, e.side, seasonNow() >= 1979);
+  el.classList.add("on"); clearTimeout(chTimer); chTimer = setTimeout(() => el.classList.remove("on"), V.speed >= 2 ? 2800 : 4000);
+}
+// the coverage on each ball screen: shown when it changes, or now and then as a reminder
+let cvTimer = 0; const cvLast = [{ k: "", tk: -1e9 }, { k: "", tk: -1e9 }];
+function covTag(e, col) {
+  const el = $("covtag"), L = cvLast[e.team]; if (!el || V.replay || V.intro || !COVTAG[e.kind]) return;
+  if (L.k === e.kind && e.tk - L.tk < 900 && e.kind !== "trap") return;
+  L.k = e.kind; L.tk = e.tk;
+  el.style.setProperty("--c", col);
+  el.innerHTML = `<b>${COVTAG[e.kind]}</b>${e.on >= 0 ? "ON " + esc(GAME.roster[e.on].short.split(" ").pop().toUpperCase()) : ""}`;
+  el.classList.add("on"); clearTimeout(cvTimer); cvTimer = setTimeout(() => el.classList.remove("on"), 1900);
 }
 
 // ---------- 2D tactical view ----------
@@ -219,11 +287,36 @@ function callFor(e) {
       if (e.dunk) return [pickLine([n + " throws it down!", "Oh, " + n + " with the hammer!", n + " rocks the rim!", "Flush! " + n + "!"], k), 3];
       if (e.val === 3) return [pickLine([n + " for three... got it!", n + " buries the three.", n + ", from deep. Yes!"], k), 2];
       return Math.abs(k) % 3 === 0 ? [pickLine([n + " scores.", n + " gets it to go.", "Bucket, " + n + "."], k), 1] : null;
-    case "tackle":
-      if (e.result === "down") return [pickLine(["Big hit! " + n + " puts " + lastName(e.on) + " on the rubber!", "Tackle! " + n + " brings down " + lastName(e.on) + ". Turnover!", "Oh! " + lastName(e.on) + " gets leveled by " + n + "!"], k), 3];
+    case "tackle": {
+      const o = lastName(e.on);
+      if (e.move && !e.moveFail && (e.result === "whiff" || e.result === "broken")) return [e.move === "hurdle" ? pickLine([o + " goes right over the top of " + n + "!", "He hurdled him! " + o + " leaps right over " + n + "!"], k)
+        : e.move === "stiff" ? pickLine(["Stiff-arm! " + o + " puts " + n + " on the floor!", o + " with the stiff-arm, and " + n + " wants no part of it!"], k)
+        : e.move === "spin" ? pickLine([o + " spins right out of it!", "Spin move by " + o + ", and " + n + " grabs nothing but air!"], k)
+        : pickLine([o + " makes " + n + " miss!", "What a juke by " + o + "!"], k), e.move === "hurdle" || e.move === "stiff" ? 3 : 2];
+      if (e.result === "flagrant") return [pickLine(["Oh, that's dirty. " + n + " went in way too high. That's a flagrant.", "Flag on " + n + ". That was a cheap shot on " + o + "."], k) + (e.lvl === 2 ? " And he's been thrown out." : ""), 3];
+      if (e.result === "fumble" && e.drib) return [pickLine(["Hit him on the dribble, and it's loose!", n + " times it perfectly. Ball on the floor!"], k), 3];
+      if (e.result === "down" && e.tech === "hit") return [pickLine(["Oh, what a hit by " + n + "!", n + " blows up " + o + "! You felt that one in the upper deck!", "Boom! " + n + " lays the lumber on " + o + "!"], k), 3];
+      if (e.result === "down" && e.tech === "dive") return [pickLine([n + " dives and takes out the legs. " + o + " is down.", "Shoestring tackle by " + n + "!"], k), 3];
+      if (e.result === "down") return [pickLine(["Big hit! " + n + " puts " + o + " on the rubber!", "Tackle! " + n + " brings down " + o + ". Turnover!", "Oh! " + o + " gets leveled by " + n + "!"], k), 3];
       if (e.result === "late") return ["Late hit by " + n + ". That's a foul.", 2];
-      if (e.result === "broken") return [lastName(e.on) + " shrugs it off!", 2];
+      if (e.result === "broken") return [o + " shrugs it off!", 2];
       return null;
+    }
+    case "call": {
+      const S = e.set && BB.SETS[e.set], tm = teamOf(e.team).name;
+      if (e.kind === "blob") return [pickLine(["Under their own basket, the " + tm + " go to the box set.", "Baseline out of bounds. Watch the screen for " + n + "."], k), 1];
+      if (!S || !(e.ato || CUSTOM_SETS.has(e.set))) return null;
+      if (e.ato) return [pickLine(["Out of the timeout, they'll run " + S.name + (n ? " for " + n : "") + ".", "Here's what the coach drew up: " + S.name + "."], k), 2];
+      return Math.abs(k) % 3 === 0 ? [pickLine(["The " + tm + " into " + S.name + ".", S.name + " for " + (n || "the " + tm) + "."], k), 1] : null;
+    }
+    case "cover":
+      if (e.kind === "trap") return Math.abs(k) % 2 ? [pickLine(["They trap " + lastName(e.on) + "!", "Two men on the ball. Here comes the trap!"], k), 2] : null;
+      if (e.kind === "ice" && Math.abs(k) % 5 === 0) return ["They're icing the pick-and-roll, pushing him to the sideline.", 1];
+      if (e.kind === "switch" && Math.abs(k) % 6 === 0) return ["They switch it.", 1];
+      return null;
+    case "mismatch": return e.v < 12 ? null : [pickLine(["Look at the mismatch: " + n + " has " + lastName(e.d) + " on him" + (e.kind === "post" ? ", and they're going to the post." : ". Clear it out!"), "They want " + n + " against " + lastName(e.d) + ". Smart basketball."], k), 2];
+    case "injury": return [e.sev === 0 ? n + " is slow to get up. He's holding his " + (BODY[e.kind] || "shoulder") + "." : pickLine([n + " is down, and he's holding his " + (BODY[e.kind] || "leg") + ". That does not look good.", "Trainers are coming out for " + n + ". He took a shot to the " + (BODY[e.kind] || "body") + "."], k), 3];
+    case "ejected": return [n + " has been tossed from this game.", 3];
     case "timeout": return ["Timeout, " + teamOf(e.team).name + ".", 2];
     case "period_end": return [e.per === 2 ? "That will do it for the first half." : e.per < 4 ? "That's the end of the " + ["first", "second", "third"][e.per - 1] + " quarter." : "", 2];
     case "final": { const w = e.s0 > e.s1 ? 0 : 1; return ["And that's the ballgame! The " + teamOf(w).name + " win it, " + Math.max(e.s0, e.s1) + " to " + Math.min(e.s0, e.s1) + ".", 4]; }
@@ -254,13 +347,20 @@ function playEvents(fromTick, toTick) {
         else if (AUDIO && !e.dunk) { AUDIO.clank(); if (e.val === 4 && Math.random() < 0.7) AUDIO.chant("ooh"); }
         break;
       case "tackle":
-        if (e.result === "down") { if (AUDIO) { AUDIO.excite(0.9); AUDIO.whistle(); } lowerThird(col, (e.gang ? "GANG TACKLE · " : "TACKLE · ") + esc(r.short) + (e.gang ? " +" + e.gang.length : ""), "turnover"); }
+        if (e.move && !e.moveFail && (e.result === "whiff" || e.result === "broken")) { if (AUDIO) AUDIO.excite(e.team === 0 ? 0.5 : 0.9); lowerThird(COLORS[1 - e.team], `${MOVE_LABEL[e.move]} · ${esc(GAME.roster[e.on].short)}`, `${e.move === "hurdle" ? "right over" : e.move === "stiff" ? "plants" : "leaves"} ${esc(r.short)}${e.move === "stiff" ? " on the floor" : e.move === "hurdle" ? " on the dive" : " grabbing air"}`); }
+        else if (e.result === "flagrant") { if (AUDIO) AUDIO.whistle(); lowerThird(col, `FLAGRANT ${e.lvl} · ${esc(r.short)}`, (e.lvl === 2 ? "ejected · " : "") + "two shots and the ball", 4000); }
+        else if (e.result === "down") { if (AUDIO) { AUDIO.excite(0.9); AUDIO.whistle(); } lowerThird(col, (e.gang ? "GANG TACKLE · " : e.tech === "hit" ? "BIG HIT · " : e.tech === "dive" ? "DIVING TACKLE · " : "TACKLE · ") + esc(r.short) + (e.gang ? " +" + e.gang.length : ""), "turnover"); }
+        else if (e.result === "fumble" && e.drib) { if (AUDIO) AUDIO.excite(1); lowerThird(col, "POPPED LOOSE · " + esc(r.short), `hit ${esc(GAME.roster[e.on].short)} on the dribble · live ball`); }
         else if (e.result === "fumble") { if (AUDIO) AUDIO.excite(1); lowerThird(col, "FUMBLE · " + esc(r.short), `jarred loose from ${esc(GAME.roster[e.on].short)} · live ball`); }
         else if (e.result === "rough") { if (AUDIO) AUDIO.whistle(); lowerThird(col, "ROUGHING · " + esc(r.short), "hit an airborne player · two shots"); }
         else if (e.result === "late" && AUDIO) AUDIO.whistle();
         break;
       case "recover": if (!e.own) lowerThird(col, "RECOVERED · " + esc(r.short), "turnover"); break;
-      case "call": callTag(e, col); break;
+      case "call": callTag(e, col); showChalk(e, col); break;
+      case "cover": covTag(e, col); break;
+      case "mismatch": if (e.v >= 12) lowerThird(col, `MISMATCH · #${r.num} ${esc(r.short)}`, `${htStr(e.pid)} on ${htStr(e.d)} ${esc(GAME.roster[e.d].short)} · ${e.kind === "post" ? "taking him to the post" : "clearing out for him"}`); break;
+      case "injury": lowerThird(col, `INJURY · ${esc(r.short)}`, `${esc(e.kind)} · ${e.sev === 0 ? "done for the night" : "will not return"}`, 4500, true); break;
+      case "ejected": lowerThird(col, `EJECTED · ${esc(r.short)}`, "flagrant 2 · he's gone", 4000, true); break;
       case "adjust": lowerThird(col, "ADJUSTMENT · " + TB[e.team === 0 ? GAME.home : GAME.away].id, adjustText(e)); break;
       case "plan": if (e.team === 1 && e.tk <= 0) showPlanCard(); break;
       case "foul":
@@ -380,6 +480,7 @@ function finalHTML() {
   return `<div class="cin"><div class="ck">FINAL${ot}</div>
     <div class="score"><span class="${w === 1 ? "w" : ""}" style="--c:${COLORS[1]}">${TB[GAME.away].id} <b>${v.s1}</b></span><span class="${w === 0 ? "w" : ""}" style="--c:${COLORS[0]}"><b>${v.s0}</b> ${TB[GAME.home].id}</span></div>
     <div class="potg" style="--c:${COLORS[r.t]}"><small>PLAYER OF THE GAME</small><b><span class="num">${r.num}</span>${esc(r.name)}</b><span>${esc(teamOf(r.t).name)} · ${statLine(best)}</span></div>
+    <div class="recapl">${gameRecap().slice(1, 4).map(x => `<p>${x}</p>`).join("")}</div>
     <div class="cbtn"><button data-a="reel">▶ Top plays</button><button data-a="box">Box score</button><button data-a="again">↺ Watch again</button><button data-a="close" class="x" title="Close">✕</button></div></div>`;
 }
 
@@ -497,7 +598,7 @@ function nm(i) { const r = GAME.roster[i]; return `<b>${esc(r.short)}</b>`; }
 function tnm(t) { const tm = TB[t === 0 ? GAME.home : GAME.away]; return esc(tm.city); }
 const PT_PHRASE = { trans: " in transition", putback: " on the putback", post: " out of the post", pnr: " off the pick-and-roll", roll: " on the roll", iso: " in isolation", offscr: " coming off a screen", cut: " on the cut", drive: " on the drive" };
 const WHY = { fours: "they're getting killed from four", paint: "they can't keep them out of the paint", fouls: "too many late hits", working: "the hits are working", broken: "tackles keep getting broken",
-  tackled: "their ball handlers keep getting buried", star: "he's taking over", stuck: "the offense has stalled" };
+  tackled: "their ball handlers keep getting buried", star: "he's taking over", stuck: "the offense has stalled", pnr: "the pick-and-roll is killing them" };
 function adjustText(e) {
   const S = BB.SYSTEMS, SC = BB.SCHEMES, HI = BB.HITS;
   let what;
@@ -505,11 +606,17 @@ function adjustText(e) {
   else if (e.key === "scheme") what = e.to === "goalie" ? `go to the Goalie: ${esc(GAME.roster[e.pid].short)} stays home` : e.to === "extend" ? "extend out to the four-point line" : e.to === "zone" ? "drop into a zone" : `switch to ${SC[e.to].name}`;
   else if (e.key === "hit") what = e.to === "blitz" ? "start blitzing the ball handler" : e.to === "contain" ? "pull back to Contain tackling" : "stop sending tacklers";
   else if (e.key === "double") what = `start doubling ${esc(GAME.roster[e.pid].short)}`;
+  else if (e.key === "cov") what = `switch the pick-and-roll coverage to ${BB.COVERS[e.to].name}`;
   return what + (WHY[e.why] ? ` (${WHY[e.why]})` : "");
 }
 function callText(e) {
   const P = e.pid >= 0 ? nm(e.pid) : "", W = e.w >= 0 ? nm(e.w) : "";
+  const S = e.set && BB.SETS[e.set], pre = e.ato ? "Out of the timeout, " : e.hunt ? "Hunting the mismatch, " : "";
+  if (S && CUSTOM_SETS.has(e.set)) return `${pre}${tnm(e.team)} runs <b>${S.name}</b>${P ? ` for ${P}` : ""}`;
+  if (pre && S) return `${pre}${tnm(e.team)} ${e.kind === "post" ? `goes to ${P} in the post` : e.kind === "iso" ? `clears out for ${P}` : `runs a ${S.name.toLowerCase()} for ${P}`}`;
   switch (e.kind) {
+    case "blob": return `${tnm(e.team)} runs a box set under its own basket. ${W} finds ${P}`;
+    case "slip": return `${P} slips the screen`;
     case "pnr": return `${tnm(e.team)} runs a pick-and-roll for ${P}`;
     case "iso": return `${tnm(e.team)} clears out for ${P}`;
     case "post": return `${tnm(e.team)} goes to ${P} in the post`;
@@ -529,6 +636,19 @@ function pbpLine(e) {
     }
     case "adjust": return [`ADJUSTMENT: ${tnm(e.team)} ${adjustText(e)}`, "plan"];
     case "call": { const t = callText(e); return t ? [t, "m call"] : null; }
+    case "cover": {
+      const o = e.on >= 0 ? nm(e.on) : "";
+      if (e.kind === "switch") return [`${nm(e.pid)} switches onto ${o}`, "m call"];
+      if (e.kind === "hedge") return [`${nm(e.pid)} hedges hard on ${o}`, "m call"];
+      if (e.kind === "trap") return [`TRAP: two men on ${o}`, "m call"];
+      if (e.kind === "ice") return [`${tnm(e.team)} ices the screen and sends ${o} to the sideline`, "m call"];
+      return null; // drop is the default: no need to say it every time
+    }
+    case "mismatch": return [`MISMATCH: ${tnm(e.team)} goes at ${nm(e.d)} with ${nm(e.pid)} ${e.kind === "post" ? "in the post" : "in isolation"} <span class="m">(${htStr(e.pid)} vs ${htStr(e.d)})</span>`, "call"];
+    case "scram": return [`${nm(e.pid)} and ${nm(e.w)} scram-switch to fix the mismatch`, "m call"];
+    case "injury": return [e.sev === 0 ? `${nm(e.pid)} is shaken up (${esc(e.kind)}) and heads to the locker room` : `INJURY: ${nm(e.pid)} goes down with a ${esc(e.kind)} and won't return`, "hot"];
+    case "ejected": return [`${nm(e.pid)} has been ejected`, "hot"];
+    case "whistle": return e.kind === "injury" ? [`The officials stop play for the injured player`, "m"] : null;
     case "fga": {
       const kind = e.dunk ? "dunk" : e.layup ? "layup" : e.hook ? `${e.d}-ft hook shot` : e.val === 4 ? `${e.d}-ft four` : e.val === 3 ? `${e.d}-ft three` : `${e.d}-ft jumper`;
       const how = PT_PHRASE[e.pt] || "";
@@ -549,6 +669,13 @@ function pbpLine(e) {
       if (e.kind === "shotclock") return [`Shot clock violation`, ""];
       return null; // tackles, fumbles and moving screens have their own lines
     case "tackle":
+      if (e.move && !e.moveFail && e.result === "whiff") return [e.move === "hurdle" ? `HURDLE! ${nm(e.on)} leaps right over the diving ${nm(e.pid)}` : `JUKE! ${nm(e.on)} makes ${nm(e.pid)} miss`, "hot"];
+      if (e.move && !e.moveFail && e.result === "broken") return [e.move === "stiff" ? `STIFF-ARM! ${nm(e.on)} puts ${nm(e.pid)} on the floor` : `SPIN MOVE! ${nm(e.on)} spins out of ${nm(e.pid)}'s tackle`, "hot"];
+      if (e.result === "flagrant") return [`FLAGRANT ${e.lvl}: ${nm(e.pid)} ${e.tech === "hit" ? "launches into" : "takes a cheap shot at"} ${nm(e.on)}${e.lvl === 2 ? ". He's ejected" : ""}. Two shots and the ball`, "hot"];
+      if (e.result === "fumble" && e.drib) return [e.broke ? `${nm(e.on)} breaks ${nm(e.pid)}'s tackle but loses the dribble. Live ball` : `POPPED LOOSE! ${nm(e.pid)} hits ${nm(e.on)} on the dribble. Live ball`, "hot"];
+      if (e.result === "down" && !e.gang && e.tech === "hit") return [`BIG HIT! ${nm(e.pid)} levels ${nm(e.on)}. Turnover`, "hot"];
+      if (e.result === "down" && !e.gang && e.tech === "dive") return [`${nm(e.pid)} dives at ${nm(e.on)}'s legs and takes him down. Turnover`, "hot"];
+      if (e.result === "broken" && e.moveFail) return [`${nm(e.on)}'s ${MOVE_LABEL[e.move].toLowerCase()} doesn't fool ${nm(e.pid)}, but he breaks the tackle anyway`, ""];
       if (e.result === "down" && e.gang) return [`GANG TACKLE! ${nm(e.pid)} and ${e.gang.map(nm).join(" and ")} bury ${nm(e.on)}. Turnover`, "hot"];
       if (e.result === "down") return [`TACKLE! ${nm(e.pid)} puts ${nm(e.on)} on the rubber. Turnover`, "hot"];
       if (e.result === "fumble") return [`FUMBLE! ${nm(e.pid)}${e.gang ? " and " + e.gang.map(nm).join(" and ") : ""} jar it loose from ${nm(e.on)}. Live ball`, "hot"];
@@ -561,11 +688,11 @@ function pbpLine(e) {
       if (e.kind === "moving") return [`Moving screen on ${nm(e.pid)}. Offensive foul, turnover <span class="m">(${e.pf} PF)</span>`, "m"];
       if (e.kind === "intentional") return [`${nm(e.pid)} fouls ${nm(e.on)} on purpose to stop the clock <span class="m">(${e.pf} PF)</span>`, "m"];
       if (e.kind === "hack") return [`${nm(e.pid)} grabs ${nm(e.on)} away from the ball. Hack-a-${esc(GAME.roster[e.on].short.split(" ").pop())} <span class="m">(${e.pf} PF)</span>`, "m"];
-      if (e.kind === "roughing") return null;
+      if (e.kind === "roughing" || e.kind === "flagrant") return null;
       return [`Foul on ${nm(e.pid)} <span class="m">(${e.pf} PF${e.kind === "shooting" ? ", shooting" : ""})</span>`, "m"];
     case "fouledout": return [`${nm(e.pid)} has fouled out`, "hot"];
     case "timeout": return [`Timeout, ${esc(teamOf(e.team).name)}`, "m"];
-    case "sub": return [`${nm(e.inn)} checks in for ${nm(e.out)}${e.why === "fouls" ? " <span class=\"m\">(foul trouble)</span>" : e.why === "closer" ? " <span class=\"m\">(closing lineup)</span>" : e.why === "hack" ? " <span class=\"m\">(getting him away from the hack)</span>" : ""}`, "m sub"];
+    case "sub": return [`${nm(e.inn)} checks in for ${nm(e.out)}${e.why === "injury" ? " <span class=\"m\">(injury)</span>" : e.why === "ejected" ? " <span class=\"m\">(ejection)</span>" : e.why === "fouls" ? " <span class=\"m\">(foul trouble)</span>" : e.why === "closer" ? " <span class=\"m\">(closing lineup)</span>" : e.why === "hack" ? " <span class=\"m\">(getting him away from the hack)</span>" : ""}`, "m sub"];
     case "period_end": return [`End of ${perName(e.per)}`, "sep"];
     case "final": return [`FINAL`, "sep"];
   }
@@ -574,7 +701,7 @@ function pbpLine(e) {
 function renderPBP(n) {
   const E = GAME.events, out = [], showSubs = $("subs").checked, showCalls = !$("calls") || $("calls").checked;
   for (let i = n - 1; i >= 0 && out.length < 250; i--) {
-    const e = E[i]; if (e.type === "sub" && !showSubs) continue; if (e.type === "call" && !showCalls) continue;
+    const e = E[i]; if (e.type === "sub" && !showSubs) continue; if ((e.type === "call" || e.type === "cover" || e.type === "scram") && !showCalls) continue;
     const L = pbpLine(e); if (!L) continue;
     const t = e.team !== undefined ? e.team : -1, nb = NOTABLE.find(x => x.i === i);
     out.push(`<li class="${L[1]}${nb ? " rp" : ""}"${nb ? ` data-n="${NOTABLE.indexOf(nb)}"` : ""}><span class="t">${perName(e.per)} ${fmtClock(e.clk)}</span><i style="background:${t >= 0 ? COLORS[t] : "transparent"}"></i><span class="x">${L[0]}${nb && B3 ? ' <span class="rpb">▶</span>' : ""}</span><span class="s">${e.s1}-${e.s0}</span></li>`);
@@ -625,22 +752,24 @@ function drawMarks() {
 const TAG = { pnr: "PICK & ROLL", iso: "ISOLATION", post: "POST UP", offscr: "OFF SCREENS", double: "DOUBLE TEAM", foul: "FOULING", hack: "HACK" };
 let ctTimer = 0;
 function callTag(e, col) {
-  const el = $("calltag"); if (!el || !TAG[e.kind] || ($("plancard") && $("plancard").classList.contains("on"))) return;
+  const S = e.set && BB.SETS[e.set], label = e.kind === "blob" ? "BASELINE OUT · BOX" : e.kind === "slip" ? "SLIP" : S && S.fam !== "flow" ? S.name.toUpperCase() : TAG[e.kind];
+  const el = $("calltag"); if (!el || !label || ($("plancard") && $("plancard").classList.contains("on"))) return;
   const who = e.kind === "double" || e.kind === "hack" ? e.w : e.pid, r = who >= 0 ? GAME.roster[who] : null;
   el.style.setProperty("--c", col);
-  el.innerHTML = `<b>${TAG[e.kind]}</b>${r ? `<span>#${r.num} ${esc(r.short.split(" ").pop().toUpperCase())}</span>` : ""}`;
+  el.innerHTML = `<b>${e.ato ? "AFTER TIMEOUT · " : e.hunt ? "MISMATCH · " : ""}${label}</b>${r ? `<span>#${r.num} ${esc(r.short.split(" ").pop().toUpperCase())}</span>` : ""}`;
   el.classList.add("on"); clearTimeout(ctTimer); ctTimer = setTimeout(() => el.classList.remove("on"), 2600);
 }
 function planOf(t, upto) { const R = strategyReport(GAME, upto === undefined ? 1e12 : upto); return R[t]; }
 function curPlan(t, upto) {
   const R = planOf(t, upto), p = R.plan; if (!p) return null;
-  const cur = { off: p.off, def: p.def, hit: p.hit, dbl: p.dbl, goalie: p.goalie, pace: p.pace, crash: p.crash, leak: p.leak };
-  for (const a of R.adjust) { if (a.key === "sys") { cur.off = a.to; if (a.pace !== undefined) { cur.pace = a.pace; cur.crash = a.crash; cur.leak = a.leak; } } if (a.key === "scheme") { cur.def = a.to; if (a.to === "goalie") cur.goalie = a.pid; } if (a.key === "hit") cur.hit = a.to; if (a.key === "double") cur.dbl = a.pid; }
+  const cur = { off: p.off, def: p.def, hit: p.hit, dbl: p.dbl, goalie: p.goalie, pace: p.pace, crash: p.crash, leak: p.leak, cov: p.cov };
+  for (const a of R.adjust) { if (a.key === "cov") cur.cov = a.to; if (a.key === "sys") { cur.off = a.to; if (a.pace !== undefined) { cur.pace = a.pace; cur.crash = a.crash; cur.leak = a.leak; } } if (a.key === "scheme") { cur.def = a.to; if (a.to === "goalie") cur.goalie = a.pid; } if (a.key === "hit") cur.hit = a.to; if (a.key === "double") cur.dbl = a.pid; }
   return { p, cur, R };
 }
 let pcTimer = 0;
 function showPlanCard(half) {
   const el = $("plancard"); if (!el || !GAME) return;
+  if ($("chalk")) $("chalk").classList.remove("on");
   const rows = [1, 0].map(t => {
     const x = curPlan(t, half ? V.tick : 0); if (!x) return "";
     const tm = TB[t === 0 ? GAME.home : GAME.away], c = x.cur;
@@ -648,7 +777,7 @@ function showPlanCard(half) {
     const changes = half ? x.R.adjust.filter(a => a.tk <= V.tick).map(a => `<li>${adjustText(a)}</li>`).join("") : "";
     return `<div class="pc" style="--c:${COLORS[t]}"><div class="pch"><b>${esc(tm.city)} ${esc(tm.name)}</b>${coach}</div>
       <div class="pcg"><span>Offense</span><b>${BB.SYSTEMS[c.off].name}</b><span>Defense</span><b>${BB.SCHEMES[c.def].name}${c.def === "goalie" && c.goalie >= 0 ? ` <i>${esc(GAME.roster[c.goalie].short)} stays home</i>` : ""}</b>
-      <span>Tackling</span><b>${BB.HITS[c.hit].name}</b><span>Go-to guy</span><b>${esc(GAME.roster[x.p.star].short)}</b>${c.dbl >= 0 ? `<span>Doubling</span><b>${esc(GAME.roster[c.dbl].short)}</b>` : ""}</div>
+      <span>Tackling</span><b>${BB.HITS[c.hit].name}</b>${c.cov && BB.COVERS[c.cov] && c.def !== "zone" ? `<span>Ball screens</span><b>${BB.COVERS[c.cov].name}</b>` : ""}<span>Go-to guy</span><b>${esc(GAME.roster[x.p.star].short)}</b>${c.dbl >= 0 ? `<span>Doubling</span><b>${esc(GAME.roster[c.dbl].short)}</b>` : ""}</div>
       ${half ? (changes ? `<ul class="pcx">${changes}</ul>` : `<p class="pcx">No changes at the half.</p>`) : ""}</div>`;
   }).join("");
   el.innerHTML = `<div class="pct">${half ? "HALFTIME ADJUSTMENTS" : "TONIGHT'S GAMEPLANS"}</div>${rows}`;
@@ -656,8 +785,8 @@ function showPlanCard(half) {
 }
 function renderStrategy() {
   const el = $("strat-body"); if (!el || !GAME) return;
-  const R = strategyReport(GAME, V.tick), PT = BB.PT_LABEL;
-  let h = "";
+  const R = strategyReport(GAME, V.tick), PT = BB.PT_LABEL, fin = V.tick >= GAME.ticks - 2;
+  let h = fin ? `<h3>Why it went the way it did</h3><div class="recap">${gameRecap().map(x => `<p>${x}</p>`).join("")}</div>` : "";
   // gameplans side by side
   h += `<div class="sgrid">` + [1, 0].map(t => {
     const x = curPlan(t, V.tick); if (!x) return "";
@@ -670,6 +799,8 @@ function renderStrategy() {
       <dl><dt>Offense</dt><dd><b>${S.name}</b> <span class="m">${S.blurb}; ${pace}; ${glass}${c.leak ? "; leaks out for the outlet" : ""}</span></dd>
       <dt>Defense</dt><dd><b>${D.name}</b> <span class="m">${D.blurb}</span>${c.def === "goalie" && c.goalie >= 0 ? ` · ${nm(c.goalie)} stays home` : ""}</dd>
       <dt>Tackling</dt><dd><b>${H.name}</b> <span class="m">${H.blurb}</span></dd>
+      ${c.cov && BB.COVERS[c.cov] && c.def !== "zone" ? `<dt>Ball screens</dt><dd><b>${BB.COVERS[c.cov].name}</b> <span class="m">${BB.COVERS[c.cov].blurb}</span></dd>` : ""}
+      ${p.scout && (p.scout.hit.length || p.scout.under.length || p.scout.lock.length) ? `<dt>Scouting</dt><dd><ul class="scout">${p.scout.hit.map(i => `<li>Go after ${nm(i)}: careless with the ball</li>`).join("")}${p.scout.under.map(i => `<li>Go under screens on ${nm(i)}: can't shoot it</li>`).join("")}${p.scout.lock.map(i => `<li>Never leave ${nm(i)}</li>`).join("")}</ul></dd>` : ""}
       <dt>Assignments</dt><dd>Go-to guy ${nm(p.star)}${p.hitman >= 0 ? ` · hit man ${nm(p.hitman)}` : ""}${p.stopper >= 0 && stopOn >= 0 ? ` · ${nm(p.stopper)} on ${nm(stopOn)}` : ""}${c.dbl >= 0 ? ` · doubling ${nm(c.dbl)}` : ""}</dd></dl>
       ${x.R.adjust.length ? `<ul class="sadj">${x.R.adjust.map(a => `<li><span class="t">${perName(a.per)} ${fmtClock(a.clk)}</span> ${adjustText(a)}</li>`).join("")}</ul>` : ""}</div>`;
   }).join("") + `</div>`;
@@ -680,24 +811,87 @@ function renderStrategy() {
   h += `<h3>How they're scoring</h3><div class="tw"><table class="box strat"><thead><tr><th class="pn">Play type</th><th>${A} pts</th><th>${A} shots</th><th>${Hm} pts</th><th>${Hm} shots</th></tr></thead><tbody>`;
   for (const k of keys) h += `<tr><td class="pn">${PT[k]}</td><td class="b">${R[1].pts[k] || 0}</td><td>${R[1].att[k] || 0}</td><td class="b">${R[0].pts[k] || 0}</td><td>${R[0].att[k] || 0}</td></tr>`;
   h += `</tbody></table></div>`;
+  // the playbook: every set called tonight, with what it produced
+  const setKeys = Object.keys(BB.SETS).filter(k => k !== "flow" && ((R[0].sets[k] && R[0].sets[k].n) || (R[1].sets[k] && R[1].sets[k].n))).concat((R[0].sets.blob || R[1].sets.blob) ? ["blob"] : []);
+  if (setKeys.length) {
+    const sv = (t, k) => { const x = R[t].sets[k]; return x ? [x.n, x.pts, x.att] : [0, 0, 0]; };
+    setKeys.sort((a, b) => (sv(0, b)[0] + sv(1, b)[0]) - (sv(0, a)[0] + sv(1, a)[0]));
+    h += `<h3>Playbook</h3><div class="tw"><table class="box strat"><thead><tr><th class="pn">Set</th><th>${A} calls</th><th>${A} pts (shots)</th><th>${Hm} calls</th><th>${Hm} pts (shots)</th></tr></thead><tbody>`;
+    for (const k of setKeys) { const a = sv(1, k), b = sv(0, k); h += `<tr><td class="pn">${k === "blob" ? "Baseline out (box)" : BB.SETS[k].name}</td><td>${a[0]}</td><td class="b">${a[1]} <span class="m">(${a[2]})</span></td><td>${b[0]}</td><td class="b">${b[1]} <span class="m">(${b[2]})</span></td></tr>`; }
+    h += `</tbody></table></div>`;
+    const drawn = setKeys.filter(k => CUSTOM_SETS.has(k));
+    if (drawn.length) h += `<div class="pbook">${drawn.map(k => { const a = sv(1, k), b = sv(0, k); return `<div class="pb"><div class="cht">${BB.SETS[k].name}</div>${setDiagram(k, null, 1, seasonNow() >= 1979)}<div class="pbs">${A} ${a[1]} pts/${a[2]} · ${Hm} ${b[1]} pts/${b[2]}</div></div>`; }).join("")}</div>`;
+  }
+  // pick-and-roll coverage: what each defense showed, and what it gave up
+  const covKeys = Object.keys(BB.COVERS).filter(k => R[0].cover[k] || R[1].cover[k]);
+  if (covKeys.length) {
+    const cv = (t, k) => `${R[t].cover[k] || 0}${R[t].covAtt[k] ? ` <span class="m">· ${R[t].covPts[k] || 0} pts on ${R[t].covAtt[k]} shots</span>` : ""}`;
+    h += `<h3>Pick-and-roll defense</h3><div class="tw"><table class="box strat"><thead><tr><th class="pn">Coverage</th><th>${A} used (allowed)</th><th>${Hm} used (allowed)</th></tr></thead><tbody>`;
+    for (const k of covKeys) h += `<tr><td class="pn">${BB.COVERS[k].name}</td><td>${cv(1, k)}</td><td>${cv(0, k)}</td></tr>`;
+    h += `<tr><td class="pn">Mismatches hunted (on offense) / scram switches (on defense)</td><td>${R[1].mismatch} / ${R[1].scram}</td><td>${R[0].mismatch} / ${R[0].scram}</td></tr></tbody></table></div>`;
+  }
   // the hitting
   const tk = t => R[t].tk, f = (t, k) => R[t].fouls[k] || 0;
+  const techS = t => ["hit", "wrap", "dive"].map(k => R[t].tech[k] || 0).join(" / ");
+  const moveS = t => { const m = R[t].moves, tr = R[t].movesTried, ks = Object.keys(tr); return ks.length ? ks.map(k => `${(m[k] || 0)}/${tr[k]} ${MOVE_LABEL[k].toLowerCase()}`).join(", ") : "–"; };
   h += `<h3>Tackling</h3><div class="tw"><table class="box strat"><thead><tr><th class="pn"></th><th>${A}</th><th>${Hm}</th></tr></thead><tbody>
     <tr><td class="pn">Tackles for a turnover</td><td class="b">${tk(1).down}</td><td class="b">${tk(0).down}</td></tr>
     <tr><td class="pn">Fumbles forced / recovered</td><td>${tk(1).fumble} / ${R[1].recov}</td><td>${tk(0).fumble} / ${R[0].recov}</td></tr>
     <tr><td class="pn">Gang tackles</td><td>${tk(1).gang}</td><td>${tk(0).gang}</td></tr>
     <tr><td class="pn">Broken tackles allowed</td><td>${tk(1).broken}</td><td>${tk(0).broken}</td></tr>
     <tr><td class="pn">Whiffs</td><td>${tk(1).whiff}</td><td>${tk(0).whiff}</td></tr>
-    <tr><td class="pn">Late hits / roughing</td><td>${tk(1).late} / ${tk(1).rough}</td><td>${tk(0).late} / ${tk(0).rough}</td></tr>
+    <tr><td class="pn">Hit on the dribble (popped loose)</td><td>${tk(1).pop}</td><td>${tk(0).pop}</td></tr>
+    <tr><td class="pn">Big hits / wrap-ups / dives</td><td>${techS(1)}</td><td>${techS(0)}</td></tr>
+    <tr><td class="pn">Ball handlers' moves (beat the tackler / tried)</td><td>${moveS(1)}</td><td>${moveS(0)}</td></tr>
+    <tr><td class="pn">Late hits / roughing / flagrants</td><td>${tk(1).late} / ${tk(1).rough} / ${tk(1).flagrant}</td><td>${tk(0).late} / ${tk(0).rough} / ${tk(0).flagrant}</td></tr>
+    <tr><td class="pn">Sets called (after timeouts)</td><td>${Object.values(R[1].sets).reduce((a, x) => a + x.n, 0)} (${R[1].ato})</td><td>${Object.values(R[0].sets).reduce((a, x) => a + x.n, 0)} (${R[0].ato})</td></tr>
     <tr><td class="pn">Play calls (P&amp;R / iso / post / screens)</td><td>${R[1].calls.pnr || 0} / ${R[1].calls.iso || 0} / ${R[1].calls.post || 0} / ${R[1].calls.offscr || 0}</td><td>${R[0].calls.pnr || 0} / ${R[0].calls.iso || 0} / ${R[0].calls.post || 0} / ${R[0].calls.offscr || 0}</td></tr>
     <tr><td class="pn">Doubles / intentional fouls / hacks</td><td>${R[1].calls.double || 0} / ${f(1, "intentional")} / ${f(1, "hack")}</td><td>${R[0].calls.double || 0} / ${f(0, "intentional")} / ${f(0, "hack")}</td></tr>
     </tbody></table></div>`;
+  // who got hurt, who got tossed
+  const hurt = [1, 0].flatMap(t => R[t].inj.map(e => `<li>${nm(e.pid)} <span class="m">(${esc(teamOf(t).name)})</span>: ${esc(e.kind)}, ${perName(e.per)} ${fmtClock(e.clk)}</li>`).concat(R[t].ejected.map(e => `<li>${nm(e.pid)} <span class="m">(${esc(teamOf(t).name)})</span>: ejected, ${perName(e.per)} ${fmtClock(e.clk)}</li>`)));
+  if (hurt.length) h += `<h3>Injuries and ejections</h3><ul class="injl">${hurt.join("")}</ul>`;
   // personnel
   h += `<h3>Personnel</h3><div class="sgrid">` + [1, 0].map(t => {
     const x = curPlan(t, 0), rot = x ? x.p.rot : [], jobs = new Map(x ? x.p.jobs : []);
     return `<div class="splan" style="--c:${COLORS[t]}"><ul class="pers">${rot.map(i => { const r = GAME.roster[i]; return `<li><span class="num">${r.num}</span>${esc(r.short)} <span class="m">${r.role === "SNIPER" ? "SN" : r.role === "BRUISER" ? "BR" : r.role}</span> <b>${BB.ARCH[r.arch] ? BB.ARCH[r.arch].name : ""}</b> <span class="m">· ${BB.DARCH[r.darch] || ""}${jobs.has(i) && jobs.get(i) !== "space" ? " · " + BB.JOBS[jobs.get(i)] : ""}</span></li>`; }).join("")}</ul></div>`;
   }).join("") + `</div>`;
   el.innerHTML = h;
+}
+
+// ---------- the recap: why the game went the way it did, from the event log ----------
+function gameRecap() {
+  const E = GAME.events, R = strategyReport(GAME), sc = GAME.score, w = sc[0] > sc[1] ? 0 : 1, l = 1 - w;
+  const TN = t => esc(teamOf(t).name), full = t => esc(teamOf(t).city + " " + teamOf(t).name), out = [];
+  const TP = t => TN(t) + (/s$/.test(teamOf(t).name) ? "'" : "'s"), pl = (n, w) => n + " " + w + (n === 1 ? "" : "s");
+  // the result, and how far back the winner came from
+  let deficit = 0; for (const e of E) if (e.s0 !== undefined) deficit = Math.max(deficit, w === 0 ? e.s1 - e.s0 : e.s0 - e.s1);
+  const ot = GAME.periods > 4 ? (GAME.periods === 5 ? " in overtime" : ` in ${GAME.periods - 4} overtimes`) : "";
+  out.push(`The ${full(w)} beat the ${full(l)}, ${sc[w]}-${sc[l]}${ot}${deficit >= 10 ? `, after trailing by ${deficit}` : ""}.`);
+  // what worked on offense
+  const bestSet = t => { let bk = null, bv = 0; for (const k in R[t].sets) { const x = R[t].sets[k]; if (k !== "flow" && x.att >= 3 && x.pts > bv) { bv = x.pts; bk = k; } } return bk; };
+  const ws = bestSet(w);
+  if (ws && R[w].sets[ws].pts >= 8) { const x = R[w].sets[ws]; out.push(`The ${TP(w)} best call was ${ws === "blob" ? "the baseline box set" : BB.SETS[ws].name}: ${x.pts} points on ${x.att} shots.`); }
+  else { let bk = null, bv = 0; for (const k in R[w].pts) if (k !== "ft" && R[w].pts[k] > bv) { bv = R[w].pts[k]; bk = k; } if (bk && BB.PT_LABEL[bk]) out.push(`The ${TN(w)} did their damage on ${BB.PT_LABEL[bk].toLowerCase()}: ${bv} points.`); }
+  // the pick-and-roll defense
+  const mainCov = t => { let bk = null, bv = 0; for (const k in R[t].covAtt) if (R[t].covAtt[k] > bv) { bv = R[t].covAtt[k]; bk = k; } return bk; };
+  const lc = mainCov(l), wc = mainCov(w), ppa = (t, k) => (R[t].covPts[k] || 0) / R[t].covAtt[k];
+  if (lc && R[l].covAtt[lc] >= 7 && ppa(l, lc) >= 1.2) out.push(`The ${TP(l)} ${BB.COVERS[lc].name.toLowerCase()} coverage got picked apart: ${R[l].covPts[lc] || 0} points on ${R[l].covAtt[lc]} shots out of the pick-and-roll.`);
+  else if (wc && R[w].covAtt[wc] >= 6 && ppa(w, wc) <= 0.85) out.push(`The ${TP(w)} ${BB.COVERS[wc].name.toLowerCase()} coverage held up: ${R[w].covPts[wc] || 0} points on ${R[w].covAtt[wc]} pick-and-roll shots.`);
+  // the hitting
+  const take = t => R[t].tk.down + R[t].tk.fumble, miss = t => R[t].tk.broken + R[t].tk.whiff;
+  if (take(w) >= take(l) + 3) out.push(`The hitting swung it: the ${TN(w)} forced ${take(w)} turnovers with the tackle (${pl(R[w].tk.down, "tackle")}, ${pl(R[w].tk.fumble, "fumble")}) to the ${TP(l)} ${take(l)}.`);
+  else if (miss(l) >= 12 && miss(l) >= miss(w) + 4) out.push(`The ${TN(l)} couldn't wrap up: ${miss(l)} broken tackles and missed hits.`);
+  // the adjustment that turned it
+  let adj = null, adv = 5;
+  for (const e of E) if (e.type === "adjust") { const fs = e.team === 0 ? sc[0] - e.s0 : sc[1] - e.s1, as = e.team === 0 ? sc[1] - e.s1 : sc[0] - e.s0; if (fs - as > adv) { adv = fs - as; adj = { e, fs, as }; } }
+  if (adj) out.push(`In the ${perLong(adj.e.per).toLowerCase()} quarter the ${TN(adj.e.team)} decided to ${adjustText(adj.e)}, and won the rest of the game ${adj.fs}-${adj.as}.`.replace("ot quarter", "overtime"));
+  // the highlight, the injuries, the ejections
+  const hl = E.find(e => e.type === "tackle" && e.move && !e.moveFail && (e.move === "hurdle" || e.move === "stiff") && (e.result === "whiff" || e.result === "broken"));
+  if (hl) out.push(`Play of the night: ${nm(hl.on)} ${hl.move === "hurdle" ? "hurdled the diving" : "stiff-armed"} ${nm(hl.pid)} in the ${perLong(hl.per).toLowerCase()}.`.replace("ot.", "overtime."));
+  for (const e of E) if (e.type === "injury") out.push(`${nm(e.pid)} (${TN(e.team)}) left with ${/s$/.test(e.kind) ? "" : "a "}${esc(e.kind)}.`);
+  for (const e of E) if (e.type === "ejected") out.push(`${nm(e.pid)} (${TN(e.team)}) was ejected for a flagrant 2.`);
+  return out;
 }
 
 // ---------- channels: several games on one clock ----------

@@ -1,11 +1,11 @@
 // Paired A/B test of coaching choices. The same games are played over and over with one team's plan
 // forced (and locked: no in-game adjustments), and its point margin is compared. Both sides take a turn.
 // Use it to keep the offensive systems, defensive schemes and tackle policies balanced against each other.
-//   node test/strategy-ab.js off|def|hit [games] [season] ['{"forceHit":"blitz"}' = force the opponent too]
+//   node test/strategy-ab.js off|def|hit|cov [games] [season] ['{"forceHit":"blitz"}' = force the opponent too]
 const L = require("../src/league.js"), E = require("../src/engine.js");
 const what = process.argv[2] || "def", N = +process.argv[3] || 30, SEASON = +process.argv[4] || 1990, OPP = JSON.parse(process.argv[5] || "{}");
-const opts = { off: Object.keys(E.SYSTEMS), def: Object.keys(E.SCHEMES), hit: Object.keys(E.HITS) }[what];
-const key = { off: "forceSys", def: "forceScheme", hit: "forceHit" }[what];
+const opts = { off: Object.keys(E.SYSTEMS), def: Object.keys(E.SCHEMES), hit: Object.keys(E.HITS), cov: Object.keys(E.COVERS) }[what];
+const key = { off: "forceSys", def: "forceScheme", hit: "forceHit", cov: "forceCov" }[what];
 const S = L.newLeague("ab-1", SEASON); L.startSeason(S);
 const games = []; let specs;
 while (games.length < N && (specs = L.nextGames(S))) {

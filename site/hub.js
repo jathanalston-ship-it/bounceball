@@ -107,6 +107,8 @@ async function vTeam(id) {
     if (tm.coachHist && tm.coachHist.length > 1) h += `<p class="m small">Coaching history: ${tm.coachHist.slice().reverse().map(x => `${clink(x.cid)} (${x.from}–${x.to || "now"}${x.why ? ", " + x.why : ""})`).join(" · ")}</p>`;
     if (tm.ownerHist && tm.ownerHist.length > 1) h += `<p class="m small">Ownership: ${tm.ownerHist.map(x => `${esc(oname(x.oid))} (${x.from}, ${x.how})`).join(" → ")}</p>`;
   }
+  const last = tm.hist[tm.hist.length - 1];
+  if (last) { try { h += identityHTML(id, await season(last.season)); } catch (e) { /* older data has no identity numbers */ } }
   const roster = Object.values(D.pl).filter(p => p.team === id).sort((a, b) => b.ovr - a.ovr);
   h += `<h3>Current roster (${D.lg.nextSeason})</h3><div class="tw"><table class="box"><thead><tr><th class="pn">Player</th><th>Pos</th><th>Type</th><th>Age</th><th>OVR</th><th>Contract</th></tr></thead><tbody>`;
   for (const p of roster) { const ar = p.r && BB.archetype ? BB.archetype(p, D.lg.nextSeason) : null; h += `<tr><td class="pn"><span class="num">${p.num}</span>${plink(p.id)}${p.injury ? ` <span class="inj">${esc(p.injury.name)}</span>` : ""}</td><td>${BB.ROLES[p.role].name}</td><td class="m small">${ar ? ar.offName + " / " + ar.defName : ""}</td><td>${D.lg.nextSeason - p.born}</td><td><span class="ovrc t-${BB.CARDS.tierFor(p.ovr).key}">${p.ovr}</span></td><td>${p.contract ? money(p.contract.salary) + " thru " + p.contract.thru : "–"}</td></tr>`; }
@@ -115,6 +117,35 @@ async function vTeam(id) {
   return h + `</tbody></table></div>`;
 }
 async function vPlayer(id, tab) { return vPlayerScreen(id, tab); }
+// ---- team identity: how a team played over a season, ranked against the league ----
+const ID_STATS = [
+  ["pace", "Possessions", s => s.poss / s.g, "fast", "slow"],
+  ["pnr", "Pick-and-rolls", s => s.pnr / s.g, "pick-and-roll heavy", ""],
+  ["post", "Post-ups", s => s.post / s.g, "lives in the post", "never posts up"],
+  ["iso", "Isolations", s => s.iso / s.g, "isolation-heavy", ""],
+  ["offscr", "Off-screen actions", s => s.offscr / s.g, "runs shooters off screens", ""],
+  ["sets", "Set plays called", s => s.sets / s.g, "a deep playbook", "freelances"],
+  ["hunt", "Mismatches hunted", s => s.hunt / s.g, "hunts mismatches", ""],
+  ["fpa", "Four-point attempts", s => s.fpa / s.g, "fires from four", "stays inside the four line"],
+  ["tkA", "Tackle attempts", s => s.tkA / s.g, "hits everything that moves", "rarely tackles"],
+  ["take", "Takeaways by tackle", s => (s.tkDown + s.tkFum) / s.g, "turns hits into turnovers", ""],
+  ["big", "Big-hit share", s => s.hitBig / Math.max(1, s.tkA) * 100, "goes for the knockout shot", "wraps up"],
+  ["miss", "Broken and missed tackles", s => s.tkBroke / s.g, "", "sure tacklers"],
+  ["flag", "Flagrants (season)", s => s.flag, "plays dirty", ""]];
+function identityHTML(id, sd) {
+  if (!sd || !sd.style || !sd.style[id] || !sd.style[id].g) return "";
+  const teams = Object.keys(sd.style).filter(t => sd.style[t].g), n = teams.length;
+  const rank = (f, t) => 1 + teams.filter(u => f(sd.style[u]) > f(sd.style[t])).length;
+  const me = sd.style[id], tags = [];
+  const cells = ID_STATS.map(([k, label, f, hi, lo]) => {
+    const r = rank(f, id), v = f(me);
+    if (hi && r <= 3) tags.push(hi); else if (lo && r > n - 3) tags.push(lo);
+    return `<div><b>${k === "big" ? v.toFixed(0) + "%" : k === "flag" ? v : v.toFixed(1)}</b><span>${label}</span><small>${r === 1 ? "1st" : r === 2 ? "2nd" : r === 3 ? "3rd" : r + "th"} of ${n}</small></div>`;
+  });
+  const cov = Object.keys(BB.COVERS).map(k => [k, me["cov_" + k] || 0]).sort((a, b) => b[1] - a[1]), ct = cov.reduce((a, x) => a + x[1], 0);
+  const covS = ct ? cov.filter(x => x[1] / ct >= 0.08).map(([k, v]) => `${BB.COVERS[k].name} ${Math.round(v / ct * 100)}%`).join(" · ") : "";
+  return `<h3>Identity (${sd.season})</h3>${tags.length ? `<p class="idtags">${tags.slice(0, 5).map(t => `<span>${esc(t)}</span>`).join("")}</p>` : ""}<div class="kv idkv">${cells.join("")}</div>${covS ? `<p class="m small">Pick-and-roll coverage: ${covS}</p>` : ""}`;
+}
 async function vMoves(y) {
   const S = await season(y);
   const fmt = t => {
@@ -179,14 +210,15 @@ async function vBlotter(y) {
 // a coach's philosophy: what he runs, and how he coaches
 function philLine(c) {
   const ph = c && c.phil; if (!ph) return "";
-  return `${BB.SYSTEMS[ph.sys].name} · ${BB.SCHEMES[ph.scheme].name} · ${BB.HITS[ph.hit].name}`;
+  return `${BB.SYSTEMS[ph.sys].name} · ${BB.SCHEMES[ph.scheme].name} · ${BB.HITS[ph.hit].name}${ph.cov && BB.COVERS[ph.cov] ? " · " + BB.COVERS[ph.cov].name : ""}`;
 }
 function philHTML(c) {
   const ph = c.phil; if (!ph) return "";
   const S = BB.SYSTEMS[ph.sys], Dd = BB.SCHEMES[ph.scheme], H = BB.HITS[ph.hit];
   const m = (label, v, lo, hi) => `<span>${label}: <b>${v < 0.35 ? lo : v > 0.65 ? hi : "in between"}</b><i class="meter"><i style="--v:${Math.round(v * 100)}%"></i></i></span>`;
-  return `<h3>Philosophy</h3><div class="phil"><span>Offense <b>${S.name}</b></span><span>Defense <b>${Dd.name}</b></span><span>Tackling <b>${H.name}</b></span></div>
-    <p class="m small">${S.blurb[0].toUpperCase() + S.blurb.slice(1)}. ${Dd.blurb[0].toUpperCase() + Dd.blurb.slice(1)}. ${H.blurb[0].toUpperCase() + H.blurb.slice(1)}. This is what he believes in; on game night he builds a plan from it, his roster and the opponent.</p>
+  const Cv = ph.cov && BB.COVERS[ph.cov];
+  return `<h3>Philosophy</h3><div class="phil"><span>Offense <b>${S.name}</b></span><span>Defense <b>${Dd.name}</b></span><span>Tackling <b>${H.name}</b></span>${Cv ? `<span>Ball screens <b>${Cv.name}</b></span>` : ""}</div>
+    <p class="m small">${S.blurb[0].toUpperCase() + S.blurb.slice(1)}. ${Dd.blurb[0].toUpperCase() + Dd.blurb.slice(1)}. ${H.blurb[0].toUpperCase() + H.blurb.slice(1)}.${Cv ? ` On the pick-and-roll: ${Cv.blurb}.` : ""} This is what he believes in; on game night he builds a plan from it, his roster and the opponent.</p>
     <div class="phil">${m("Adaptability", ph.adapt, "runs his system no matter what", "game-plans every opponent")}${m("Discipline", ph.disc, "lets players freelance", "players stick to the plan")}${m("Late game", ph.late, "shaky with the clock", "clock-and-score master")}${m("Star usage", ph.star, "spreads it around", "feeds his star")}</div>`;
 }
 async function vCoaches() {

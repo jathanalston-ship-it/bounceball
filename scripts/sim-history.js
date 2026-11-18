@@ -12,6 +12,7 @@ const { Worker } = require("worker_threads");
 const L = require("../src/league.js");
 const P = require("../src/players.js");
 const T = require("../src/teams.js");
+const ST = require("../src/staff.js");
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((a, x, i, arr) => { if (x.startsWith("--")) a.push([x.slice(2), arr[i + 1] && !arr[i + 1].startsWith("--") ? arr[i + 1] : true]); return a; }, []));
 const OUT = path.resolve(args.out || "data");
@@ -52,7 +53,7 @@ function writeSummaries(S) {
   }
   writeJSON(path.join(OUT, "players.json"), players);
   const coaches = {}, owners = {};
-  for (const c of Object.values(S.coaches)) if (c.team || c.w + c.l > 0) coaches[c.id] = { id: c.id, name: c.first + " " + c.last, born: c.born, ex: c.ex, team: c.team, off: c.off, def: c.def, dev: c.dev, style: c.style, phil: c.phil, w: c.w, l: c.l, pw: c.pw, pl: c.pl, titles: c.titles, awards: c.awards, seasons: c.seasons || [], hist: c.hist, retired: c.retired };
+  for (const c of Object.values(S.coaches)) if (c.team || c.w + c.l > 0) coaches[c.id] = { id: c.id, name: c.first + " " + c.last, born: c.born, ex: c.ex, team: c.team, off: c.off, def: c.def, dev: c.dev, style: c.style, phil: c.phil ? Object.assign({}, c.phil, { cov: ST.covPref(c) }) : c.phil, w: c.w, l: c.l, pw: c.pw, pl: c.pl, titles: c.titles, awards: c.awards, seasons: c.seasons || [], hist: c.hist, retired: c.retired };
   for (const o of Object.values(S.owners)) owners[o.id] = { id: o.id, name: o.first + " " + o.last, born: o.born, team: o.team, from: o.from, to: o.to, how: o.how, biz: o.biz, wealth: o.wealth, patience: o.patience, spend: o.spend };
   writeJSON(path.join(OUT, "staff.json"), { coaches, owners });
   const teams = {};
