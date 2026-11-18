@@ -102,13 +102,13 @@ async function vTeam(id) {
   let h = `<div class="thead" style="--c:${t.c1};--c2:${t.c2}"><span class="sw big"></span><div><h2>${esc(t.city)} ${esc(t.name)}</h2><p class="m">${esc(t.arena)} · joined ${t.joined} (${t.how}) · ${tm.titles} championship${tm.titles === 1 ? "" : "s"} · payroll ${money(tm.payroll)}</p></div></div>`;
   if (tm.coach || tm.owner) {
     const c = D.staff.coaches[tm.coach], o = D.staff.owners[tm.owner];
-    h += `<div class="aw">${c ? `<div><span class="m">Head coach${c.ex ? " (former player)" : ""}</span>${clink(c.id)} <span class="m">${c.w}-${c.l} career</span></div>` : ""}${o ? `<div><span class="m">Owner${o.how === "heir" ? " (inherited)" : o.how === "purchase" ? " (bought the team)" : ""}</span>${esc(o.name)} <span class="m">${esc(o.biz || "")}</span></div>` : ""}</div>`;
+    h += `<div class="aw">${c ? `<div><span class="m">Head coach${c.ex ? " (former player)" : ""}</span>${clink(c.id)} <span class="m">${c.w}-${c.l} career${c.phil ? " · " + philLine(c) : ""}</span></div>` : ""}${o ? `<div><span class="m">Owner${o.how === "heir" ? " (inherited)" : o.how === "purchase" ? " (bought the team)" : ""}</span>${esc(o.name)} <span class="m">${esc(o.biz || "")}</span></div>` : ""}</div>`;
     if (tm.coachHist && tm.coachHist.length > 1) h += `<p class="m small">Coaching history: ${tm.coachHist.slice().reverse().map(x => `${clink(x.cid)} (${x.from}–${x.to || "now"}${x.why ? ", " + x.why : ""})`).join(" · ")}</p>`;
     if (tm.ownerHist && tm.ownerHist.length > 1) h += `<p class="m small">Ownership: ${tm.ownerHist.map(x => `${esc(oname(x.oid))} (${x.from}, ${x.how})`).join(" → ")}</p>`;
   }
   const roster = Object.values(D.pl).filter(p => p.team === id).sort((a, b) => b.ovr - a.ovr);
-  h += `<h3>Current roster (${D.lg.nextSeason})</h3><div class="tw"><table class="box"><thead><tr><th class="pn">Player</th><th>Pos</th><th>Age</th><th>OVR</th><th>Contract</th></tr></thead><tbody>`;
-  for (const p of roster) h += `<tr><td class="pn"><span class="num">${p.num}</span>${plink(p.id)}${p.injury ? ` <span class="inj">${esc(p.injury.name)}</span>` : ""}</td><td>${BB.ROLES[p.role].name}</td><td>${D.lg.nextSeason - p.born}</td><td class="b">${p.ovr}</td><td>${p.contract ? money(p.contract.salary) + " thru " + p.contract.thru : "–"}</td></tr>`;
+  h += `<h3>Current roster (${D.lg.nextSeason})</h3><div class="tw"><table class="box"><thead><tr><th class="pn">Player</th><th>Pos</th><th>Type</th><th>Age</th><th>OVR</th><th>Contract</th></tr></thead><tbody>`;
+  for (const p of roster) { const ar = p.r && BB.archetype ? BB.archetype(p, D.lg.nextSeason) : null; h += `<tr><td class="pn"><span class="num">${p.num}</span>${plink(p.id)}${p.injury ? ` <span class="inj">${esc(p.injury.name)}</span>` : ""}</td><td>${BB.ROLES[p.role].name}</td><td class="m small">${ar ? ar.offName + " / " + ar.defName : ""}</td><td>${D.lg.nextSeason - p.born}</td><td class="b">${p.ovr}</td><td>${p.contract ? money(p.contract.salary) + " thru " + p.contract.thru : "–"}</td></tr>`; }
   h += `</tbody></table></div><h3>Season by season</h3><div class="tw"><table class="box"><thead><tr><th>Season</th><th>W-L</th><th>Finish</th><th>Playoffs</th></tr></thead><tbody>`;
   for (const s of tm.hist.slice().reverse()) h += `<tr class="${s.res === "Champion" ? "po" : ""}"><td><a href="#standings-${s.season}">${s.season}</a></td><td>${s.w}-${s.l}</td><td>${s.rank}</td><td>${s.res === "-" ? "missed" : s.res.startsWith("R") ? "round " + s.res.slice(1) : s.res}</td></tr>`;
   return h + `</tbody></table></div>`;
@@ -118,7 +118,8 @@ async function vPlayer(id) {
   const reg = (D.idx.regular[id] || []), keys = D.idx.keys;
   const L = r => Object.fromEntries(keys.map((k, i) => [k, r[i]]));
   let h = `<h2>${esc(p.name)} ${p.hof ? `<span class="tag gen">Hall of Fame ${p.hof}</span>` : ""}</h2>`;
-  h += `<p class="m">${BB.ROLES[p.role].name} · ${Math.floor(p.ht / 12)}'${p.ht % 12}" ${p.wt} lb · born ${p.born}${p.draft ? ` · drafted ${p.draft.season} round ${p.draft.round}, pick ${p.draft.pick} by ${tname(p.draft.team)}` : " · original league player"}${p.retired ? ` · retired ${p.retired}` : p.team ? ` · ${tname(p.team)}` : " · free agent"}</p>`;
+  const ar = p.r && BB.archetype ? BB.archetype(p, D.lg.nextSeason) : null;
+  h += `<p class="m">${BB.ROLES[p.role].name}${ar ? ` · <b>${ar.offName}</b> / ${ar.defName}` : ""} · ${Math.floor(p.ht / 12)}'${p.ht % 12}" ${p.wt} lb · born ${p.born}${p.draft ? ` · drafted ${p.draft.season} round ${p.draft.round}, pick ${p.draft.pick} by ${tname(p.draft.team)}` : " · original league player"}${p.retired ? ` · retired ${p.retired}` : p.team ? ` · ${tname(p.team)}` : " · free agent"}</p>`;
   if (p.awards.length) {
     const c = {}; for (const [y, a] of p.awards) (c[a] = c[a] || []).push(y);
     h += `<div class="aw">` + Object.entries(c).map(([a, ys]) => `<div><span class="m">${AWS[a]}${ys.length > 1 ? " ×" + ys.length : ""}</span>${ys.join(", ")}</div>`).join("") + `</div>`;
@@ -195,11 +196,24 @@ async function vBlotter(y) {
   for (const e of list) h += `<li>${chip(e.team)}${who(e)} ${esc(e.text)}${e.kind === "luck" ? ` <span class="k luck">out ${e.games} games</span>` : e.games ? ` <span class="k ${e.kind}">${e.games}-game suspension</span>` : ""}${e.fine ? ` <span class="k">${money(e.fine)} fine</span>` : ""}${e.released ? ` <span class="k arrest">released</span>` : ""}</li>`;
   return h + (list.length ? "" : "<li>A quiet year. Suspiciously quiet.</li>") + `</ul>`;
 }
+// a coach's philosophy: what he runs, and how he coaches
+function philLine(c) {
+  const ph = c && c.phil; if (!ph) return "";
+  return `${BB.SYSTEMS[ph.sys].name} · ${BB.SCHEMES[ph.scheme].name} · ${BB.HITS[ph.hit].name}`;
+}
+function philHTML(c) {
+  const ph = c.phil; if (!ph) return "";
+  const S = BB.SYSTEMS[ph.sys], Dd = BB.SCHEMES[ph.scheme], H = BB.HITS[ph.hit];
+  const m = (label, v, lo, hi) => `<span>${label}: <b>${v < 0.35 ? lo : v > 0.65 ? hi : "in between"}</b><i class="meter"><i style="--v:${Math.round(v * 100)}%"></i></i></span>`;
+  return `<h3>Philosophy</h3><div class="phil"><span>Offense <b>${S.name}</b></span><span>Defense <b>${Dd.name}</b></span><span>Tackling <b>${H.name}</b></span></div>
+    <p class="m small">${S.blurb[0].toUpperCase() + S.blurb.slice(1)}. ${Dd.blurb[0].toUpperCase() + Dd.blurb.slice(1)}. ${H.blurb[0].toUpperCase() + H.blurb.slice(1)}. This is what he believes in; on game night he builds a plan from it, his roster and the opponent.</p>
+    <div class="phil">${m("Adaptability", ph.adapt, "runs his system no matter what", "game-plans every opponent")}${m("Discipline", ph.disc, "lets players freelance", "players stick to the plan")}${m("Late game", ph.late, "shaky with the clock", "clock-and-score master")}${m("Star usage", ph.star, "spreads it around", "feeds his star")}</div>`;
+}
 async function vCoaches() {
   const cs = Object.values(D.staff.coaches).filter(c => c.w + c.l > 0).sort((a, b) => b.w - a.w);
-  let h = `<h2>Coaches</h2><p class="m">Coaches shape how their teams play (pace, tackling, appetite for fours, whether they switch screens, how deep the rotation goes) and how fast young players develop. Owners hire and fire them.</p>`;
-  h += `<div class="tw"><table class="box"><thead><tr><th class="pn">Coach</th><th>Team</th><th>W-L</th><th>PCT</th><th>Titles</th><th>COY</th><th>Playoffs</th></tr></thead><tbody>`;
-  for (const c of cs.slice(0, 150)) h += `<tr><td class="pn">${clink(c.id)}${c.ex ? ' <span class="m">ex-player</span>' : ""}</td><td>${c.team ? TB[c.team].id : c.retired ? "retired" : "–"}</td><td>${c.w}-${c.l}</td><td>${(c.w / (c.w + c.l)).toFixed(3).replace(/^0/, "")}</td><td class="b">${c.titles || ""}</td><td>${c.awards.filter(a => a[1] === "coy").length || ""}</td><td>${c.pw}-${c.pl}</td></tr>`;
+  let h = `<h2>Coaches</h2><p class="m">Every coach has a philosophy: the offense he believes in, the defense he teaches and when his players are allowed to hit. Before each game he builds a gameplan from it, his roster and the opponent, picks the starting five and rotation that fit, and adjusts at timeouts and halftime. Adaptable coaches bend their system to fit; stubborn ones don't. Coaches also decide how fast young players develop, and owners hire and fire them.</p>`;
+  h += `<div class="tw"><table class="box"><thead><tr><th class="pn">Coach</th><th>Team</th><th class="pn">Plays</th><th>W-L</th><th>PCT</th><th>Titles</th><th>COY</th><th>Playoffs</th></tr></thead><tbody>`;
+  for (const c of cs.slice(0, 150)) h += `<tr><td class="pn">${clink(c.id)}${c.ex ? ' <span class="m">ex-player</span>' : ""}</td><td>${c.team ? TB[c.team].id : c.retired ? "retired" : "–"}</td><td class="pn m small">${philLine(c)}</td><td>${c.w}-${c.l}</td><td>${(c.w / (c.w + c.l)).toFixed(3).replace(/^0/, "")}</td><td class="b">${c.titles || ""}</td><td>${c.awards.filter(a => a[1] === "coy").length || ""}</td><td>${c.pw}-${c.pl}</td></tr>`;
   return h + `</tbody></table></div>`;
 }
 async function vCoach(id) {
@@ -207,6 +221,7 @@ async function vCoach(id) {
   const st = c.style, styl = [st.pace > 0.3 ? "runs" : st.pace < -0.3 ? "grinds it out" : "balanced pace", st.tackle > 1.15 ? "loves the big hit" : st.tackle < 0.85 ? "rarely sends tacklers" : "picks his tackles", st.four > 1.15 ? "fires away from four" : st.four < 0.85 ? "distrusts the four" : "takes fours in rhythm", st.sw > 0.6 ? "switches screens" : "fights over screens", st.depth + "-man rotation"];
   let h = `<h2>${esc(c.name)}</h2><p class="m">Born ${c.born}${c.ex ? ` · played as ${plink(c.ex)}` : ""}${c.team ? ` · coaching ${tname(c.team)}` : c.retired ? ` · retired ${c.retired}` : ""}</p>`;
   h += `<div class="aw"><div><span class="m">Record</span>${c.w}-${c.l} (${c.pw}-${c.pl} playoffs)</div><div><span class="m">Titles</span>${c.titles}</div><div><span class="m">Style</span>${styl.join(", ")}</div><div><span class="m">Offense / defense / development</span>${c.off} / ${c.def} / ${c.dev}</div></div>`;
+  h += philHTML(c);
   h += `<h3>Seasons</h3><div class="tw"><table class="box"><thead><tr><th>Season</th><th>Team</th><th>W-L</th></tr></thead><tbody>${(c.seasons || []).slice().reverse().map(s => `<tr><td><a href="#standings-${s.season}">${s.season}</a></td><td>${s.team}</td><td>${s.w}-${s.l}${s.partial ? " (fired mid-season)" : ""}</td></tr>`).join("")}</tbody></table></div>`;
   return h;
 }
