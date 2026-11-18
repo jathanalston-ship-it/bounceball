@@ -361,6 +361,22 @@ function eraLook(season, id) {
   };
 }
 
+// ---------- a player's look: the same id and season always give the same person ----------
+// r: { id, ht, wt, num, name }, tm: the team (city, name, id), c1/c2: the uniform colors
+function playerSpec(r, era, tm, c1, c2, idx) {
+  const id = (r.id || idx || 0) * 3 + 1, look = eraLook(era, id), h = look.h, H = (r.ht || 78) / 12, ws = clamp(Math.sqrt((r.wt || 210) / ((r.ht || 78) * 2.85)), 0.85, 1.3);
+  const si = Math.floor(hash(id * 7 + 3) * SKIN.length), skin = SKIN[si];
+  const hairC = si >= 4 ? HAIRC[h(8) < 0.85 ? 0 : 1] : HAIRC[Math.floor(h(9) * HAIRC.length)];
+  let shoe, shoe2;
+  if (look.shoe === "canvas") { shoe = h(10) < 0.6 ? "#efefe8" : "#1a1a1a"; shoe2 = shoe === "#1a1a1a" ? "#efefe8" : "#2a2a2a"; }
+  else if (look.shoe === "leather") { shoe = "#f4f4f4"; shoe2 = c1; }
+  else { shoe = h(10) < 0.45 ? c1 : h(10) < 0.75 ? "#141414" : "#f2f2f2"; shoe2 = c2; }
+  const sockC = look.sock === "low" ? (h(11) < 0.6 ? "#f2f2f2" : "#141414") : look.sock === "mid" ? (h(11) < 0.5 ? c1 : "#f2f2f2") : "#f2f2f2";
+  const tightsC = h(18) < 0.6 ? "#141414" : c1, kneeC = h(19) < 0.6 ? "#161616" : "#f0f0f0";
+  return { H, ws, id, skin, hairC, look, accent: c2, c2, shoe, shoe2, shoeStyle: look.shoe, tightsC, kneeC, sock: { kind: look.sock, c: sockC }, sock2: c1,
+    cloth: { atlas: jerseyAtlas(r.num, String(r.name || "").split(" ").slice(-1)[0], tm, c1, c2, skin, era), top: true, hem: 0.5, shortsLen: look.shortsLen, bag: look.bag } };
+}
+
 // ---------- skinned figures (players, referees, coaches) ----------
 // bones: 0 root 1 hips 2 spine 3 chest 4 neck 5 head | 6-8 left shoulder/elbow/wrist | 9-11 right | 12-14 left hip/knee/ankle | 15-17 right
 //        18 jaw 19 eyelids 20-21 eyes | 22-24 left knuckles/fingertips/thumb | 25-27 right | 28-29 brows | 30 hair sway
@@ -583,6 +599,145 @@ function buildHead(gb, o, M, H, skin, look, hg) {
 }
 function castShadows(m, on) { m.root.traverse(o => { if (o.isMesh) o.castShadow = on; }); }
 function disposeFigure(m) { m.root.traverse(o => { if (o.isMesh) { o.geometry.dispose(); if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); }
+
+// ===================== CARD PHOTOS =====================
+// The player cards use the broadcast's own player models: the same person (face, skin, hair, build,
+// uniform of that season) posed for the card in a studio, cut out on a transparent background.
+// Poses: legs, spine and head as pose values; hands placed with IK at points in the chest's frame
+// (x = the player's left, y = up the spine, z = forward), in fractions of his height.
+const CPOSE = {
+  portrait:  { yaw: 0.28, look: "cam", p: { aLz: 0.16, aRz: -0.16, eL: -0.2, eR: -0.2, hLz: 0.07, hRz: -0.07 } },
+  akimbo:    { yaw: 0.16, look: "cam", p: { hLz: 0.1, hRz: -0.1 }, L: [0.15, -0.15, 0.02, [1, -0.1, -0.5]], R: [-0.15, -0.15, 0.02, [-1, -0.1, -0.5]] },
+  ballhip:   { yaw: 0.3, look: "cam", p: { hLz: 0.08, hRz: -0.08, aLz: 0.14, eL: -0.25 }, R: [-0.19, -0.105, 0.075, [-0.6, -0.8, -0.6]], ball: "hip" },
+  stand:     { yaw: 0.42, look: "fwd", p: { hLz: 0.07, hRz: -0.07, aLz: 0.15, eL: -0.3 }, R: [-0.16, -0.27, 0.1, [-0.5, -1, -0.5]], ball: "R" },
+  mugshot:   { yaw: 0.02, look: "cam", p: { jaw: 0, hLz: 0.06, hRz: -0.06 }, L: [0.08, -0.06, 0.16, [1, -0.6, -0.3]], R: [-0.08, -0.06, 0.16, [-1, -0.6, -0.3]] },
+  // dunks go up with the far hand, so the near arm never hides the face; the card hangs that hand on the rim
+  dunk:      { yaw: 0.9, air: 2.6, look: "fwdup", p: { spineX: -0.05, hRx: -1.15, kR: 1.5, hLx: -0.1, kL: 0.75, fL: 0.5, fR: 0.35, jaw: 0.35 }, R: [-0.3, -0.02, -0.02, [-1, -0.6, -0.4]], L: [0.06, 0.52, 0.24, [1, 0, -0.4]], ball: "L", hand: 0 },
+  block:     { yaw: 0.7, air: 2.0, look: "up", p: { hLx: -0.7, kL: 1.1, hRx: -0.2, kR: 0.5, fL: 0.4, fR: 0.5, jaw: 0.25 }, L: [0.05, 0.56, 0.12, [1, 0, -0.5]], R: [-0.16, 0.42, 0.14, [-1, 0, -0.5]] },
+  shoot:     { yaw: 0.6, air: 0.9, look: "fwdup", p: { hLx: -0.12, hRx: -0.05, kL: 0.3, kR: 0.2, fL: 0.55, fR: 0.55 }, L: [0.05, 0.4, 0.17, [1, -0.3, 0]], R: [-0.04, 0.46, 0.13, [-0.6, -0.5, 0.3]], ball: "release" },
+  tackle:    { yaw: 1.25, look: "fwd", p: { pitch: 0.75, spineX: 0.35, hLx: -1.4, kL: 1.4, hRx: 0.35, kR: 0.35, fR: 0.4, headX: -0.5, jaw: 0.3 }, L: [0.13, 0.05, 0.36, [1, -0.5, -0.3]], R: [-0.13, 0.08, 0.38, [-1, -0.5, -0.3]] },
+  stiffarm:  { yaw: 1.15, run: 0.45, amp: 0.85, look: "fwd", p: { spineX: 0.22 }, L: [0.1, -0.02, 0.16, [1, -1, -0.4]], R: [-0.05, 0.12, 0.42, [-1, -0.3, -0.3]], ball: "L" },
+  pass:      { yaw: 1.0, look: "fwd", p: { hLx: -0.55, kL: 0.5, hRx: 0.3, kR: 0.25, spineX: 0.2 }, L: [0.07, 0.07, 0.4, [1, -0.6, 0]], R: [-0.07, 0.07, 0.4, [-1, -0.6, 0]], ball: "pass" },
+  rebound:   { yaw: 0.3, air: 2.0, look: "up", p: { hLx: -0.55, kL: 0.95, hRx: -0.45, kR: 0.8, hLz: 0.16, hRz: -0.16, fL: 0.45, fR: 0.45, jaw: 0.3 }, L: [0.07, 0.54, 0.1, [1, 0, -0.5]], R: [-0.07, 0.54, 0.1, [-1, 0, -0.5]], ball: "top" },
+  steal:     { yaw: 1.0, look: "fwd", p: { spineX: 0.6, hLx: -1.0, kL: 1.3, hRx: 0.1, kR: 0.7, hLz: 0.12, hRz: -0.2, headX: -0.45 }, L: [0.24, -0.05, 0.12, [1, -0.5, -0.5]], R: [-0.08, -0.12, 0.44, [-1, -0.5, -0.3]], ball: "poke" },
+  dribble:   { yaw: 0.75, look: "fwd", p: { spineX: 0.38, hLx: -0.85, kL: 1.15, hRx: -0.3, kR: 0.9, hLz: 0.16, hRz: -0.14, headX: -0.4 }, L: [0.27, 0.0, 0.22, [1, -0.6, -0.4]], R: [-0.2, -0.36, 0.17, [-1, -0.2, -0.6]], ball: "floor" },
+  trophy:    { yaw: 0.14, look: "up", p: { hLz: 0.08, hRz: -0.08, jaw: 0.4, cL: 1, cR: 1 }, L: [0.09, 0.53, 0.1, [1, 0, -0.3]], R: [-0.09, 0.53, 0.1, [-1, 0, -0.3]] },
+  celebrate: { yaw: 0.2, air: 0.4, look: "up", p: { aLz: 2.45, aRz: -2.45, eL: -0.35, eR: -0.35, aLx: -0.2, aRx: -0.2, hLz: 0.14, hRz: -0.14, kL: 0.35, kR: 0.2, fL: 0.4, fR: 0.4, jaw: 0.45, cL: 1, cR: 1 } },
+  guard:     { yaw: 0.35, stance: true, look: "cam", p: { aLz: 1.15, aRz: -1.15, eL: -0.4, eR: -0.4, aLx: -0.4, aRx: -0.4, jaw: 0.1 } },
+  fadeaway:  { yaw: 0.9, air: 1.4, look: "fwdup", p: { spineX: -0.38, pitch: -0.15, hLx: -0.95, kL: 1.3, hRx: 0.1, kR: 0.15, fL: 0.4, fR: 0.6 }, L: [0.05, 0.42, 0.22, [1, -0.3, 0]], R: [-0.04, 0.47, 0.2, [-0.6, -0.5, 0.3]], ball: "release" },
+  hangrim:   { yaw: 0.25, air: 3.0, hand: 1, look: "fwd", p: { hLx: -0.35, kL: 0.65, hRx: -0.15, kR: 0.4, fL: 0.4, fR: 0.4, jaw: 0.4 }, L: [0.11, 0.56, 0.1, [1, 0, -0.5]], R: [-0.11, 0.56, 0.1, [-1, 0, -0.5]] },
+  flex:      { yaw: 0.08, look: "cam", p: { hLz: 0.1, hRz: -0.1, jaw: 0.15, cL: 1, cR: 1 }, L: [0.27, 0.27, 0.03, [1, -0.25, 0]], R: [-0.27, 0.27, 0.03, [-1, -0.25, 0]] },
+  point:     { yaw: 0.25, look: "up", p: { hLz: 0.07, hRz: -0.07, aLz: 0.16, eL: -0.25, cR: 0.6 }, R: [-0.13, 0.56, 0.12, [-1, 0, -0.4]] },
+  crossover: { yaw: 0.65, look: "fwd", p: { spineX: 0.42, hLx: -0.8, kL: 1.2, hRx: 0.05, kR: 0.85, hLz: 0.3, hRz: -0.28, headX: -0.35 }, L: [0.22, -0.32, 0.2, [1, -0.3, -0.4]], R: [-0.04, -0.38, 0.27, [-1, -0.2, -0.6]], ball: "floor" }
+};
+const PHOTO = { r: null };
+function photoRig() {
+  if (PHOTO.r) return PHOTO;
+  const W = 640, Hh = 960, cv = document.createElement("canvas"); cv.width = W; cv.height = Hh;
+  const r = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true, preserveDrawingBuffer: true, powerPreference: "low-power" });
+  r.setPixelRatio(1); r.setSize(W, Hh, false); r.setClearColor(0x000000, 0);
+  r.outputEncoding = THREE.sRGBEncoding; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.95;
+  // a studio, not the arena: no reflected room, so the shading comes from the lights and the shapes read
+  const scene = new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(0xe6edff, 0x2a2018, 0.2));
+  const L = (c, k, x, y, z) => { const l = new THREE.DirectionalLight(c, k); l.position.set(x, y, z); scene.add(l); scene.add(l.target); return l; };
+  const key = L(0xfff0de, 3.0, -8, 9, 10), fill = L(0xc4d4ff, 0.32, 9, 2, 8), rimA = L(0xffffff, 2.6, -9, 5, -7), rimB = L(0xffffff, 2.4, 9, 4, -7);
+  const cam = new THREE.PerspectiveCamera(14, W / Hh, 1, 600);
+  const bt = ballTextures(), ball = new THREE.Mesh(new THREE.SphereGeometry(0.39, 36, 24), new THREE.MeshStandardMaterial({ map: bt.map, bumpMap: bt.bump, bumpScale: 0.015, roughness: 0.72, envMapIntensity: 0.6 }));
+  scene.add(ball);
+  const c2d = document.createElement("canvas"); c2d.width = W; c2d.height = Hh;
+  Object.assign(PHOTO, { r, cv, W, Hh, scene, key, fill, rimA, rimB, cam, ball, c2d, g: c2d.getContext("2d", { willReadFrequently: true }) });
+  return PHOTO;
+}
+// a Santa hat that sits on the head bone (it follows every nod)
+function santaHat(m, hair) {
+  const r = 0.065 * m.H, h = 1.9 * r, g = new THREE.Group(), red = new THREE.MeshStandardMaterial({ color: "#c8142c", roughness: 0.85, envMapIntensity: 0.4 }), fur = new THREE.MeshStandardMaterial({ color: "#f7f5f0", roughness: 1, envMapIntensity: 0.3 });
+  const cone = new THREE.ConeGeometry(r * 1.02, h, 28, 8, true), p = cone.attributes.position;
+  for (let i = 0; i < p.count; i++) { const t = (p.getY(i) + h / 2) / h; p.setXYZ(i, p.getX(i) * (1 - 0.15 * t) + t * t * r * 0.45, p.getY(i) - t * t * r * 0.35, p.getZ(i) - t * t * r * 0.95); }
+  cone.translate(0, h / 2, 0); cone.computeVertexNormals();
+  const cm = new THREE.Mesh(cone, red); g.add(cm);
+  const brim = new THREE.Mesh(new THREE.TorusGeometry(r * 1.0, r * 0.2, 12, 32), fur); brim.rotation.x = PI / 2; g.add(brim);
+  const pom = new THREE.Mesh(new THREE.SphereGeometry(r * 0.26, 14, 10), fur); pom.position.set(r * 0.45, h - r * 0.35, -r * 0.95); g.add(pom);
+  // big hair wears a bigger hat, set higher
+  const k = hair === "afro" ? 1.36 : hair === "hightop" ? 0.98 : 1, up = hair === "afro" ? 0.22 * r : hair === "hightop" ? 0.66 * r : 0;
+  g.scale.setScalar(k); g.position.set(0, 0.032 * m.H + 0.5 * r + up, 0.004 * m.H - 0.08 * r - (hair === "afro" ? 0.08 * r : 0)); g.rotation.x = -0.24;
+  m.head.add(g);
+}
+const _pv = new V3(), _pw = new V3();
+// render one card photo. spec: { r: { id, ht, wt, num, name }, season, tm, c1, c2, pose, hat, rim }
+// resolves { blob, w, h, ppf (pixels per foot), a: anchors in image pixels }
+function photo(spec) {
+  const P = photoRig(), C = CPOSE[spec.pose] || CPOSE.portrait;
+  const o = playerSpec(spec.r, spec.season, spec.tm, spec.c1, spec.c2);
+  if (spec.hat === "clover") { o.look = Object.assign({}, o.look, { headband: true }); o.accent = "#2f9e44"; }
+  const m = buildFigure(o), H = m.H;
+  if (spec.hat === "santa") santaHat(m, o.look.hair);
+  P.scene.add(m.root);
+  try {
+    // pose
+    const yaw = C.yaw || 0; m.root.rotation.y = yaw;
+    const p = Object.assign(base(), C.stance ? stancePose(0) : null, C.run !== undefined ? runPose(C.run * TAU, C.amp || 0.8) : null, C.p || {});
+    const fx = Math.sin(yaw), fz = Math.cos(yaw);
+    const lk = spec.hat === "santa" && C.look !== "fwd" ? "cam" : C.look; // a Santa hat vanishes behind a head tipped back: hat wearers look at the camera
+    m.look = lk === "cam" ? new V3(0, 0.8 * H, 40) : lk === "up" ? new V3(fx * 4, H + 7, fz * 4) : lk === "fwdup" ? new V3(fx * 20, H + 4, fz * 20) : new V3(fx * 20, 0.85 * H, fz * 20);
+    m.lookW = 1;
+    applyPose(m, p, 0, true);
+    m.root.position.y = C.air || 0; m.root.updateMatrixWorld(true);
+    for (const [i, T] of [[0, C.L], [1, C.R]]) if (T) {
+      const A = m.arms[i], tw = m.chest.localToWorld(_pv.set(T[0] * H, T[1] * H, T[2] * H)).clone();
+      const pole = _pw.set(...(T[3] || [i ? -1 : 1, -1, -0.5])).transformDirection(m.chest.matrixWorld).clone();
+      ik2(A.shoulder, A.elbow, 0.17 * H, 0.202 * H, tw, pole, -1, 1);
+      A.wrist.rotation.x = -0.15;
+    }
+    m.root.updateMatrixWorld(true);
+    // gaze again now that the arms are set (the head never moved, but the eyes settle)
+    const wp = ob => ob.getWorldPosition(new V3());
+    const hand = i => wp(m.arms[i].hand), elbow = i => wp(m.arms[i].elbow), headC = m.head.localToWorld(new V3(0, 0.032 * H, 0.004 * H));
+    // the ball
+    const B = P.ball; B.visible = true; let bc = null;
+    const along = (i, d) => { const h = hand(i), e = wp(m.arms[i].wrist); return h.clone().add(h.clone().sub(e).normalize().multiplyScalar(d)); };
+    if (C.ball === "R") bc = along(1, 0.36);
+    else if (C.ball === "L") bc = along(0, 0.3);
+    else if (C.ball === "release") bc = along(1, 0.62);
+    else if (C.ball === "top") bc = hand(0).add(hand(1)).multiplyScalar(0.5).add(new V3(0, 0.3, 0));
+    else if (C.ball === "hip") bc = m.chest.localToWorld(new V3(-0.205 * H, -0.165 * H, 0.06 * H));
+    else if (C.ball === "floor") { const h = hand(1); bc = new V3(h.x, 0.39 + 0.35, h.z); }
+    if (bc) B.position.copy(bc); else B.visible = false;
+    // framing: every joint, the head with its hair, the ball
+    const pts = [];
+    const add = (v, rad) => { pts.push([v.x - rad, v.y - rad], [v.x + rad, v.y + rad]); };
+    add(headC, 0.075 * H * (o.look.hair === "afro" ? 1.5 : o.look.hair === "hightop" ? 1.4 : 1.15) + (spec.hat === "santa" ? 0.17 * H : 0));
+    for (let i = 0; i < 2; i++) { add(hand(i), 0.06 * H); add(elbow(i), 0.05 * H); add(wp(m.arms[i].shoulder), 0.07 * H); add(wp(m.legs[i].knee), 0.06 * H); add(wp(m.legs[i].ankle), 0.07 * H); add(wp(m.legs[i].hip), 0.09 * H); }
+    if (bc) add(bc, 0.42);
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; for (const [x, y] of pts) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, tf = Math.tan(P.cam.fov * PI / 360), D = Math.max((y1 - y0) / 2 / tf, (x1 - x0) / 2 / (tf * P.cam.aspect)) * 1.12 + 1;
+    P.cam.position.set(cx, cy, D); P.cam.lookAt(cx, cy, 0); P.cam.updateMatrixWorld(true);
+    // light: warm key, cool fill, white and team-colored rims from behind
+    P.rimB.color.set(spec.rim || spec.c2 || "#ffffff");
+    for (const l of [P.key, P.fill, P.rimA, P.rimB]) { l.target.position.set(cx, cy, 0); }
+    P.r.render(P.scene, P.cam);
+    // cut out: crop to what was drawn
+    const g = P.g; g.clearRect(0, 0, P.W, P.Hh); g.drawImage(P.cv, 0, 0);
+    const px = g.getImageData(0, 0, P.W, P.Hh).data;
+    let ax0 = P.W, ax1 = -1, ay0 = P.Hh, ay1 = -1;
+    for (let y = 0; y < P.Hh; y++) { const row = y * P.W * 4; for (let x = 0; x < P.W; x++) if (px[row + x * 4 + 3] > 10) { if (x < ax0) ax0 = x; if (x > ax1) ax1 = x; if (y < ay0) ay0 = y; if (y > ay1) ay1 = y; } }
+    if (ax1 < 0) throw new Error("empty photo");
+    ax0 = Math.max(0, ax0 - 2); ay0 = Math.max(0, ay0 - 2); ax1 = Math.min(P.W - 1, ax1 + 2); ay1 = Math.min(P.Hh - 1, ay1 + 2);
+    const w = ax1 - ax0 + 1, h = ay1 - ay0 + 1, out = document.createElement("canvas"); out.width = w; out.height = h;
+    out.getContext("2d").drawImage(P.cv, ax0, ay0, w, h, 0, 0, w, h);
+    const proj = v => { const q = v.clone().project(P.cam); return [Math.round(((q.x + 1) / 2 * P.W - ax0) * 10) / 10, Math.round(((1 - q.y) / 2 * P.Hh - ay0) * 10) / 10]; };
+    const ppf = P.Hh / 2 / (D * tf);
+    const lowFoot = [wp(m.legs[0].ankle), wp(m.legs[1].ankle)].sort((a, b) => a.y - b.y)[0];
+    const a = { head: proj(headC).concat([Math.round(0.065 * H * ppf * 10) / 10]), hL: proj(hand(0)), hR: proj(hand(1)), chest: proj(m.chest.localToWorld(new V3(0, 0.02 * H, 0.11 * H))),
+      pelvis: proj(wp(m.hips)), feet: proj(lowFoot.clone().setY(lowFoot.y - m.ankleH)), floor: proj(new V3(m.root.position.x, 0, (wp(m.legs[0].ankle).z + wp(m.legs[1].ankle).z) / 2)) };
+    if (bc) a.ball = proj(bc).concat([Math.round(0.39 * ppf * 10) / 10]);
+    if (C.hand !== undefined) a.rim = C.hand ? a.hR : a.hL; // the hand that goes on the rim
+    return new Promise(res => out.toBlob(b => res({ blob: b, w, h, ppf: Math.round(ppf * 100) / 100, a }), "image/webp", 0.9));
+  } finally {
+    P.scene.remove(m.root);
+    m.root.traverse(ob => { if (ob.isMesh) { ob.geometry.dispose(); const mt = ob.material; if (mt.map) mt.map.dispose(); mt.dispose(); } });
+  }
+}
 
 // ---------- poses ----------
 const KEYS = ["jaw", "lid", "cL", "cR", "brow", "pitch", "roll", "drop", "crouch", "spineX", "spineY", "spineZ", "headX", "headY", "aLx", "aLy", "aLz", "eL", "wL", "aRx", "aRy", "aRz", "eR", "wR", "hLx", "hLz", "kL", "fL", "hRx", "hRz", "kR", "fR"];
@@ -1664,17 +1819,7 @@ function create(canvas, opts) {
   function model(idx) {
     if (models[idx]) return models[idx];
     const r = G.roster[idx], t = r.t, c1 = G.colors[t], tm = teams[t], c2 = (c1 === tm.c1 ? tm.c2 : tm.c1);
-    const id = (r.id || idx) * 3 + 1, look = eraLook(era, id), h = look.h, H = (r.ht || 78) / 12, ws = clamp(Math.sqrt((r.wt || 210) / ((r.ht || 78) * 2.85)), 0.85, 1.3);
-    const si = Math.floor(hash(id * 7 + 3) * SKIN.length), skin = SKIN[si];
-    const hairC = si >= 4 ? HAIRC[h(8) < 0.85 ? 0 : 1] : HAIRC[Math.floor(h(9) * HAIRC.length)];
-    let shoe, shoe2;
-    if (look.shoe === "canvas") { shoe = h(10) < 0.6 ? "#efefe8" : "#1a1a1a"; shoe2 = shoe === "#1a1a1a" ? "#efefe8" : "#2a2a2a"; }
-    else if (look.shoe === "leather") { shoe = "#f4f4f4"; shoe2 = c1; }
-    else { shoe = h(10) < 0.45 ? c1 : h(10) < 0.75 ? "#141414" : "#f2f2f2"; shoe2 = c2; }
-    const sockC = look.sock === "low" ? (h(11) < 0.6 ? "#f2f2f2" : "#141414") : look.sock === "mid" ? (h(11) < 0.5 ? c1 : "#f2f2f2") : "#f2f2f2";
-    const tightsC = h(18) < 0.6 ? "#141414" : c1, kneeC = h(19) < 0.6 ? "#161616" : "#f0f0f0";
-    const m = buildFigure({ H, ws, id, skin, hairC, look, accent: c2, c2, shoe, shoe2, shoeStyle: look.shoe, tightsC, kneeC, sock: { kind: look.sock, c: sockC }, sock2: c1,
-      cloth: { atlas: jerseyAtlas(r.num, r.name.split(" ").slice(-1)[0], tm, c1, c2, skin, era), top: true, hem: 0.5, shortsLen: look.shortsLen, bag: look.bag } });
+    const m = buildFigure(playerSpec(r, era, tm, c1, c2, idx));
     castShadows(m, quality !== "low");
     scene.add(m.root); models[idx] = m; return m;
   }
@@ -2191,5 +2336,5 @@ function create(canvas, opts) {
     dispose() { renderer.dispose(); }
   };
 }
-window.Broadcast3D = { supported, create, makeAudio };
+window.Broadcast3D = { supported, create, makeAudio, photo, photoPoses: Object.keys(CPOSE) };
 })();

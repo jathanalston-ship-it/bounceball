@@ -240,6 +240,23 @@ function addHighs(store, line, gid) {
   const tens = ["pts","reb","ast","stl","blk","tkl"].filter(k => v(k) >= 10).length, o = HIGH_KEYS.length * 2, pts = v("pts");
   if (tens >= 2) h[o]++; if (tens >= 3) h[o + 1]++; if (pts >= 30) h[o + 2]++; if (pts >= 40) h[o + 3]++; if (pts >= 50) h[o + 4]++;
 }
+// Each game's star (best Game Score) and its top dunker, for the holiday, Dunktober and Game 7 cards.
+// Row: [gid, pid, gameScore x10, pts, reb, ast, stl, blk, tkl, dnk, fpm, tpm, dunkerPid, dunks, winnersStarPid, winnersStarGameScore x10]
+const POG_KEYS = ["gid", "pid", "gsc10", "pts", "reb", "ast", "stl", "blk", "tkl", "dnk", "fpm", "tpm", "dpid", "ddnk", "wpid", "wgsc10"];
+function gameScoreOf(ln) { const v = k => ln[SI[k]]; return v("pts") + 0.8 * (v("oreb") + v("dreb")) + 1.2 * v("ast") + 2 * v("stl") + 2 * v("blk") + 3 * v("tkl") + v("btk") - 1.2 * v("to") - 0.6 * (v("fga") - v("fgm")) - 0.4 * (v("fta") - v("ftm")); }
+function gameStars(lines, gid, nHome, homeWon) {
+  let best = null, bs = -1e9, dk = null, dn = 0, wb = null, ws = -1e9;
+  lines.forEach((ln, j) => {
+    if (!ln[1]) return;
+    const gs = gameScoreOf(ln), dunks = ln[SI.dnk];
+    if (gs > bs) { bs = gs; best = ln; }
+    if ((j < nHome) === homeWon && gs > ws) { ws = gs; wb = ln; }
+    if (dunks > dn) { dn = dunks; dk = ln; }
+  });
+  if (!best) return [gid, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, -1, 0];
+  const v = k => best[SI[k]];
+  return [gid, best[0], Math.round(bs * 10), v("pts"), v("oreb") + v("dreb"), v("ast"), v("stl"), v("blk"), v("tkl"), v("dnk"), v("fpm"), v("tpm"), dk ? dk[0] : -1, dn, wb ? wb[0] : -1, wb ? Math.round(ws * 10) : 0];
+}
 function addLine(store, line, tid) {
   const id = line[0]; let s = store[id];
   if (!s) { s = store[id] = { team: tid }; for (const k of STAT_KEYS) s[k] = 0; }
@@ -256,6 +273,7 @@ function applyResults(S, specs, results) {
     r.lines.forEach((ln, j) => addLine(store, ln, j < sp.h.length ? sp.home : sp.away));
     const hstore = sp.type === 0 ? (cur.highs = cur.highs || {}) : (cur.phighs = cur.phighs || {});
     for (const ln of r.lines) addHighs(hstore, ln, sp.gid);
+    (cur.pog = cur.pog || []).push(gameStars(r.lines, sp.gid, sp.h.length, r.hs > r.as));
     cur.games.push([sp.gid, sp.day, sp.home, sp.away, sp.seed, r.hs, r.as, r.per, sp.type, sp.h, sp.a, sp.hc, sp.ac]);
     if (sp.type === 0) {
       const H = cur.standings[sp.home], A = cur.standings[sp.away];
@@ -630,7 +648,7 @@ function exportSeason(S) {
     games: cur.games, standings: cur.standings,
     playoffs: cur.playoffs, awards: cur.awards,
     stats: statArr(cur.stats), pstats: statArr(cur.pstats),
-    highKeys: HIGH_KEYS, featKeys: FEAT_KEYS, highs: cur.highs || {}, phighs: cur.phighs || {},
+    highKeys: HIGH_KEYS, featKeys: FEAT_KEYS, highs: cur.highs || {}, phighs: cur.phighs || {}, pogKeys: POG_KEYS, pog: cur.pog || [],
     players: cur.snapshot, injuries: cur.injuries, tx: cur.tx, blotter: cur.blotter,
     coaches: cur.coachSnap, owners: Object.fromEntries(S.active.map(t => { const o = S.owners[S.teams[t].owner]; return [t, { id: o.id, name: o.first + " " + o.last }]; }))
   };
