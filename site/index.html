@@ -23,19 +23,27 @@
     <div class="calltag" id="calltag"></div>
     <div class="plancard" id="plancard"></div>
     <div class="replaytag" id="replayTag" hidden>REPLAY</div>
+    <div class="card" id="card"></div>
+    <div class="stinger" id="stinger"><i><b>UBL</b></i></div>
+    <button class="skippill" id="skipIntro" hidden>Skip intro ⏭</button>
     <div class="overlay" id="bc-overlay" hidden>Loading…</div>
   </div>
   <div class="controls">
-    <button id="rew" title="Back 10 seconds">↺10</button><button id="play">▶</button>
-    <div class="spd"><button data-s="1">1×</button><button data-s="2" class="on">2×</button><button data-s="4">4×</button><button data-s="10">10×</button><button data-s="30">30×</button></div>
+    <button id="rew" title="Back 10 seconds (J)">↺10</button><button id="play" title="Play / pause (space)">▶</button>
+    <div class="spd" title="Speed (S toggles slow motion)"><button data-s="0.25">¼×</button><button data-s="0.5">½×</button><button data-s="1">1×</button><button data-s="2" class="on">2×</button><button data-s="4">4×</button><button data-s="10">10×</button><button data-s="30">30×</button></div>
     <button id="end">Final ⏭</button>
-    <select id="cam" aria-label="Camera"><option value="auto">Auto camera</option><option value="sideline">Sideline</option><option value="endline">Behind the basket</option><option value="follow">Follow the ball</option><option value="overhead">Overhead</option><option value="tactical">Tactical (2D)</option></select>
-    <button id="snd" title="Sound">🔈</button><button id="rpl" class="on" title="Automatic instant replays">Replays</button><button id="plans" title="Show both teams' gameplans">Plans</button><button id="fs" title="Fullscreen">⛶</button>
-    <input type="range" id="scrub" min="0" max="1" value="0" step="1" aria-label="Game timeline">
+    <button id="rlast" title="Instant replay of the last play (R)">⟲ Replay</button>
+  </div>
+  <div class="tlw"><input type="range" id="scrub" min="0" max="1" value="0" step="1" aria-label="Game timeline"><canvas id="marks"></canvas></div>
+  <div class="controls c2">
+    <select id="cam" aria-label="Camera" title="Camera (C)"><option value="auto">🎥 Auto director</option><option value="sideline">Broadcast sideline</option><option value="endline">Behind the basket</option><option value="baseline">Baseline (low, under the rim)</option><option value="follow">Rail cam (follow the ball)</option><option value="low">Courtside low</option><option value="sky">Sky cam</option><option value="overhead">Overhead</option><option value="player">Player cam (P, or 🎥 in the box score)</option><option value="free">Free cam (drag / pinch)</option><option value="tactical">Tactical (2D)</option></select>
+    <select id="q" aria-label="Graphics quality"><option value="auto">Quality: auto</option><option value="high">High (reflections, bloom)</option><option value="medium">Medium (bloom)</option><option value="low">Low (fast)</option></select>
+    <button id="snd" title="Arena sound (M)">🔈</button><button id="ann" title="Announcer (A)">🎙</button><button id="era" title="Broadcast look of the game's era (V)">📼 Era TV</button><button id="rpl" class="on" title="Automatic instant replays">Auto replays</button><button id="plans" title="Show both teams' gameplans">📋 Plans</button><button id="fs" title="Fullscreen (F)">⛶</button>
   </div>
   <div class="seed" id="seed"></div>
-  <nav class="tabs bctabs"><button data-t="pbp" class="on">Play-by-play</button><button data-t="box">Box score</button><button data-t="strat">Strategy</button></nav>
+  <nav class="tabs bctabs"><button data-t="pbp" class="on">Play-by-play</button><button data-t="top">Top plays</button><button data-t="box">Box score</button><button data-t="strat">Strategy</button></nav>
   <section class="bctab" id="bc-pbp"><label class="chk"><input type="checkbox" id="subs"> show substitutions</label> <label class="chk"><input type="checkbox" id="calls" checked> show play calls</label><ul id="pbp-list"></ul></section>
+  <section class="bctab" id="bc-top" hidden><div class="toph"><button id="reel">▶ Play all</button><span class="m" id="topnote"></span></div><ol id="top-list"></ol></section>
   <section class="bctab" id="bc-box" hidden><div id="box-tables"></div></section>
   <section class="bctab" id="bc-strat" hidden><div id="strat-body"></div></section>
 </section>

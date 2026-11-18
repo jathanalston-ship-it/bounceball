@@ -218,7 +218,7 @@ async function route() {
   const hsh = (location.hash || "").slice(1) || "standings-" + lastSeason();
   const [v, a, b] = hsh.split("-");
   document.querySelectorAll("nav.main a").forEach(x => x.classList.toggle("on", x.dataset.v === v));
-  if (v !== "watch" && v !== "tv") { $("broadcast").hidden = true; V.playing = false; V.channels = null; }
+  if (v !== "watch" && v !== "tv") { $("broadcast").hidden = true; stopBroadcast(); }
   const y = a && /^\d{4}$/.test(a) ? +a : lastSeason();
   let html;
   try {
