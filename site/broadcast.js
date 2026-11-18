@@ -511,6 +511,8 @@ function packageFor(n) {
     else if (e.val === 4) clips = [clip("low", r - 28, tk + 14, 0.5, { side }), clip("spin", r + 3, r + 3, 0, { side, focus: e.pid, hold: 2.2 }), clip("iso", r - 20, r + 10, 0.35, { side, focus: e.pid })];
     else clips = [clip("main", r - 40, tk + 14, 0.5, { side }), clip("iso", r - 16, r + 8, 0.35, { side, focus: e.pid })];
   } else clips = [clip("main", tk - 60, tk + 20, 0.5)];
+  const key = e.type === "fga" ? (e.dunk ? tk - 3 : e.blk !== undefined && e.blk >= 0 ? tk : releaseTick(tk)) : tk; // the moment the replay slows down for
+  for (const c of clips) if (c.key === undefined) c.key = key;
   return { label: n.label, col: n.col, clips, tk, ar: arFor(n) };
 }
 // what the replay graphics show: the ball's path, rings under the players, and the numbers that matter
@@ -545,7 +547,7 @@ function advanceReplay(dt) {
   const R = V.replay; if (R.busy) return;
   const c = R.pkg.clips[R.ci];
   if (c.hold) { R.held = (R.held || 0) + dt; R.t = c.from; if (R.held < c.hold) return; } // frozen moment, camera circles
-  else { R.t = Math.min(c.to, R.t + dt * 20 * c.rate); if (R.t < c.to) return; }
+  else { const w = c.key !== undefined ? Math.exp(-Math.pow((R.t - c.key) / 9, 2)) : 0; R.eff = lerp(Math.min(1, c.rate * 1.9), c.rate * 0.42, w); R.t = Math.min(c.to, R.t + dt * 20 * R.eff); if (R.t < c.to) return; } // speed ramp
   R.busy = true;
   if (R.ci + 1 < R.pkg.clips.length) stinger(() => { if (V.replay !== R) return; R.ci++; R.t = R.pkg.clips[R.ci].from; R.held = 0; R.busy = false; updateAll(true); });
   else stinger(() => { if (V.replay !== R) return; V.replay = null; if (V.reel && V.reel.length) startReplay(packageFor(V.reel.shift())); else { V.reel = null; if (V.tick >= maxTicks() - 1) { V.playing = false; setPlayBtn(); } } updateAll(true); });
@@ -874,7 +876,7 @@ function gameRecap() {
   // the pick-and-roll defense
   const mainCov = t => { let bk = null, bv = 0; for (const k in R[t].covAtt) if (R[t].covAtt[k] > bv) { bv = R[t].covAtt[k]; bk = k; } return bk; };
   const lc = mainCov(l), wc = mainCov(w), ppa = (t, k) => (R[t].covPts[k] || 0) / R[t].covAtt[k];
-  if (lc && R[l].covAtt[lc] >= 6 && ppa(l, lc) >= 1.15) out.push(`The ${TP(l)} ${BB.COVERS[lc].name.toLowerCase()} coverage got picked apart: ${R[l].covPts[lc] || 0} points on ${R[l].covAtt[lc]} shots out of the pick-and-roll.`);
+  if (lc && R[l].covAtt[lc] >= 7 && ppa(l, lc) >= 1.2) out.push(`The ${TP(l)} ${BB.COVERS[lc].name.toLowerCase()} coverage got picked apart: ${R[l].covPts[lc] || 0} points on ${R[l].covAtt[lc]} shots out of the pick-and-roll.`);
   else if (wc && R[w].covAtt[wc] >= 6 && ppa(w, wc) <= 0.85) out.push(`The ${TP(w)} ${BB.COVERS[wc].name.toLowerCase()} coverage held up: ${R[w].covPts[wc] || 0} points on ${R[w].covAtt[wc]} pick-and-roll shots.`);
   // the hitting
   const take = t => R[t].tk.down + R[t].tk.fumble, miss = t => R[t].tk.broken + R[t].tk.whiff;
@@ -883,7 +885,7 @@ function gameRecap() {
   // the adjustment that turned it
   let adj = null, adv = 5;
   for (const e of E) if (e.type === "adjust") { const fs = e.team === 0 ? sc[0] - e.s0 : sc[1] - e.s1, as = e.team === 0 ? sc[1] - e.s1 : sc[0] - e.s0; if (fs - as > adv) { adv = fs - as; adj = { e, fs, as }; } }
-  if (adj) out.push(`The ${TP(adj.e.team)} move in the ${perLong(adj.e.per).toLowerCase()} quarter (${adjustText(adj.e)}) paid off: they won the rest of the game ${adj.fs}-${adj.as}.`.replace("ot quarter", "overtime"));
+  if (adj) out.push(`In the ${perLong(adj.e.per).toLowerCase()} quarter the ${TN(adj.e.team)} decided to ${adjustText(adj.e)}, and won the rest of the game ${adj.fs}-${adj.as}.`.replace("ot quarter", "overtime"));
   // the highlight, the injuries, the ejections
   const hl = E.find(e => e.type === "tackle" && e.move && !e.moveFail && (e.move === "hurdle" || e.move === "stiff") && (e.result === "whiff" || e.result === "broken"));
   if (hl) out.push(`Play of the night: ${nm(hl.on)} ${hl.move === "hurdle" ? "hurdled the diving" : "stiff-armed"} ${nm(hl.pid)} in the ${perLong(hl.per).toLowerCase()}.`.replace("ot.", "overtime."));
@@ -1024,7 +1026,7 @@ function loop(ts) {
   if (GAME && V.view3d && B3) {
     let view;
     if (V.intro) view = introView(performance.now());
-    else if (V.replay) { const c = V.replay.pkg.clips[V.replay.ci]; view = { shot: c.shot || undefined, focus: c.focus, side: c.side, rate: c.hold ? 0.01 : c.rate, replay: true, spinT: V.replay.held || 0, ar: V.replay.pkg.ar }; }
+    else if (V.replay) { const c = V.replay.pkg.clips[V.replay.ci]; view = { shot: c.shot || undefined, focus: c.focus, side: c.side, rate: c.hold ? 0.01 : (V.replay.eff || c.rate), replay: true, spinT: V.replay.held || 0, ar: V.replay.pkg.ar }; }
     else if (V.hold && !V.live) view = { shot: "dance", ambient: true, dance: true };
     else if (V.tick >= GAME.ticks - 2) view = { ambient: true, shot: V.card && V.card.kind === "fin" ? "orbit" : undefined, rate: V.speed };
     else view = { rate: V.speed, focus: $("cam").value === "player" ? V.follow : undefined };
