@@ -22,7 +22,7 @@ function canvasTex(w, h, draw) {
 }
 
 // ---------- court texture ----------
-function courtTexture(home, R) {
+function courtTexture(home, rules) {
   const M = 8, S = 20; // margin (ft), px per ft
   return canvasTex((94 + 2 * M) * S, (50 + 2 * M) * S, (g, W, H) => {
     const X = x => (x + M) * S, Y = y => (y + M) * S;
@@ -50,9 +50,11 @@ function courtTexture(home, R) {
       g.beginPath(); g.moveTo(X(base), Y(3)); g.lineTo(X(base + dir * 14.2), Y(3));
       if (!side) g.arc(X(hx), Y(25), 23.75 * S, -a3, a3); else g.arc(X(hx), Y(25), 23.75 * S, PI + a3, PI - a3, true);
       g.lineTo(X(base), Y(47)); g.stroke();
-      g.save(); g.beginPath(); g.rect(X(0), Y(0), 94 * S, 50 * S); g.clip();
-      g.strokeStyle = "#f2b134"; g.lineWidth = 0.3 * S; g.setLineDash([1.2 * S, 0.8 * S]);
-      g.beginPath(); if (!side) g.arc(X(hx), Y(25), 30 * S, -PI / 2, PI / 2); else g.arc(X(hx), Y(25), 30 * S, PI / 2, PI * 1.5); g.stroke(); g.restore();
+      if (!rules || rules.four !== false) { // the four-point line arrived with the 1979 merger
+        g.save(); g.beginPath(); g.rect(X(0), Y(0), 94 * S, 50 * S); g.clip();
+        g.strokeStyle = "#f2b134"; g.lineWidth = 0.3 * S; g.setLineDash([1.2 * S, 0.8 * S]);
+        g.beginPath(); if (!side) g.arc(X(hx), Y(25), 30 * S, -PI / 2, PI / 2); else g.arc(X(hx), Y(25), 30 * S, PI / 2, PI * 1.5); g.stroke(); g.restore();
+      }
       // team name on the apron behind each baseline
       g.save(); g.translate(X(side ? 94 + M / 2 : -M / 2), Y(25)); g.rotate(side ? -PI / 2 : PI / 2);
       g.fillStyle = home.c1; g.font = `700 ${4.2 * S}px Oswald, Impact, sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
@@ -162,6 +164,8 @@ function targetPose(m, act, actT, speed, defending, holding, ball) {
     case ACT.STUMBLE: p.pitch = 0.3 * Math.sin(actT * 20); p.roll = 0.25 * Math.sin(actT * 15); p.aLz = 1.0; p.aRz = -1.0; run(); break;
     case ACT.REACH: run(); p.aRx = -1.6; p.aRz = -0.6; p.eR = -0.05; break;
     case ACT.POST: p.crouch = 0.22; p.pitch = 0.3; p.hL = -0.6; p.hR = -0.5; p.kL = p.kR = 1.0; p.aLz = 0.9; p.aLx = -0.4; p.aRx = -1.2; p.eR = -1.3; break;
+    case ACT.CALL: run(); p.aRx = -0.55 + (ball ? clamp((ball.z - 1.4) * 0.35, -0.4, 0.5) : 0); p.eR = -0.6; p.aRz = -0.3; p.crouch = 0.06; p.aLx = -2.9; p.aLz = 0.25; p.eL = -0.9 + Math.sin(actT * 14) * 0.25; p.headX = -0.1; break; // dribbling, fist up: calling the play
+    case ACT.WALL: { const sh = Math.sin(ph * 1.3) * 0.15 * runA; p.crouch = 0.16; p.hL = -0.45 + sh; p.hR = -0.45 - sh; p.kL = p.kR = 0.8; p.pitch = 0.1; p.aLx = -2.7; p.aRx = -2.75; p.aLz = 0.45; p.aRz = -0.45; p.eL = p.eR = -0.15; break; } // goalie: arms up in front of the rim
     case ACT.HUDDLE: p.pitch = 0.25; p.aLx = p.aRx = -0.6; p.aLz = 0.6; p.aRz = -0.6; p.eL = p.eR = -0.6; p.headX = 0.3; break;
     default:
       if (speed > 1.2) run();
@@ -324,7 +328,7 @@ function create(canvas, overlay) {
     G = game; teams = [home, away];
     for (const k in models) scene.remove(models[k].root);
     models = {}; onCourt.clear();
-    courtMat.map = courtTexture(home); courtMat.needsUpdate = true;
+    courtMat.map = courtTexture(home, game.rules); courtMat.needsUpdate = true;
     paintCrowd(home, away);
     ledMat.color.set(home.c1);
     G.colors = colors; sbKey = "";
@@ -408,7 +412,7 @@ function create(canvas, overlay) {
       holderModel.root.updateMatrixWorld(true);
       const R = holderModel.arms[1].hand, Lh = holderModel.arms[0].hand, v = new THREE.Vector3(), v2 = new THREE.Vector3();
       R.getWorldPosition(v); Lh.getWorldPosition(v2);
-      if (holderAct === ACT.DRIBBLE) { const fwd = new THREE.Vector3(Math.sin(holderModel.root.rotation.y), 0, Math.cos(holderModel.root.rotation.y)); ball.position.set(v.x + fwd.x * 0.5, Math.max(0.39, ballP.z), v.z + fwd.z * 0.5); }
+      if (holderAct === ACT.DRIBBLE || holderAct === ACT.CALL) { const fwd = new THREE.Vector3(Math.sin(holderModel.root.rotation.y), 0, Math.cos(holderModel.root.rotation.y)); ball.position.set(v.x + fwd.x * 0.5, Math.max(0.39, ballP.z), v.z + fwd.z * 0.5); }
       else if (holderAct === ACT.POST) ball.position.copy(v).add(new THREE.Vector3(0, 0.3, 0));
       else ball.position.copy(v.add(v2).multiplyScalar(0.5)).add(new THREE.Vector3(0, 0.35, 0));
     } else ball.position.set(ballP.x, Math.max(0.39, ballP.z), ballP.y);

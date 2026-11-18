@@ -20,6 +20,8 @@
     <div class="bug tv" id="bug"></div>
     <div class="l3" id="l3"></div>
     <div class="callout" id="callout"></div>
+    <div class="calltag" id="calltag"></div>
+    <div class="plancard" id="plancard"></div>
     <div class="replaytag" id="replayTag" hidden>REPLAY</div>
     <div class="overlay" id="bc-overlay" hidden>Loading…</div>
   </div>
@@ -28,13 +30,14 @@
     <div class="spd"><button data-s="1">1×</button><button data-s="2" class="on">2×</button><button data-s="4">4×</button><button data-s="10">10×</button><button data-s="30">30×</button></div>
     <button id="end">Final ⏭</button>
     <select id="cam" aria-label="Camera"><option value="auto">Auto camera</option><option value="sideline">Sideline</option><option value="endline">Behind the basket</option><option value="follow">Follow the ball</option><option value="overhead">Overhead</option><option value="tactical">Tactical (2D)</option></select>
-    <button id="snd" title="Sound">🔈</button><button id="rpl" class="on" title="Automatic instant replays">Replays</button><button id="fs" title="Fullscreen">⛶</button>
+    <button id="snd" title="Sound">🔈</button><button id="rpl" class="on" title="Automatic instant replays">Replays</button><button id="plans" title="Show both teams' gameplans">Plans</button><button id="fs" title="Fullscreen">⛶</button>
     <input type="range" id="scrub" min="0" max="1" value="0" step="1" aria-label="Game timeline">
   </div>
   <div class="seed" id="seed"></div>
-  <nav class="tabs bctabs"><button data-t="pbp" class="on">Play-by-play</button><button data-t="box">Box score</button></nav>
-  <section class="bctab" id="bc-pbp"><label class="chk"><input type="checkbox" id="subs"> show substitutions</label><ul id="pbp-list"></ul></section>
+  <nav class="tabs bctabs"><button data-t="pbp" class="on">Play-by-play</button><button data-t="box">Box score</button><button data-t="strat">Strategy</button></nav>
+  <section class="bctab" id="bc-pbp"><label class="chk"><input type="checkbox" id="subs"> show substitutions</label> <label class="chk"><input type="checkbox" id="calls" checked> show play calls</label><ul id="pbp-list"></ul></section>
   <section class="bctab" id="bc-box" hidden><div id="box-tables"></div></section>
+  <section class="bctab" id="bc-strat" hidden><div id="strat-body"></div></section>
 </section>
 <main id="view"></main>
 </div>

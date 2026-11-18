@@ -1,6 +1,6 @@
 {
   "name": "bounceball",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "private": true,
   "description": "The United Bounceball League: a simulated sports league with 70+ years of played history",
   "scripts": {

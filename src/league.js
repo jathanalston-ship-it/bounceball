@@ -10,7 +10,7 @@ const T = NODE ? require("./teams.js") : window.BB;
 const ST = NODE ? require("./staff.js") : window.BB;
 const TR = NODE ? require("./trouble.js") : window.BB;
 const { clamp, makeRng, hashStr } = E;
-const LEAGUE_VERSION = "0.3.0";
+const LEAGUE_VERSION = "0.4.0";
 const GAMES = 82, ROSTER_MIN = 13, ROSTER_MAX = 15, ACTIVE = 13;
 const ROSTER_ROLES = ["PG","WING","SNIPER","BRUISER","BIG","PG","WING","WING","SNIPER","BRUISER","BRUISER","BIG","BIG"];
 const STAT_KEYS = ["gp","gs","min","pts","fgm","fga","tpm","tpa","fpm","fpa","ftm","fta","oreb","dreb","ast","stl","blk","to","tkl","btk","pf"];
@@ -220,10 +220,10 @@ function rostersFor(S, sp) { return [sp.h.map(id => S.cur.snapshot[id]), sp.a.ma
 function tacticsFor(S, sp) { return [S.cur.coachSnap[sp.hc].tac, S.cur.coachSnap[sp.ac].tac]; }
 // Run one game (used by workers and single-thread mode). Returns a compact result.
 function runGame(sp, rosters, tactics) {
-  const g = E.simulateGame({ id: sp.home }, { id: sp.away }, rosters, sp.seed, { frames: false, tactics });
+  const g = E.simulateGame({ id: sp.home }, { id: sp.away }, rosters, sp.seed, { frames: false, tactics, season: sp.season });
   const box = E.boxScore(g, 1e12);
   const ids = rosters[0].concat(rosters[1]).map(p => p.id);
-  const lines = box.map((b, i) => [ids[i], b.played ? 1 : 0, i % 13 < 5 ? 1 : 0, Math.round(b.secs), b.pts, b.fgm, b.fga, b.tpm, b.tpa, b.fpm, b.fpa, b.ftm, b.fta, b.oreb, b.dreb, b.ast, b.stl, b.blk, b.to, b.tkl, b.btk, b.pf]);
+  const lines = box.map((b, i) => [ids[i], b.played ? 1 : 0, g.roster[i].starter ? 1 : 0, Math.round(b.secs), b.pts, b.fgm, b.fga, b.tpm, b.tpa, b.fpm, b.fpa, b.ftm, b.fta, b.oreb, b.dreb, b.ast, b.stl, b.blk, b.to, b.tkl, b.btk, b.pf]);
   const downs = g.events.filter(e => e.type === "tackle" && e.result === "down").map(e => ids[e.on]);
   return { gid: sp.gid, hs: g.score[0], as: g.score[1], per: g.periods, lines, downs };
 }
@@ -240,7 +240,7 @@ function applyResults(S, specs, results) {
   for (let i = 0; i < specs.length; i++) {
     const sp = specs[i], r = results[i];
     const store = sp.type === 0 ? cur.stats : cur.pstats;
-    r.lines.forEach((ln, j) => addLine(store, ln, j < 13 ? sp.home : sp.away));
+    r.lines.forEach((ln, j) => addLine(store, ln, j < sp.h.length ? sp.home : sp.away));
     cur.games.push([sp.gid, sp.day, sp.home, sp.away, sp.seed, r.hs, r.as, r.per, sp.type, sp.h, sp.a, sp.hc, sp.ac]);
     if (sp.type === 0) {
       const H = cur.standings[sp.home], A = cur.standings[sp.away];

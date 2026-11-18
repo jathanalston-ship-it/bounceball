@@ -17,6 +17,31 @@ const BUSINESSES = ["a regional grocery chain", "a trucking company", "a chain o
   "a regional airline", "a radio network", "a cement company", "a pickle cannery", "a bowling alley chain", "a cable company", "a real estate developer"];
 
 // ---------- coaches ----------
+// Philosophy: the offense he believes in, the defense he teaches, when his players are allowed to hit,
+// and how he coaches: how much he bends his system to fit his roster and the opponent (adapt), how well
+// his players stick to the plan (disc), late-game smarts (late) and how much he feeds his star (star).
+// A former player coaches the way he played.
+const SYS_W = { motion: 24, helio: 20, power: 20, four: 16, bounce: 20 };
+const SCHEME_W = { man: 38, switch: 17, goalie: 18, extend: 15, zone: 12 };
+const EX_SYS = { PG: { motion: 50, helio: 40, bounce: 10 }, WING: { helio: 35, bounce: 40, motion: 25 }, SNIPER: { four: 70, motion: 30 }, BRUISER: { power: 75, motion: 25 }, BIG: { power: 55, bounce: 25, motion: 20 } };
+const EX_SCHEME = { PG: { man: 50, switch: 30, extend: 20 }, WING: { switch: 40, man: 40, extend: 20 }, SNIPER: { extend: 50, man: 30, zone: 20 }, BRUISER: { man: 50, zone: 30, goalie: 20 }, BIG: { goalie: 60, zone: 25, man: 15 } };
+function wpick(rng, w) { let tot = 0; for (const k in w) tot += w[k]; let x = rng.next() * tot; for (const k in w) { x -= w[k]; if (x <= 0) return k; } return Object.keys(w)[0]; }
+function genPhil(S, rng, c, role) {
+  const fours = S.season >= 1979;
+  const sw = Object.assign({}, role ? EX_SYS[role] : SYS_W); if (!fours) delete sw.four;
+  const dw = Object.assign({}, role ? EX_SCHEME[role] : SCHEME_W); if (!fours) delete dw.extend;
+  let sys = wpick(rng, sw); if (!sw[sys]) sys = "motion";
+  let scheme = wpick(rng, dw); if (!dw[scheme]) scheme = "man";
+  const t = c.style.tackle, hit = t > 1.12 ? "blitz" : t < 0.88 ? "disciplined" : "contain";
+  const q = (c.off + c.def - 100) / 200;
+  return {
+    sys, scheme, hit,
+    adapt: Math.round(clamp(rng.normal(0.5 + q * 0.6, 0.2), 0.05, 0.95) * 100) / 100,
+    disc: Math.round(clamp(rng.normal(0.5 + (c.def - 50) / 200, 0.2), 0.05, 0.95) * 100) / 100,
+    late: Math.round(clamp(rng.normal(0.5 + (c.off - 50) / 160, 0.2), 0.05, 0.95) * 100) / 100,
+    star: Math.round(clamp(rng.normal(sys === "helio" ? 0.65 : 0.45, 0.2), 0.05, 0.95) * 100) / 100
+  };
+}
 function genCoach(S, rng, o) {
   o = o || {};
   const c = {
@@ -35,6 +60,9 @@ function genCoach(S, rng, o) {
     team: null, from: null, available: S.season, retired: null,
     w: 0, l: 0, pw: 0, pl: 0, titles: 0, awards: [], hist: [], trouble: Math.round(clamp(rng.normal(0.12, 0.1), 0, 0.6) * 100) / 100
   };
+  if (o.role === "BRUISER") c.style.tackle = Math.round(clamp(c.style.tackle + 0.15, 0.6, 1.5) * 100) / 100;
+  if (o.role === "SNIPER") c.style.four = Math.round(clamp(c.style.four + 0.2, 0.6, 1.5) * 100) / 100;
+  c.phil = genPhil(S, rng, c, o.role);
   c.first = o.first || P.pickFirst(rng, c.born);
   // don't hand a coach the exact name of a player in the league
   if (!o.ex) for (let k = 0; k < 5 && Object.values(S.players).some(p => p.first === c.first && p.last === c.last); k++) c.last = rng.pick(P.LAST);
@@ -43,14 +71,17 @@ function genCoach(S, rng, o) {
 }
 function tactics(c) {
   if (!c) return null;
-  return { pace: c.style.pace, tackle: c.style.tackle, four: c.style.four, sw: c.style.sw, depth: c.style.depth, d: (c.def - 50) / 50, o: (c.off - 50) / 50 };
+  const ph = c.phil || {};
+  return { pace: c.style.pace, tackle: c.style.tackle, four: c.style.four, sw: c.style.sw, depth: c.style.depth, d: (c.def - 50) / 50, o: (c.off - 50) / 50,
+    sys: ph.sys || "motion", scheme: ph.scheme || "man", hit: ph.hit || "contain", adapt: ph.adapt !== undefined ? ph.adapt : 0.5, disc: ph.disc !== undefined ? ph.disc : 0.5,
+    late: ph.late !== undefined ? ph.late : 0.5, star: ph.star !== undefined ? ph.star : 0.5 };
 }
 // A retiring player with a high IQ may start an assistant career and become a head coach later.
 function maybeCoachingCareer(S, p, rng) {
   const age = S.season - p.born;
   if (age < 29 || p.r.iq < 58 || !rng.chance(0.08 + (p.r.iq - 58) * 0.006)) return null;
   const c = genCoach(S, rng, {
-    first: p.first, last: p.last, born: p.born, ex: p.id,
+    first: p.first, last: p.last, born: p.born, ex: p.id, role: p.role,
     off: p.r.iq * 0.55 + p.r.pas * 0.2 + rng.normal(10, 9), def: p.r.iq * 0.4 + (p.r.perD + p.r.tck + p.r.rim) / 3 * 0.35 + rng.normal(12, 9)
   });
   c.available = S.season + rng.int(2, 6); // years as an assistant first

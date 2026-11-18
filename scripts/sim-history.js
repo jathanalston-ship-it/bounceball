@@ -5,6 +5,7 @@
 // of how many workers are used.
 //
 //   node scripts/sim-history.js --seed canon-1 --to 2025 --out data --workers 4 --max-minutes 330
+//   --from 1995 starts a brand-new league in a later year (quick previews only; the canon starts in 1954)
 "use strict";
 const fs = require("fs"), path = require("path"), os = require("os");
 const { Worker } = require("worker_threads");
@@ -45,13 +46,13 @@ function writeSummaries(S) {
   const players = {};
   for (const p of Object.values(S.players)) {
     if (!p.career && !p.team && !p.hof) continue; // never played: skip
-    players[p.id] = { id: p.id, name: p.first + " " + p.last, role: p.role, ht: p.ht, wt: p.wt, born: p.born, num: p.num, team: p.team, teams: p.teams,
+    players[p.id] = { id: p.id, name: p.first + " " + p.last, role: p.role, ht: p.ht, wt: p.wt, wing: p.wing, aggr: p.aggr, born: p.born, num: p.num, team: p.team, teams: p.teams,
       ovr: p.ovr, r: p.retired ? undefined : p.r, tier: p.tier, draft: p.draft, retired: p.retired, hof: p.hof, awards: p.awards, career: p.career,
       contract: p.contract, injury: p.injury };
   }
   writeJSON(path.join(OUT, "players.json"), players);
   const coaches = {}, owners = {};
-  for (const c of Object.values(S.coaches)) if (c.team || c.w + c.l > 0) coaches[c.id] = { id: c.id, name: c.first + " " + c.last, born: c.born, ex: c.ex, team: c.team, off: c.off, def: c.def, dev: c.dev, style: c.style, w: c.w, l: c.l, pw: c.pw, pl: c.pl, titles: c.titles, awards: c.awards, seasons: c.seasons || [], hist: c.hist, retired: c.retired };
+  for (const c of Object.values(S.coaches)) if (c.team || c.w + c.l > 0) coaches[c.id] = { id: c.id, name: c.first + " " + c.last, born: c.born, ex: c.ex, team: c.team, off: c.off, def: c.def, dev: c.dev, style: c.style, phil: c.phil, w: c.w, l: c.l, pw: c.pw, pl: c.pl, titles: c.titles, awards: c.awards, seasons: c.seasons || [], hist: c.hist, retired: c.retired };
   for (const o of Object.values(S.owners)) owners[o.id] = { id: o.id, name: o.first + " " + o.last, born: o.born, team: o.team, from: o.from, to: o.to, how: o.how, biz: o.biz, wealth: o.wealth, patience: o.patience, spend: o.spend };
   writeJSON(path.join(OUT, "staff.json"), { coaches, owners });
   const teams = {};
@@ -66,7 +67,7 @@ function writeSummaries(S) {
 async function main() {
   let S;
   if (fs.existsSync(statePath) && !args.fresh) { S = JSON.parse(fs.readFileSync(statePath, "utf8")); console.log(`resuming at ${S.season} (seed ${S.masterSeed})`); }
-  else { S = L.newLeague(SEED, 1954); console.log(`new league, seed ${SEED}`); }
+  else { S = L.newLeague(SEED, +(args.from || 1954)); console.log(`new league, seed ${SEED}${args.from ? ", starting " + args.from : ""}`); }
   const pool = new Pool(WORKERS);
   while (S.season <= TO) {
     if ((Date.now() - t0) / 60000 > MAX_MIN) { console.log(`time budget reached; paused before ${S.season}`); break; }

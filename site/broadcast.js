@@ -21,7 +21,11 @@ function buildNotable(game) {
   const out = [];
   for (const e of game.events) {
     let label = null, col = "#fff", big = 0;
-    if (e.type === "tackle" && e.result === "down") { label = "TACKLE!"; col = "#ff4d4d"; big = 3; }
+    if (e.type === "tackle" && e.result === "down" && e.gang) { label = "GANG TACKLE!"; col = "#ff4d4d"; big = 3; }
+    else if (e.type === "tackle" && e.result === "down") { label = "TACKLE!"; col = "#ff4d4d"; big = 3; }
+    else if (e.type === "tackle" && e.result === "fumble") { label = "FUMBLE!"; col = "#ff4d4d"; big = 3; }
+    else if (e.type === "tackle" && e.result === "rough") { label = "ROUGHING"; col = "#ffb703"; big = 1; }
+    else if (e.type === "fga" && e.made && e.pt === "lob") { label = "ALLEY-OOP!"; col = "#fff"; big = 3; }
     else if (e.type === "tackle" && e.result === "late") { label = "LATE HIT"; col = "#ffb703"; big = 1; }
     else if (e.type === "tackle" && e.result === "broken") { label = "BROKE THE TACKLE"; col = "#7cf"; big = 1; }
     else if (e.type === "fga" && e.gt !== undefined) { label = "GOALTENDING"; col = "#ffb703"; }
@@ -71,10 +75,12 @@ function drawCourtBg() {
     g.beginPath(); g.moveTo(X(base), Y(3)); g.lineTo(X(base + dir * C.C3X), Y(3));
     if (side === 0) g.arc(X(hx), Y(25), C.R3 * S, -a3, a3); else g.arc(X(hx), Y(25), C.R3 * S, Math.PI + a3, Math.PI - a3, true);
     g.lineTo(X(base), Y(47)); g.stroke();
-    g.save(); g.beginPath(); g.rect(X(0), Y(0), 94 * S, 50 * S); g.clip();
-    g.strokeStyle = "#f2b134"; g.lineWidth = Math.max(1.5, S * 0.3); g.setLineDash([S * 1.2, S * 0.8]);
-    g.beginPath(); if (side === 0) g.arc(X(hx), Y(25), C.R4 * S, -Math.PI / 2, Math.PI / 2); else g.arc(X(hx), Y(25), C.R4 * S, Math.PI / 2, Math.PI * 1.5);
-    g.stroke(); g.restore();
+    if (!GAME || !GAME.rules || GAME.rules.four !== false) {
+      g.save(); g.beginPath(); g.rect(X(0), Y(0), 94 * S, 50 * S); g.clip();
+      g.strokeStyle = "#f2b134"; g.lineWidth = Math.max(1.5, S * 0.3); g.setLineDash([S * 1.2, S * 0.8]);
+      g.beginPath(); if (side === 0) g.arc(X(hx), Y(25), C.R4 * S, -Math.PI / 2, Math.PI / 2); else g.arc(X(hx), Y(25), C.R4 * S, Math.PI / 2, Math.PI * 1.5);
+      g.stroke(); g.restore();
+    }
     g.strokeStyle = "#ff7a1a"; g.lineWidth = Math.max(1.5, S * 0.25); g.beginPath(); g.arc(X(hx), Y(25), 0.75 * S, 0, 7); g.stroke();
     g.strokeStyle = "rgba(238,232,218,0.85)"; g.lineWidth = Math.max(1, S * 0.18);
   }
@@ -157,13 +163,23 @@ function playEvents(fromTick, toTick) {
         else if (AUDIO && !e.dunk) AUDIO.clank();
         break;
       case "tackle":
-        if (e.result === "down") { if (B3) B3.excite(0.9); if (AUDIO) { AUDIO.excite(0.9); AUDIO.whistle(); } lowerThird(col, "TACKLE · " + esc(r.short), "turnover"); }
+        if (e.result === "down") { if (B3) B3.excite(0.9); if (AUDIO) { AUDIO.excite(0.9); AUDIO.whistle(); } lowerThird(col, (e.gang ? "GANG TACKLE · " : "TACKLE · ") + esc(r.short) + (e.gang ? " +" + e.gang.length : ""), "turnover"); }
+        else if (e.result === "fumble") { if (B3) B3.excite(1); if (AUDIO) AUDIO.excite(1); lowerThird(col, "FUMBLE · " + esc(r.short), `jarred loose from ${esc(GAME.roster[e.on].short)} · live ball`); }
+        else if (e.result === "rough") { if (AUDIO) AUDIO.whistle(); lowerThird(col, "ROUGHING · " + esc(r.short), "hit an airborne player · two shots"); }
         else if (e.result === "late" && AUDIO) AUDIO.whistle();
         break;
-      case "foul": if (AUDIO) AUDIO.whistle(); break;
+      case "recover": if (!e.own) lowerThird(col, "RECOVERED · " + esc(r.short), "turnover"); break;
+      case "call": callTag(e, col); break;
+      case "adjust": lowerThird(col, "ADJUSTMENT · " + TB[e.team === 0 ? GAME.home : GAME.away].id, adjustText(e)); break;
+      case "plan": if (e.team === 1 && e.tk <= 0) showPlanCard(); break;
+      case "foul":
+        if (AUDIO) AUDIO.whistle();
+        if (e.kind === "moving") lowerThird(col, "MOVING SCREEN · " + esc(r.short), "offensive foul · turnover");
+        else if (e.kind === "hack") lowerThird(col, "HACK-A-" + esc(GAME.roster[e.on].short.split(" ").pop().toUpperCase()), "sending him to the line on purpose");
+        break;
       case "violation": if (AUDIO) AUDIO.whistle(); break;
       case "timeout": if (AUDIO) { AUDIO.whistle(); setTimeout(() => AUDIO.organ(e.tk + 3), 900); } lowerThird(col, "TIMEOUT", esc(TB[e.team === 0 ? GAME.home : GAME.away].city + " " + TB[e.team === 0 ? GAME.home : GAME.away].name)); break;
-      case "period_end": if (AUDIO) AUDIO.buzzer(); lowerThird("#f2b134", "END OF " + (e.per <= 4 ? ["1ST", "2ND", "3RD", "4TH"][e.per - 1] : "OT"), `${TB[GAME.away].id} ${e.s1} · ${TB[GAME.home].id} ${e.s0}`); break;
+      case "period_end": if (AUDIO) AUDIO.buzzer(); if (e.per === 2) setTimeout(() => showPlanCard(true), 2500); lowerThird("#f2b134", "END OF " + (e.per <= 4 ? ["1ST", "2ND", "3RD", "4TH"][e.per - 1] : "OT"), `${TB[GAME.away].id} ${e.s1} · ${TB[GAME.home].id} ${e.s0}`); break;
       case "period_start": if (AUDIO && e.tk > 0) AUDIO.organ(e.tk); break;
       case "ft": if (e.made && AUDIO) AUDIO.excite(homeTeam ? 0.2 : 0.05); break;
     }
@@ -175,17 +191,52 @@ function attSideOf(t, per) { return ((t === 0) !== (per >= 3)) ? 1 : 0; }
 // ---------- play-by-play & box ----------
 function visibleCount() { const E = GAME.events; let lo = 0, hi = E.length; while (lo < hi) { const m = (lo + hi) >> 1; if (E[m].tk <= V.tick) lo = m + 1; else hi = m; } return lo; }
 function nm(i) { const r = GAME.roster[i]; return `<b>${esc(r.short)}</b>`; }
+function tnm(t) { const tm = TB[t === 0 ? GAME.home : GAME.away]; return esc(tm.city); }
+const PT_PHRASE = { trans: " in transition", putback: " on the putback", post: " out of the post", pnr: " off the pick-and-roll", roll: " on the roll", iso: " in isolation", offscr: " coming off a screen", cut: " on the cut", drive: " on the drive" };
+const WHY = { fours: "they're getting killed from four", paint: "they can't keep them out of the paint", fouls: "too many late hits", working: "the hits are working", broken: "tackles keep getting broken",
+  tackled: "their ball handlers keep getting buried", star: "he's taking over", stuck: "the offense has stalled" };
+function adjustText(e) {
+  const S = BB.SYSTEMS, SC = BB.SCHEMES, HI = BB.HITS;
+  let what;
+  if (e.key === "sys") what = `switch to ${S[e.to].name} on offense`;
+  else if (e.key === "scheme") what = e.to === "goalie" ? `go to the Goalie: ${esc(GAME.roster[e.pid].short)} stays home` : e.to === "extend" ? "extend out to the four-point line" : e.to === "zone" ? "drop into a zone" : `switch to ${SC[e.to].name}`;
+  else if (e.key === "hit") what = e.to === "blitz" ? "start blitzing the ball handler" : e.to === "contain" ? "pull back to Contain tackling" : "stop sending tacklers";
+  else if (e.key === "double") what = `start doubling ${esc(GAME.roster[e.pid].short)}`;
+  return what + (WHY[e.why] ? ` (${WHY[e.why]})` : "");
+}
+function callText(e) {
+  const P = e.pid >= 0 ? nm(e.pid) : "", W = e.w >= 0 ? nm(e.w) : "";
+  switch (e.kind) {
+    case "pnr": return `${tnm(e.team)} runs a pick-and-roll for ${P}`;
+    case "iso": return `${tnm(e.team)} clears out for ${P}`;
+    case "post": return `${tnm(e.team)} goes to ${P} in the post`;
+    case "offscr": return `${tnm(e.team)} runs ${P} off screens`;
+    case "double": return `${P} comes to double ${W}`;
+    case "foul": return `${tnm(e.team)} needs to foul`;
+    case "hack": return `${tnm(e.team)} goes hack-a-${W}`;
+  }
+  return null;
+}
 function pbpLine(e) {
   switch (e.type) {
     case "tip": return [`${nm(e.pid)} wins the opening tip`, ""];
+    case "plan": {
+      const S = BB.SYSTEMS[e.off], D = BB.SCHEMES[e.def], H = BB.HITS[e.hit];
+      return [`${tnm(e.team)} gameplan: <b>${S.name}</b> offense, <b>${D.name}</b> defense${e.goalie >= 0 && e.def === "goalie" ? ` (${nm(e.goalie)} stays home)` : ""}, <b>${H.name}</b> tackling${e.dbl >= 0 ? `, doubling ${nm(e.dbl)}` : ""}`, "plan"];
+    }
+    case "adjust": return [`ADJUSTMENT: ${tnm(e.team)} ${adjustText(e)}`, "plan"];
+    case "call": { const t = callText(e); return t ? [t, "m call"] : null; }
     case "fga": {
       const kind = e.dunk ? "dunk" : e.layup ? "layup" : e.hook ? `${e.d}-ft hook shot` : e.val === 4 ? `${e.d}-ft four` : e.val === 3 ? `${e.d}-ft three` : `${e.d}-ft jumper`;
+      const how = PT_PHRASE[e.pt] || "";
       if (e.gt !== undefined) return [`${nm(e.pid)}'s ${kind} counts. Goaltending on ${nm(e.gt)}`, "hot"];
       if (e.ci !== undefined) return [`${nm(e.pid)}'s ${kind} counts. ${nm(e.ci)}'s hand went through the cylinder`, "hot"];
-      if (e.blk !== undefined && e.blk >= 0) return [e.swat ? `SWAT! ${nm(e.blk)} slaps ${nm(e.pid)}'s ${kind} off the rim` : `${nm(e.blk)} blocks ${nm(e.pid)}'s ${kind}`, "hot"];
-      if (e.made) return [`${nm(e.pid)} ${e.dunk ? "throws it down" : "hits the " + kind}${e.ast >= 0 ? ` <span class="m">(${esc(GAME.roster[e.ast].short)} assist)</span>` : ""}`, e.val === 4 || e.dunk ? "score hot" : "score"];
-      return [`${nm(e.pid)} misses the ${kind}`, ""];
+      if (e.blk !== undefined && e.blk >= 0) return [e.swat ? `SWAT! ${nm(e.blk)} slaps ${nm(e.pid)}'s ${kind} off the rim` : `${nm(e.blk)} blocks ${nm(e.pid)}'s ${kind}${how}`, "hot"];
+      if (e.made && e.pt === "lob") return [`ALLEY-OOP! ${e.ast >= 0 ? nm(e.ast) + " lobs it and " : ""}${nm(e.pid)} throws it down`, "score hot"];
+      if (e.made) return [`${nm(e.pid)} ${e.dunk ? "throws it down" : e.layup ? "lays it in" : "hits the " + kind}${how}${e.ast >= 0 ? ` <span class="m">(${esc(GAME.roster[e.ast].short)} assist)</span>` : ""}`, e.val === 4 || e.dunk ? "score hot" : "score"];
+      return [`${nm(e.pid)} misses the ${kind}${how}`, ""];
     }
+    case "recover": return [e.own ? `${nm(e.pid)} falls on the loose ball` : `${nm(e.pid)} scoops up the fumble. Turnover`, e.own ? "" : "hot"];
     case "ft": return [`${nm(e.pid)} ${e.made ? "makes" : "misses"} free throw ${e.n} of ${e.of}`, e.made ? "score" : ""];
     case "reb": return [`${nm(e.pid)} ${e.off ? "offensive" : "defensive"} rebound`, "m"];
     case "to":
@@ -193,26 +244,34 @@ function pbpLine(e) {
       if (e.kind === "loose") return [`${nm(e.by)} comes up with the loose ball`, ""];
       if (e.kind === "oob") return [`${nm(e.pid)} turns it over out of bounds`, ""];
       if (e.kind === "shotclock") return [`Shot clock violation`, ""];
-      return null;
+      return null; // tackles, fumbles and moving screens have their own lines
     case "tackle":
+      if (e.result === "down" && e.gang) return [`GANG TACKLE! ${nm(e.pid)} and ${e.gang.map(nm).join(" and ")} bury ${nm(e.on)}. Turnover`, "hot"];
       if (e.result === "down") return [`TACKLE! ${nm(e.pid)} puts ${nm(e.on)} on the rubber. Turnover`, "hot"];
-      if (e.result === "broken") return [`${nm(e.on)} shrugs off ${nm(e.pid)}'s tackle`, ""];
+      if (e.result === "fumble") return [`FUMBLE! ${nm(e.pid)}${e.gang ? " and " + e.gang.map(nm).join(" and ") : ""} jar it loose from ${nm(e.on)}. Live ball`, "hot"];
+      if (e.result === "rough") return [`ROUGHING. ${nm(e.pid)} hits ${nm(e.on)} in the air. Two shots`, "hot"];
+      if (e.result === "broken") return [`${nm(e.on)} shrugs off ${e.gang ? (e.gang.length + 1) + " tacklers" : nm(e.pid) + "'s tackle"}`, ""];
       if (e.result === "whiff") return [`${nm(e.pid)} whiffs on the tackle`, "m"];
       if (e.result === "late") return [`LATE HIT. ${nm(e.pid)} tackles ${nm(e.on)} after the ball is gone`, "hot"];
       return null;
-    case "foul": return [`Foul on ${nm(e.pid)} <span class="m">(${e.pf} PF${e.kind === "shooting" ? ", shooting" : ""})</span>`, "m"];
+    case "foul":
+      if (e.kind === "moving") return [`Moving screen on ${nm(e.pid)}. Offensive foul, turnover <span class="m">(${e.pf} PF)</span>`, "m"];
+      if (e.kind === "intentional") return [`${nm(e.pid)} fouls ${nm(e.on)} on purpose to stop the clock <span class="m">(${e.pf} PF)</span>`, "m"];
+      if (e.kind === "hack") return [`${nm(e.pid)} grabs ${nm(e.on)} away from the ball. Hack-a-${esc(GAME.roster[e.on].short.split(" ").pop())} <span class="m">(${e.pf} PF)</span>`, "m"];
+      if (e.kind === "roughing") return null;
+      return [`Foul on ${nm(e.pid)} <span class="m">(${e.pf} PF${e.kind === "shooting" ? ", shooting" : ""})</span>`, "m"];
     case "fouledout": return [`${nm(e.pid)} has fouled out`, "hot"];
     case "timeout": return [`Timeout, ${esc(TB[e.team === 0 ? GAME.home : GAME.away].name)}`, "m"];
-    case "sub": return [`${nm(e.inn)} checks in for ${nm(e.out)}`, "m sub"];
+    case "sub": return [`${nm(e.inn)} checks in for ${nm(e.out)}${e.why === "fouls" ? " <span class=\"m\">(foul trouble)</span>" : e.why === "closer" ? " <span class=\"m\">(closing lineup)</span>" : e.why === "hack" ? " <span class=\"m\">(getting him away from the hack)</span>" : ""}`, "m sub"];
     case "period_end": return [`End of ${perName(e.per)}`, "sep"];
     case "final": return [`FINAL`, "sep"];
   }
   return null;
 }
 function renderPBP(n) {
-  const E = GAME.events, out = [], showSubs = $("subs").checked;
+  const E = GAME.events, out = [], showSubs = $("subs").checked, showCalls = !$("calls") || $("calls").checked;
   for (let i = n - 1; i >= 0 && out.length < 250; i--) {
-    const e = E[i]; if (e.type === "sub" && !showSubs) continue;
+    const e = E[i]; if (e.type === "sub" && !showSubs) continue; if (e.type === "call" && !showCalls) continue;
     const L = pbpLine(e); if (!L) continue;
     const t = e.team !== undefined ? e.team : -1;
     out.push(`<li class="${L[1]}"><span class="t">${perName(e.per)} ${fmtClock(e.clk)}</span><i style="background:${t >= 0 ? COLORS[t] : "transparent"}"></i><span class="x">${L[0]}</span><span class="s">${e.s1}-${e.s0}</span></li>`);
@@ -234,6 +293,85 @@ function renderBox() {
     html += line("<b>Team</b>", tot, "tot") + `</tbody></table></div>`;
   }
   $("box-tables").innerHTML = html;
+}
+
+// ---------- strategy: gameplans, adjustments, how each team is scoring and hitting ----------
+const TAG = { pnr: "PICK & ROLL", iso: "ISOLATION", post: "POST UP", offscr: "OFF SCREENS", double: "DOUBLE TEAM", foul: "FOULING", hack: "HACK" };
+let ctTimer = 0;
+function callTag(e, col) {
+  const el = $("calltag"); if (!el || !TAG[e.kind] || ($("plancard") && $("plancard").classList.contains("on"))) return;
+  const who = e.kind === "double" || e.kind === "hack" ? e.w : e.pid, r = who >= 0 ? GAME.roster[who] : null;
+  el.style.setProperty("--c", col);
+  el.innerHTML = `<b>${TAG[e.kind]}</b>${r ? `<span>#${r.num} ${esc(r.short.split(" ").pop().toUpperCase())}</span>` : ""}`;
+  el.classList.add("on"); clearTimeout(ctTimer); ctTimer = setTimeout(() => el.classList.remove("on"), 2600);
+}
+function planOf(t, upto) { const R = strategyReport(GAME, upto === undefined ? 1e12 : upto); return R[t]; }
+function curPlan(t, upto) {
+  const R = planOf(t, upto), p = R.plan; if (!p) return null;
+  const cur = { off: p.off, def: p.def, hit: p.hit, dbl: p.dbl, goalie: p.goalie, pace: p.pace, crash: p.crash, leak: p.leak };
+  for (const a of R.adjust) { if (a.key === "sys") { cur.off = a.to; if (a.pace !== undefined) { cur.pace = a.pace; cur.crash = a.crash; cur.leak = a.leak; } } if (a.key === "scheme") { cur.def = a.to; if (a.to === "goalie") cur.goalie = a.pid; } if (a.key === "hit") cur.hit = a.to; if (a.key === "double") cur.dbl = a.pid; }
+  return { p, cur, R };
+}
+let pcTimer = 0;
+function showPlanCard(half) {
+  const el = $("plancard"); if (!el || !GAME) return;
+  const rows = [1, 0].map(t => {
+    const x = curPlan(t, half ? V.tick : 0); if (!x) return "";
+    const tm = TB[t === 0 ? GAME.home : GAME.away], c = x.cur;
+    const coach = GAME.coachNames && GAME.coachNames[t] ? `<small>Coach ${esc(GAME.coachNames[t])}</small>` : "";
+    const changes = half ? x.R.adjust.filter(a => a.tk <= V.tick).map(a => `<li>${adjustText(a)}</li>`).join("") : "";
+    return `<div class="pc" style="--c:${COLORS[t]}"><div class="pch"><b>${esc(tm.city)} ${esc(tm.name)}</b>${coach}</div>
+      <div class="pcg"><span>Offense</span><b>${BB.SYSTEMS[c.off].name}</b><span>Defense</span><b>${BB.SCHEMES[c.def].name}${c.def === "goalie" && c.goalie >= 0 ? ` <i>${esc(GAME.roster[c.goalie].short)} stays home</i>` : ""}</b>
+      <span>Tackling</span><b>${BB.HITS[c.hit].name}</b><span>Go-to guy</span><b>${esc(GAME.roster[x.p.star].short)}</b>${c.dbl >= 0 ? `<span>Doubling</span><b>${esc(GAME.roster[c.dbl].short)}</b>` : ""}</div>
+      ${half ? (changes ? `<ul class="pcx">${changes}</ul>` : `<p class="pcx">No changes at the half.</p>`) : ""}</div>`;
+  }).join("");
+  el.innerHTML = `<div class="pct">${half ? "HALFTIME ADJUSTMENTS" : "TONIGHT'S GAMEPLANS"}</div>${rows}`;
+  el.classList.add("on"); clearTimeout(pcTimer); pcTimer = setTimeout(() => el.classList.remove("on"), half ? 9000 : 8000);
+}
+function renderStrategy() {
+  const el = $("strat-body"); if (!el || !GAME) return;
+  const R = strategyReport(GAME, V.tick), PT = BB.PT_LABEL;
+  let h = "";
+  // gameplans side by side
+  h += `<div class="sgrid">` + [1, 0].map(t => {
+    const x = curPlan(t, V.tick); if (!x) return "";
+    const tm = TB[t === 0 ? GAME.home : GAME.away], p = x.p, c = x.cur, opp = curPlan(1 - t, V.tick);
+    const S = BB.SYSTEMS[c.off], D = BB.SCHEMES[c.def], H = BB.HITS[c.hit];
+    const pace = c.pace > 0.35 ? "pushes the pace" : c.pace < -0.25 ? "walks it up" : "balanced pace";
+    const glass = ["nobody crashes the glass", "one man on the glass", "two on the glass", "three on the glass"][c.crash] || "";
+    const stopOn = opp ? opp.p.star : -1;
+    return `<div class="splan" style="--c:${COLORS[t]}"><h4>${esc(tm.city)} ${esc(tm.name)}${GAME.coachNames && GAME.coachNames[t] ? ` <small>Coach ${esc(GAME.coachNames[t])}</small>` : ""}</h4>
+      <dl><dt>Offense</dt><dd><b>${S.name}</b> <span class="m">${S.blurb}; ${pace}; ${glass}${c.leak ? "; leaks out for the outlet" : ""}</span></dd>
+      <dt>Defense</dt><dd><b>${D.name}</b> <span class="m">${D.blurb}</span>${c.def === "goalie" && c.goalie >= 0 ? ` · ${nm(c.goalie)} stays home` : ""}</dd>
+      <dt>Tackling</dt><dd><b>${H.name}</b> <span class="m">${H.blurb}</span></dd>
+      <dt>Assignments</dt><dd>Go-to guy ${nm(p.star)}${p.hitman >= 0 ? ` · hit man ${nm(p.hitman)}` : ""}${p.stopper >= 0 && stopOn >= 0 ? ` · ${nm(p.stopper)} on ${nm(stopOn)}` : ""}${c.dbl >= 0 ? ` · doubling ${nm(c.dbl)}` : ""}</dd></dl>
+      ${x.R.adjust.length ? `<ul class="sadj">${x.R.adjust.map(a => `<li><span class="t">${perName(a.per)} ${fmtClock(a.clk)}</span> ${adjustText(a)}</li>`).join("")}</ul>` : ""}</div>`;
+  }).join("") + `</div>`;
+  // how they're scoring
+  const keys = Object.keys(PT).filter(k => R[0].pts[k] || R[1].pts[k] || R[0].att[k] || R[1].att[k]);
+  keys.sort((a, b) => ((R[0].pts[b] || 0) + (R[1].pts[b] || 0)) - ((R[0].pts[a] || 0) + (R[1].pts[a] || 0)));
+  const A = TB[GAME.away].id, Hm = TB[GAME.home].id;
+  h += `<h3>How they're scoring</h3><div class="tw"><table class="box strat"><thead><tr><th class="pn">Play type</th><th>${A} pts</th><th>${A} shots</th><th>${Hm} pts</th><th>${Hm} shots</th></tr></thead><tbody>`;
+  for (const k of keys) h += `<tr><td class="pn">${PT[k]}</td><td class="b">${R[1].pts[k] || 0}</td><td>${R[1].att[k] || 0}</td><td class="b">${R[0].pts[k] || 0}</td><td>${R[0].att[k] || 0}</td></tr>`;
+  h += `</tbody></table></div>`;
+  // the hitting
+  const tk = t => R[t].tk, f = (t, k) => R[t].fouls[k] || 0;
+  h += `<h3>Tackling</h3><div class="tw"><table class="box strat"><thead><tr><th class="pn"></th><th>${A}</th><th>${Hm}</th></tr></thead><tbody>
+    <tr><td class="pn">Tackles for a turnover</td><td class="b">${tk(1).down}</td><td class="b">${tk(0).down}</td></tr>
+    <tr><td class="pn">Fumbles forced / recovered</td><td>${tk(1).fumble} / ${R[1].recov}</td><td>${tk(0).fumble} / ${R[0].recov}</td></tr>
+    <tr><td class="pn">Gang tackles</td><td>${tk(1).gang}</td><td>${tk(0).gang}</td></tr>
+    <tr><td class="pn">Broken tackles allowed</td><td>${tk(1).broken}</td><td>${tk(0).broken}</td></tr>
+    <tr><td class="pn">Whiffs</td><td>${tk(1).whiff}</td><td>${tk(0).whiff}</td></tr>
+    <tr><td class="pn">Late hits / roughing</td><td>${tk(1).late} / ${tk(1).rough}</td><td>${tk(0).late} / ${tk(0).rough}</td></tr>
+    <tr><td class="pn">Play calls (P&amp;R / iso / post / screens)</td><td>${R[1].calls.pnr || 0} / ${R[1].calls.iso || 0} / ${R[1].calls.post || 0} / ${R[1].calls.offscr || 0}</td><td>${R[0].calls.pnr || 0} / ${R[0].calls.iso || 0} / ${R[0].calls.post || 0} / ${R[0].calls.offscr || 0}</td></tr>
+    <tr><td class="pn">Doubles / intentional fouls / hacks</td><td>${R[1].calls.double || 0} / ${f(1, "intentional")} / ${f(1, "hack")}</td><td>${R[0].calls.double || 0} / ${f(0, "intentional")} / ${f(0, "hack")}</td></tr>
+    </tbody></table></div>`;
+  // personnel
+  h += `<h3>Personnel</h3><div class="sgrid">` + [1, 0].map(t => {
+    const x = curPlan(t, 0), rot = x ? x.p.rot : [], jobs = new Map(x ? x.p.jobs : []);
+    return `<div class="splan" style="--c:${COLORS[t]}"><ul class="pers">${rot.map(i => { const r = GAME.roster[i]; return `<li><span class="num">${r.num}</span>${esc(r.short)} <span class="m">${r.role === "SNIPER" ? "SN" : r.role === "BRUISER" ? "BR" : r.role}</span> <b>${BB.ARCH[r.arch] ? BB.ARCH[r.arch].name : ""}</b> <span class="m">· ${BB.DARCH[r.darch] || ""}${jobs.has(i) && jobs.get(i) !== "space" ? " · " + BB.JOBS[jobs.get(i)] : ""}</span></li>`; }).join("")}</ul></div>`;
+  }).join("") + `</div>`;
+  el.innerHTML = h;
 }
 
 // ---------- channels: several games on one clock ----------
@@ -263,7 +401,8 @@ function simulate(row, seasonData) {
   const [gid, day, h, a, seed, hs, as, per, type, hl, al, hc, ac] = row;
   const ps = seasonData.players, co = seasonData.coaches || {};
   const tactics = hc !== undefined && co[hc] ? [co[hc].tac, co[ac].tac] : undefined;
-  const game = simulateGame({ id: h }, { id: a }, [hl.map(id => ps[id]), al.map(id => ps[id])], seed, { tactics });
+  const game = simulateGame({ id: h }, { id: a }, [hl.map(id => ps[id]), al.map(id => ps[id])], seed, { tactics, season: seasonData.season });
+  game.coachNames = [co[hc] ? co[hc].name : "", co[ac] ? co[ac].name : ""];
   const match = game.score[0] === hs && game.score[1] === as;
   game.note = `${seasonData.season} ${type ? "playoffs" : "day " + (day + 1)} · seed ${seed} · ${match ? '<span class="ok">✓ replay matches the record</span>' : `<span class="bad">replay differs from the record (engine ${ENGINE_VERSION} vs ${seasonData.engineVersion})</span>`}`;
   return game;
@@ -278,7 +417,7 @@ function loadGame(row, seasonData) {
     V.tick = 0; V.lastFx = 0; $("scrub").max = game.ticks; $("scrub").value = 0;
     $("seed").innerHTML = game.note;
     $("bc-overlay").hidden = true; updateAll(true);
-    V.playing = true; setPlayBtn();
+    V.playing = true; setPlayBtn(); showPlanCard();
   }, 30);
 }
 // Load several games (one day's slate) to air together.
@@ -307,6 +446,7 @@ function updateAll(force) {
   const n = visibleCount();
   if (n !== V.visCount || force) { V.visCount = n; if (!$("bc-pbp").hidden) renderPBP(n); }
   if (!$("bc-box").hidden && (force || Math.abs(V.tick - V.boxAt) >= 20)) { V.boxAt = V.tick; renderBox(); }
+  if ($("bc-strat") && !$("bc-strat").hidden && (force || Math.abs(V.tick - (V.stratAt || -1e9)) >= 40)) { V.stratAt = V.tick; renderStrategy(); }
   $("scrub").value = V.tick;
   if (V.channels) renderChannels();
   $("replayTag").hidden = !V.replay;
@@ -359,6 +499,8 @@ function initBroadcast() {
   $("end").onclick = () => { if (!GAME) return; V.replay = null; V.tick = maxTicks(); V.playing = false; V.live = false; setPlayBtn(); V.visCount = -1; updateAll(true); };
   $("scrub").oninput = e => { if (!GAME) return; V.replay = null; V.tick = +e.target.value; V.live = false; updateAll(true); };
   $("subs").onchange = () => { V.visCount = -1; updateAll(true); };
+  if ($("calls")) $("calls").onchange = () => { V.visCount = -1; updateAll(true); };
+  if ($("plans")) $("plans").onclick = () => { const el = $("plancard"); if (el.classList.contains("on")) el.classList.remove("on"); else showPlanCard(frameVals().per >= 3); };
   $("cam").onchange = e => setView(e.target.value);
   $("snd").onclick = () => { if (!AUDIO) return; const on = AUDIO.toggle(); $("snd").textContent = on ? "🔊" : "🔈"; $("snd").classList.toggle("on", on); };
   $("rpl").onclick = () => { V.autoReplay = !V.autoReplay; $("rpl").classList.toggle("on", V.autoReplay); if (!V.autoReplay) V.replay = null; };
