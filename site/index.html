@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UBL · United Bounceball League</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Inter:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+<header><a class="logo" href="#">UBL</a><div><b>United Bounceball League</b><small id="sub">Loading the record…</small></div></header>
+<nav class="main">
+  <a data-v="standings" href="#standings">Standings</a><a data-v="leaders" href="#leaders">Leaders</a><a data-v="games" href="#games">Games</a><a data-v="history" href="#history">History</a><a data-v="hof" href="#hof">Hall of Fame</a><a data-v="teams" href="#teams">Teams</a><a data-v="moves" href="#moves">Moves</a>
+</nav>
+<section id="broadcast" hidden>
+  <div class="bug" id="bug"></div>
+  <div class="courtwrap"><canvas id="court"></canvas><div class="overlay" id="bc-overlay" hidden>Loading…</div></div>
+  <div class="legend"><span style="--k:#fff">ball handler</span><span style="--k:#ffd166">gathering to shoot/pass</span><span style="--k:#ff4d4d">tackle lunge</span><span style="--k:#f2b134">dashed gold = 4-pt line</span></div>
+  <div class="controls">
+    <button id="rew" title="Back 10 seconds">↺10</button><button id="play">▶</button>
+    <div class="spd"><button data-s="1">1×</button><button data-s="2" class="on">2×</button><button data-s="4">4×</button><button data-s="10">10×</button><button data-s="30">30×</button></div>
+    <button id="end">Final ⏭</button>
+    <input type="range" id="scrub" min="0" max="1" value="0" step="1" aria-label="Game timeline">
+  </div>
+  <div class="seed" id="seed"></div>
+  <nav class="tabs bctabs"><button data-t="pbp" class="on">Play-by-play</button><button data-t="box">Box score</button></nav>
+  <section class="bctab" id="bc-pbp"><label class="chk"><input type="checkbox" id="subs"> show substitutions</label><ul id="pbp-list"></ul></section>
+  <section class="bctab" id="bc-box" hidden><div id="box-tables"></div></section>
+</section>
+<main id="view"></main>
+</div>
+<script src="../src/engine.js"></script>
+<script src="../src/players.js"></script>
+<script src="../src/teams.js"></script>
+<script src="broadcast.js"></script>
+<script src="hub.js"></script>
+</body>
+</html>
