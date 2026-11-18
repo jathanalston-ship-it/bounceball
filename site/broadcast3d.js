@@ -888,6 +888,29 @@ function poseFor(m, c) {
     }
     case ACT.CATCH: p.aLx = p.aRx = -1.4; p.eL = p.eR = -0.4; p.aLz = 0.38; p.aRz = -0.38; p.wL = p.wR = -0.3; break;
     case ACT.TACKLE: { const k = sstep(t / 0.2); p = base(); p.pitch = 0.3 + k * 1.0; p.aLx = p.aRx = -2.2 - k * 0.3; p.eL = p.eR = -0.25 - k * 0.6; p.aLz = 0.75 - k * 0.45; p.aRz = -0.75 + k * 0.45; p.hLx = 0.55; p.kL = 0.5; p.hRx = -0.6 + k * 1.0; p.kR = 0.25; p.headX = -0.6 * k; p.drop = k * 0.25; fast = true; break; }
+    case ACT.DIVE: { // dive at the legs: launched flat, arms out to wrap the ankles
+      const k = sstep(t / 0.18); p = base(); p.pitch = 0.35 + k * 1.15; p.drop = k * 0.55; p.aLx = p.aRx = -2.6 - k * 0.3; p.eL = p.eR = -0.2 - k * 0.5; p.aLz = 0.55 - k * 0.3; p.aRz = -0.55 + k * 0.3;
+      p.hLx = p.hRx = 0.35 + k * 0.25; p.kL = 0.25; p.kR = 0.4; p.fL = p.fR = 0.6; p.headX = -0.8 * k; fast = true; break;
+    }
+    case ACT.BIGHIT: { // shoulder first, driving through him
+      const k = sstep(t / 0.16); p = base(); p.pitch = 0.25 + k * 0.45; p.crouch = 0.18; p.spineY = 0.45 * k; p.aLx = -0.7; p.aLz = 0.3; p.eL = -2.1; p.aRx = -1.2 - k * 0.6; p.aRz = -0.6; p.eR = -1.4;
+      p.hLx = -1.0 * k; p.kL = 0.9; p.hRx = 0.45; p.kR = 0.5; p.headX = -0.3; p.drop = k * 0.1; fast = true; break;
+    }
+    case ACT.SPIN: { const k = sstep(t / 0.5); p.crouch = 0.16; p.spineX = 0.18; p.spineY = Math.sin(k * PI) * 0.6; p.aLz = 0.9; p.aRz = -0.9; p.aLx = p.aRx = -0.9; p.eL = p.eR = -1.4; p.kL = 0.7; p.kR = 0.3; p.hLx = -0.6; fast = true; break; }
+    case ACT.STIFFARM: { // ball tucked in one arm, the other locked out into the tackler's facemask
+      const k = sstep(t / 0.2); p.aLx = -1.55 * k - 0.2; p.aLz = 0.35; p.eL = -0.05; p.wL = -1.1 * k; p.aRx = -0.6; p.aRz = -0.25; p.eR = -2.2; p.spineX += 0.18; p.spineY = -0.25 * k; p.crouch += 0.05; fast = true; break;
+    }
+    case ACT.JUKE: { const k = Math.sin(Math.min(1, t / 0.35) * PI), sg = m.ph % 2 > 1 ? 1 : -1; p.roll = 0.32 * k * sg; p.crouch = 0.2; p.hLz = 0.3 * k; p.hRz = -0.3 * k; p.kL = p.kR = 0.85; p.spineY = -0.3 * k * sg; p.aLz = 0.7; p.aRz = -0.7; p.aLx = p.aRx = -0.8; p.eL = p.eR = -1.2; fast = true; break; }
+    case ACT.HURDLE: { // lead leg out straight, trail leg tucked, arms out for balance
+      p = base(); p.hLx = -1.7; p.kL = 0.15; p.fL = 0.2; p.hRx = 0.7; p.kR = 1.9; p.fR = 0.5; p.aLx = -1.4; p.aLz = 1.0; p.eL = -0.3; p.aRx = -0.9; p.aRz = -1.15; p.eR = -0.6; p.spineX = 0.2; p.headX = -0.2; fast = true; break;
+    }
+    case ACT.HURT: { // down and staying down: a knee pulled up, a hand on the spot
+      p = base(); const face = m.fallDir > 0, k = sstep(t / 0.28), wr = t > 0.6 ? Math.sin(t * 2.4) : 0;
+      p.pitch = (face ? 1.5 : -1.45) * k; p.drop = k;
+      if (face) { p.aLx = -2.6; p.aRx = -1.4 + wr * 0.2; p.aLz = 0.6; p.aRz = -0.9; p.eL = -0.6; p.eR = -1.8; p.hLx = -0.4 - wr * 0.15; p.kL = 1.2; p.hRx = 0.05; p.kR = 0.4; p.headX = -0.5; }
+      else { p.aLx = -0.4; p.aRx = -2.2 + wr * 0.15; p.aLz = 0.9; p.aRz = -0.5; p.eL = -0.4; p.eR = -2.0; p.hLx = -1.2 - wr * 0.2; p.kL = 1.6; p.hRx = -0.3; p.kR = 0.6; p.headX = 0.25; }
+      p.bounce = t > 0.25 && t < 1.2 ? Math.max(0, Math.exp(-(t - 0.25) * 4.5) * Math.sin((t - 0.25) * 15)) * 0.55 : 0; fast = true; break;
+    }
     case ACT.DOWN: {
       p = base(); const face = m.fallDir > 0, k = sstep(t / 0.28);
       p.pitch = (face ? 1.5 : -1.45) * k; p.drop = k;
@@ -939,15 +962,15 @@ function poseFor(m, c) {
       p = mix(p, q, e);
     }
   }
-  if (c.land > 0 && A !== ACT.DOWN && A !== ACT.GETUP && A !== ACT.TACKLE) { const k = c.land; p.kL += 0.75 * k; p.kR += 0.75 * k; p.hLx -= 0.45 * k; p.hRx -= 0.45 * k; p.spineX += 0.22 * k; p.aLx -= 0.2 * k; p.aRx -= 0.2 * k; }
-  if (c.lean && A !== ACT.DOWN && A !== ACT.GETUP) p.spineX += c.lean;
+  if (c.land > 0 && A !== ACT.DOWN && A !== ACT.GETUP && A !== ACT.TACKLE && A !== ACT.DIVE && A !== ACT.BIGHIT && A !== ACT.HURT) { const k = c.land; p.kL += 0.75 * k; p.kR += 0.75 * k; p.hLx -= 0.45 * k; p.hRx -= 0.45 * k; p.spineX += 0.22 * k; p.aLx -= 0.2 * k; p.aRx -= 0.2 * k; }
+  if (c.lean && A !== ACT.DOWN && A !== ACT.GETUP && A !== ACT.HURT) p.spineX += c.lean;
   // faces: yell when celebrating and dunking, grimace on the floor, blink
-  if (A === ACT.CELEBRATE) p.jaw = 0.32 + 0.08 * Math.sin(t * 9); else if (A === ACT.DUNK && c.z > 0.3) p.jaw = 0.3; else if (A === ACT.DOWN || A === ACT.TACKLE || A === ACT.GETUP) p.jaw = 0.17; else if (c.sp > 14) p.jaw = 0.1;
-  p.lid = c.blink ? 0.9 : A === ACT.DOWN ? 0.35 : -0.75;
+  if (A === ACT.CELEBRATE) p.jaw = 0.32 + 0.08 * Math.sin(t * 9); else if (A === ACT.DUNK && c.z > 0.3) p.jaw = 0.3; else if (A === ACT.DOWN || A === ACT.TACKLE || A === ACT.GETUP || A === ACT.BIGHIT || A === ACT.DIVE) p.jaw = 0.17; else if (A === ACT.HURT) p.jaw = 0.22 + 0.06 * Math.sin(t * 3); else if (c.sp > 14) p.jaw = 0.1;
+  p.lid = c.blink ? 0.9 : A === ACT.DOWN ? 0.35 : A === ACT.HURT ? 0.6 : -0.75;
   if (p.brow === 0) {
     if (A === ACT.CELEBRATE) p.brow = m.celeb % 2 ? -0.6 : 0.8;
     else if (A === ACT.DUNK && c.z > 0.3) p.brow = -0.8;
-    else if (A === ACT.DOWN || A === ACT.GETUP || A === ACT.TACKLE) p.brow = -0.9;
+    else if (A === ACT.DOWN || A === ACT.GETUP || A === ACT.TACKLE || A === ACT.BIGHIT || A === ACT.DIVE || A === ACT.HURT) p.brow = -0.9;
     else if (A === ACT.STANCE || A === ACT.WALL || A === ACT.CONTEST || A === ACT.SWAT || (c.defending && c.sp < 3)) p.brow = -0.45;
     else if (c.tired > 0.5) p.brow = 0.35;
   }
@@ -960,8 +983,9 @@ function poseFor(m, c) {
       case ACT.FT: if (c.ballMode === 5) { cl = 0.18; cr = 0.04; } break;
       case ACT.CONTEST: case ACT.SWAT: case ACT.REBOUND: case ACT.WALL: case ACT.REACH: case ACT.CATCH: cl = cr = -0.12; break;
       case ACT.CELEBRATE: cl = cr = m.celeb % 2 ? 1.55 : -0.1; break;
-      case ACT.TACKLE: cl = cr = 1.05; break;
-      case ACT.DOWN: case ACT.GETUP: cl = cr = 0.75; break;
+      case ACT.TACKLE: case ACT.DIVE: case ACT.BIGHIT: cl = cr = 1.05; break;
+      case ACT.DOWN: case ACT.GETUP: case ACT.HURT: cl = cr = 0.75; break;
+      case ACT.STIFFARM: cl = -0.2; break;
       case ACT.CALL: { const fist = t > 0.6 ? 1.55 : -0.12; if (c.dribble.hand > 0) cr = fist; else cl = fist; break; }
       case ACT.DUNK: if (c.z > 0.3) cl = cr = 0.32; break;
     }
@@ -1982,7 +2006,7 @@ function create(canvas, opts) {
       const turn = m.lastFace !== undefined && gdt > 0 ? angDiff(m.lastFace, th) / gdt : 0; m.lastFace = th;
       m.ph += sp * gdt / (0.92 * m.H) * PI;
       if (jump) { m.P = null; m.lastAct = -1; m.land = 0; m.lean = 0; m.prevZ = s.z; m.lastSp = sp; }
-      if (s.act === ACT.DOWN && m.lastAct !== ACT.DOWN) m.fallDir = m.lastAct === ACT.TACKLE ? 1 : -1;
+      if ((s.act === ACT.DOWN || s.act === ACT.HURT) && m.lastAct !== ACT.DOWN && m.lastAct !== ACT.HURT) m.fallDir = m.lastAct === ACT.TACKLE || m.lastAct === ACT.DIVE || m.lastAct === ACT.BIGHIT ? 1 : -1;
       m.lastAct = s.act;
       if (gdt > 0) {
         if (m.prevZ > 0.5 && s.z < 0.08) m.land = 1;
@@ -2039,17 +2063,17 @@ function create(canvas, opts) {
         m.prevAct2 = s.act; m.chin = ctx.chin = isHolder && s.act === ACT.DRIBBLE && m.chinTo > tick && m.chinTo - tick <= 15;
         ctx.shotStyle = shooting ? m.shotStyle : 0; ctx.passStyle = s.act === ACT.PASS ? m.passStyle : 0;
       }
-      const grounded = s.z < 0.08 && ctx.act !== ACT.DOWN && ctx.act !== ACT.GETUP && ctx.act !== ACT.TACKLE && !bump;
+      const grounded = s.z < 0.08 && ctx.act !== ACT.DOWN && ctx.act !== ACT.GETUP && ctx.act !== ACT.TACKLE && ctx.act !== ACT.DIVE && ctx.act !== ACT.BIGHIT && ctx.act !== ACT.HURT && !bump;
       { // eyes on the ball; shooters on the rim; ball handlers scan the floor
         const A = ctx.act, rimX = s.x < 47 ? BB.C.HX[0] : BB.C.HX[1]; if (!m.look) m.look = new V3();
         if (isHolder && (A === ACT.SHOOT || A === ACT.LAYUP || A === ACT.DUNK || (A === ACT.FT && b.mode === 5))) { m.look.set(rimX, 10, 25); m.lookW = A === ACT.DUNK ? 0.5 : 0.9; }
         else if (isHolder) { m.look.set(rimX, 7.5, 25 + Math.sin(vt * 0.9 + m.ph) * 9); m.lookW = A === ACT.CALL ? 0.15 : 0.35; }
         else { m.look.set(b.x, b.z, b.y); m.lookW = 0.9; }
-        if (A === ACT.DOWN || A === ACT.GETUP || A === ACT.TACKLE || A === ACT.CELEBRATE || A === ACT.HUDDLE || A === ACT.STUMBLE || (fin && won)) m.lookW = 0;
+        if (A === ACT.DOWN || A === ACT.GETUP || A === ACT.TACKLE || A === ACT.DIVE || A === ACT.BIGHIT || A === ACT.HURT || A === ACT.CELEBRATE || A === ACT.HUDDLE || A === ACT.STUMBLE || (fin && won)) m.lookW = 0;
         else if (A === ACT.BOXOUT || A === ACT.SCREEN) m.lookW = 0.55;
       }
       applyPose(m, poseFor(m, ctx), fin ? adt : gdt, grounded, () => { m.root.position.set(s.x, s.z + m.bumpY + (fin && won && m.celeb % 2 === 0 ? Math.max(0, Math.sin(finT * 6.5 + m.ph)) * 0.9 : 0), s.y); m.root.rotation.y = PI / 2 - th + (m.extraYaw || 0) + m.bumpYaw; });
-      if (quality !== "low" && !fin) footLock(m, grounded && ctx.act !== ACT.TACKLE && ctx.act !== ACT.DOWN, gdt, jump);
+      if (quality !== "low" && !fin) footLock(m, grounded && ctx.act !== ACT.TACKLE && ctx.act !== ACT.DOWN && ctx.act !== ACT.SPIN, gdt, jump);
       m.flap.uTime.value = vt; m.flap.uFlap.value = (Math.min(1, sp / 16) * 0.035 + (s.z > 0.3 ? 0.03 : 0)) * m.bag;
       m.root.visible = true;
       m.bodyMat.roughness = 0.6 - 0.22 * sweat;
@@ -2091,7 +2115,7 @@ function create(canvas, opts) {
       } else if (!holder && (act === ACT.CATCH || act === ACT.REBOUND || act === ACT.CONTEST || act === ACT.SWAT)) {
         m.chest.getWorldPosition(tC); const dd = tC.distanceTo(ball.position), w = sstep((3.6 - dd) / 1.6);
         if (w > 0.01) { if (act === ACT.CONTEST || act === ACT.SWAT) { armIK(m, 1, tB.copy(ball.position).addScaledVector(tD.subVectors(ball.position, tC).normalize(), -0.36), w); did = true; } else two(w, 0.2); }
-      } else if (act === ACT.TACKLE) {
+      } else if (act === ACT.TACKLE || act === ACT.BIGHIT || act === ACT.DIVE) {
         const on = tackleTarget(tick, s.idx), tm = on !== null ? models[on] : null;
         if (tm && tm.root.visible) { tm.hips.getWorldPosition(tA); m.hips.getWorldPosition(tB); const w = sstep((4.5 - tA.distanceTo(tB)) / 2); if (w > 0.01) { const ty = tm.root.rotation.y; tD.set(Math.cos(ty), 0, -Math.sin(ty)); tB.copy(tA).addScaledVector(tD, 0.55); tA.addScaledVector(tD, -0.55); armIK(m, 0, tB, w); armIK(m, 1, tA, w); did = true; } }
       }

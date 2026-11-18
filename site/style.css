@@ -427,3 +427,25 @@ div.tline{border-left:2px solid var(--line);margin:6px 0 0 8px;padding-left:16px
 .ctile .cardsvg .holo rect,.ctile .cardsvg .ember,.colt .cardsvg .holo rect,.colt .cardsvg .ember{animation:none}
 .ctile:hover .cardsvg .holo rect{animation:holo 4.5s ease-in-out infinite alternate}
 .pstrip .psy{min-width:74px}
+
+/* v0.5: the chalkboard (called sets), coverage tags, playbook and recap */
+.chalk{position:absolute;right:8px;top:46px;width:min(196px,36%);background:#1f3a2c;border:3px solid #6b4b2a;border-radius:4px;box-shadow:0 4px 14px rgba(0,0,0,.5);padding:3px 4px 2px;opacity:0;transform:translateY(-8px);transition:opacity .3s,transform .3s;pointer-events:none;z-index:5}
+.chalk.on{opacity:1;transform:none}
+.chalk svg,.pbook svg{display:block;width:100%;height:auto}
+.chalk .cht,.pbook .cht{font:700 12px Oswald;letter-spacing:1.2px;color:#f4f1e4;text-align:center;padding:1px 0 2px;text-transform:uppercase}
+.chalk .cht i,.pbook .cht i{font-style:normal;color:#ffd166;margin-right:5px}
+.covtag{position:absolute;left:8px;top:86px;background:rgba(10,12,16,.88);border-left:4px solid var(--c);padding:2px 9px 3px;border-radius:3px;color:#fff;font:600 12px Oswald;letter-spacing:.8px;transform:translateX(-130%);transition:transform .3s ease;pointer-events:none;z-index:5}
+.covtag.on{transform:none}.covtag b{color:#9fd3ff;margin-right:5px;letter-spacing:1.2px}
+.pbook{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:6px 0 12px}
+.pbook .pb{background:#1f3a2c;border:2px solid #6b4b2a;border-radius:4px;padding:3px;color:#f4f1e4}
+.pbook .pbs{font-size:11.5px;text-align:center;color:#d8e6d2;padding:1px 0 2px}
+.recap{background:#151a22;border-left:4px solid var(--gold);padding:6px 12px;margin:4px 0 12px;font-size:13.5px;line-height:1.5}
+.recap p{margin:4px 0}
+.card .recapl{font-size:12.5px;color:#d7dce4;max-width:520px;margin:8px auto 0;text-align:left;line-height:1.45}
+.card .recapl p{margin:3px 0}
+.scout{margin:2px 0 0;padding-left:16px;font-size:12.5px}.scout li{margin:1px 0}
+.injl{padding-left:16px;font-size:13px}.injl li{margin:2px 0}
+.courtwrap.era3 .chalk{filter:grayscale(1)}
+@media (max-width:600px){.chalk{width:min(150px,40%)}.chalk .cht{font-size:10.5px}}
+.idtags{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}.idtags span{background:#222a36;border:1px solid #384356;border-radius:12px;padding:2px 10px;font:600 12px Oswald;letter-spacing:.5px;color:#e8ecf2}
+.idkv small{display:block;color:#8b95a6;font-size:11px}

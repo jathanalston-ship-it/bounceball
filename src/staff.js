@@ -69,12 +69,25 @@ function genCoach(S, rng, o) {
   S.coaches[c.id] = c;
   return c;
 }
+// His ball-screen coverage, derived from who he is (old saves have no stored preference, and no new rng draw keeps history stable)
+const COVS = ["drop", "hedge", "ice", "trap", "switch"];
+function covPref(c) {
+  const ph = c.phil || {};
+  if (ph.cov) return ph.cov;
+  if (ph.scheme === "switch") return "switch";
+  const w = [3 + (ph.scheme === "goalie" ? 3 : 0) + (ph.scheme === "zone" ? 2 : 0), 2.4 + (c.def - 50) / 40, 1.2 + (c.def - 50) / 25 + (ph.disc || 0.5),
+    0.8 + (ph.hit === "blitz" ? 2.5 : 0) + (c.style.tackle - 1) * 3, c.style.sw > 0.7 ? (c.style.sw - 0.7) * 10 : 0].map(x => Math.max(0, x));
+  let tot = 0; for (const x of w) tot += x;
+  let x = (((c.id + 7) * 2654435761) >>> 0) / 4294967296 * tot;
+  for (let i = 0; i < w.length; i++) { x -= w[i]; if (x <= 0) return COVS[i]; }
+  return "drop";
+}
 function tactics(c) {
   if (!c) return null;
   const ph = c.phil || {};
   return { pace: c.style.pace, tackle: c.style.tackle, four: c.style.four, sw: c.style.sw, depth: c.style.depth, d: (c.def - 50) / 50, o: (c.off - 50) / 50,
     sys: ph.sys || "motion", scheme: ph.scheme || "man", hit: ph.hit || "contain", adapt: ph.adapt !== undefined ? ph.adapt : 0.5, disc: ph.disc !== undefined ? ph.disc : 0.5,
-    late: ph.late !== undefined ? ph.late : 0.5, star: ph.star !== undefined ? ph.star : 0.5 };
+    late: ph.late !== undefined ? ph.late : 0.5, star: ph.star !== undefined ? ph.star : 0.5, cov: covPref(c) };
 }
 // A retiring player with a high IQ may start an assistant career and become a head coach later.
 function maybeCoachingCareer(S, p, rng) {
@@ -189,6 +202,6 @@ function recordCoachSeason(S, tid, partial) {
   c.seasons = c.seasons || [];
   c.seasons.push({ season: S.season, team: tid, w, l, partial: !!partial });
 }
-const API = { genCoach, genOwner, tactics, hireCoach, releaseCoach, staffOffseason, midseasonFirings, recordCoachSeason, maybeCoachingCareer, payrollTarget, FOUNDING_COMPANIES };
+const API = { genCoach, genOwner, tactics, covPref, hireCoach, releaseCoach, staffOffseason, midseasonFirings, recordCoachSeason, maybeCoachingCareer, payrollTarget, FOUNDING_COMPANIES };
 if (NODE) module.exports = API; else window.BB = Object.assign(window.BB || {}, API);
 })();
