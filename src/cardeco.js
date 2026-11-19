@@ -403,6 +403,9 @@ const ACH = [
   { id: "streak30", name: "Iron streak", text: "Reach a 30-day daily streak", r: { tokens: { legends: 1 } }, t: s => (s.daily.best || 0) >= 30 },
   { id: "trade10", name: "Wheeler-dealer", text: "Make 10 exchanges", r: { tokens: { premium: 1 } }, t: s => s.exch >= 10 },
   { id: "pity", name: "Never say die", text: "Fill the Diamond meter", r: { coins: 500 }, t: s => s.st.pityHits > 0 },
+  { id: "ladder10", name: "Contender", text: "Clear rung 10 of the lineup ladder", r: { tokens: { premium: 1 } }, t: s => (s.lu && s.lu.best || 0) >= 10 },
+  { id: "ladder20", name: "Dynasty builder", text: "Clear rung 20 of the lineup ladder", r: { tokens: { legends: 1 } }, t: s => (s.lu && s.lu.best || 0) >= 20 },
+  { id: "ladder30", name: "Greatest of all time", text: "Beat the top of the lineup ladder", r: { tokens: { legends: 2 } }, t: s => (s.lu && s.lu.best || 0) >= 30 },
   { id: "score10k", name: "Five figures", text: "Reach a collection score of 10,000", r: { tokens: { premium: 1 } }, t: (s, X) => X.score >= 10000 },
   { id: "score100k", name: "Six figures", text: "Reach a collection score of 100,000", r: { tokens: { legends: 2 } }, t: (s, X) => X.score >= 100000 }
 ];
@@ -499,7 +502,7 @@ const unutf8 = b => NODE ? Buffer.from(b).toString("utf8") : new TextDecoder().d
 function packSave(s) {
   const o = Object.entries(s.owned).filter(([, n]) => n > 0).sort().map(([k]) => k.replace(/:/g, ".") + "~" + copiesOf(s, k).join(",")).join(";");
   return JSON.stringify({ v: 2, c: s.coins, t: s.tokens, o, p: s.packs, n: s.cards, sd: s.sold, x: s.exch, b: s.best, d: s.daily, w: s.week, st: Object.keys(s.sets).join(","), op: s.opts, bn: s.born,
-    pi: s.pity || 0, xp: s.xp || 0, lv: s.lvl || 1, a: Object.keys(s.ach || {}).join(","), ss: s.st || {}, sh: s.shelf || [], fr: s.frame || "wood", cn: s.cn || null, wi: s.wit || null });
+    pi: s.pity || 0, xp: s.xp || 0, lv: s.lvl || 1, a: Object.keys(s.ach || {}).join(","), ss: s.st || {}, sh: s.shelf || [], fr: s.frame || "wood", cn: s.cn || null, wi: s.wit || null, lu: s.lu || null });
 }
 function unpackSave(json) {
   const j = JSON.parse(json); if (!j || (j.v !== 1 && j.v !== 2)) throw new Error("not a UBL save");
@@ -530,6 +533,15 @@ function unpackSave(json) {
   if (j.cn && typeof j.cn === "object") {
     const c = j.cn, obj = x => x && typeof x === "object" && !Array.isArray(x) ? x : {}, idOk = k => /^\d{8}(_\d)?$/.test(k), pick = o => Object.fromEntries(Object.entries(obj(o)).filter(([k]) => idOk(k)));
     s.cn = { picks: pick(c.picks), bold: pick(c.bold), res: pick(c.res), bres: pick(c.bres), w: pick(c.w), streak: int(c.streak, 1e5), best: int(c.best, 1e5), pass: c.pass && typeof c.pass.id === "string" ? { id: c.pass.id.slice(0, 6), xp: int(c.pass.xp, 1e7), lvl: int(c.pass.lvl, 50) } : { id: "", xp: 0, lvl: 0 } };
+  }
+  // the lineup game: slots of card keys, the team's name and colors, ladder progress
+  if (j.lu && typeof j.lu === "object") {
+    const L = j.lu, col = x => /^#[0-9a-f]{6}$/i.test(x) ? x : null, str = (x, n) => String(x || "").replace(/[<>&"]/g, "").slice(0, n);
+    s.lu = { team: { city: str(L.team && L.team.city, 18) || "Your", name: str(L.team && L.team.name, 18) || "All-Stars", c1: col(L.team && L.team.c1) || "#f2b134", c2: col(L.team && L.team.c2) || "#1b2a4a" },
+      sl: [0, 1, 2].map(i => ({ n: "ABC"[i], k: (((L.sl || [])[i] || {}).k || []).filter(k => KEY_RE.test(k) && s.owned[k]).slice(0, 10) })),
+      a: Math.min(2, int(L.a, 2)), best: Math.min(30, int(L.best, 30)), beat: {}, w: int(L.w, 1e6), l: int(L.l, 1e6), hist: [], ch: { wk: typeof (L.ch || {}).wk === "string" ? L.ch.wk.slice(0, 10) : "", done: {} } };
+    for (const k of Object.keys(L.beat || {})) if (/^\d{1,2}$/.test(k)) s.lu.beat[k] = 1;
+    for (const k of Object.keys((L.ch || {}).done || {})) if (/^\d{4}-W\d{2}:[a-z]+$/.test(k)) s.lu.ch.done[k] = 1;
   }
   if (j.wi && typeof j.wi === "object") { s.wit = {}; for (const [k, w] of Object.entries(j.wi)) if (KEY_RE.test(k) && k.startsWith("witness:") && w && typeof w === "object") s.wit[k] = { d: String(w.d || "").slice(0, 10), line: String(w.line || "").slice(0, 60), vs: String(w.vs || "").slice(0, 60), ovr: Math.min(99, int(w.ovr, 99)), team: String(w.team || "").slice(0, 5), gs: +w.gs || 0, num: int(w.num, 99), game: String(w.game || "").slice(0, 12) }; }
   return s;
