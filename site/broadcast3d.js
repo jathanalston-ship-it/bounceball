@@ -686,22 +686,25 @@ const CPOSE = {
   crossover: { yaw: 0.65, look: "fwd", p: { spineX: 0.42, hLx: -0.8, kL: 1.2, hRx: 0.05, kR: 0.85, hLz: 0.3, hRz: -0.28, headX: -0.35 }, L: [0.22, -0.32, 0.2, [1, -0.3, -0.4]], R: [-0.04, -0.38, 0.27, [-1, -0.2, -0.6]], ball: "floor" }
 };
 const PHOTO = { r: null };
+const PHOTO_ACTION = new Set(["dunk", "block", "shoot", "tackle", "stiffarm", "pass", "rebound", "steal", "dribble", "fadeaway", "hangrim", "crossover", "celebrate"]);
 function photoRig() {
   if (PHOTO.r) return PHOTO;
   const W = 640, Hh = 960, cv = document.createElement("canvas"); cv.width = W; cv.height = Hh;
   const r = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true, preserveDrawingBuffer: true, powerPreference: "low-power" });
   r.setPixelRatio(1); r.setSize(W, Hh, false); r.setClearColor(0x000000, 0);
-  r.outputEncoding = THREE.sRGBEncoding; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.95;
-  // a studio, not the arena: no reflected room, so the shading comes from the lights and the shapes read
+  r.outputEncoding = THREE.sRGBEncoding; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.9;
+  // a studio, not the arena: no reflected room, so the shading comes from the lights and the shapes read.
+  // A hard warm key high on one side, almost no fill, and two strong colored rims behind: the card's
+  // tier color on one edge, the team's on the other.
   const scene = new THREE.Scene();
-  scene.add(new THREE.HemisphereLight(0xe6edff, 0x2a2018, 0.2));
+  scene.add(new THREE.HemisphereLight(0xe6edff, 0x2a2018, 0.16));
   const L = (c, k, x, y, z) => { const l = new THREE.DirectionalLight(c, k); l.position.set(x, y, z); scene.add(l); scene.add(l.target); return l; };
-  const key = L(0xfff0de, 3.0, -8, 9, 10), fill = L(0xc4d4ff, 0.32, 9, 2, 8), rimA = L(0xffffff, 2.6, -9, 5, -7), rimB = L(0xffffff, 2.4, 9, 4, -7);
-  const cam = new THREE.PerspectiveCamera(14, W / Hh, 1, 600);
+  const key = L(0xffeedd, 2.7, -11, 9, 5), fill = L(0xbfd0ff, 0.3, 9, 1, 9), rimA = L(0xffffff, 3.1, -9, 5, -7), rimB = L(0xffffff, 3.3, 9, 4, -7), kick = L(0xffffff, 0.0, 0, -6, 6);
+  const cam = new THREE.PerspectiveCamera(18, W / Hh, 1, 600);
   const bt = ballTextures(), ball = new THREE.Mesh(new THREE.SphereGeometry(0.39, 36, 24), new THREE.MeshStandardMaterial({ map: bt.map, bumpMap: bt.bump, bumpScale: 0.015, roughness: 0.72, envMapIntensity: 0.6 }));
   scene.add(ball);
   const c2d = document.createElement("canvas"); c2d.width = W; c2d.height = Hh;
-  Object.assign(PHOTO, { r, cv, W, Hh, scene, key, fill, rimA, rimB, cam, ball, c2d, g: c2d.getContext("2d", { willReadFrequently: true }) });
+  Object.assign(PHOTO, { r, cv, W, Hh, scene, key, fill, rimA, rimB, kick, cam, ball, c2d, g: c2d.getContext("2d", { willReadFrequently: true }) });
   return PHOTO;
 }
 // a Santa hat that sits on the head bone (it follows every nod)
@@ -766,23 +769,37 @@ function photo(spec) {
     for (let i = 0; i < 2; i++) { add(hand(i), 0.06 * H); add(elbow(i), 0.05 * H); add(wp(m.arms[i].shoulder), 0.07 * H); add(wp(m.legs[i].knee), 0.06 * H); add(wp(m.legs[i].ankle), 0.07 * H); add(wp(m.legs[i].hip), 0.09 * H); }
     if (bc) add(bc, 0.42);
     let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; for (const [x, y] of pts) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
-    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, tf = Math.tan(P.cam.fov * PI / 360), D = Math.max((y1 - y0) / 2 / tf, (x1 - x0) / 2 / (tf * P.cam.aspect)) * 1.12 + 1;
-    P.cam.position.set(cx, cy, D); P.cam.lookAt(cx, cy, 0); P.cam.updateMatrixWorld(true);
-    // light: warm key, cool fill, white and team-colored rims from behind
-    P.rimB.color.set(spec.rim || spec.c2 || "#ffffff");
-    for (const l of [P.key, P.fill, P.rimA, P.rimB]) { l.target.position.set(cx, cy, 0); }
-    P.r.render(P.scene, P.cam);
-    // cut out: crop to what was drawn
-    const g = P.g; g.clearRect(0, 0, P.W, P.Hh); g.drawImage(P.cv, 0, 0);
-    const px = g.getImageData(0, 0, P.W, P.Hh).data;
-    let ax0 = P.W, ax1 = -1, ay0 = P.Hh, ay1 = -1;
-    for (let y = 0; y < P.Hh; y++) { const row = y * P.W * 4; for (let x = 0; x < P.W; x++) if (px[row + x * 4 + 3] > 10) { if (x < ax0) ax0 = x; if (x > ax1) ax1 = x; if (y < ay0) ay0 = y; if (y > ay1) ay1 = y; } }
-    if (ax1 < 0) throw new Error("empty photo");
+    // the camera: a low hero angle with more perspective for action, a touch of Dutch tilt into the move;
+    // portraits get a gentle low angle and stay level
+    const air = (C.air || 0) > 0.5, action = air || PHOTO_ACTION.has(spec.pose), view = air ? { el: -0.36, roll: 0.075, fov: 26 } : action ? { el: -0.24, roll: 0.055, fov: 24 } : { el: -0.12, roll: 0, fov: 19 };
+    const roll = view.roll * (yaw >= 0 ? -1 : 1);
+    P.cam.fov = view.fov; P.cam.updateProjectionMatrix();
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, tf = Math.tan(P.cam.fov * PI / 360);
+    let D = Math.max((y1 - y0) / 2 / tf, (x1 - x0) / 2 / (tf * P.cam.aspect)) * 1.24 + 1, px, ax0, ax1, ay0, ay1;
+    // light: warm key, little fill, the team's color and the card's tier color as rims from behind
+    P.rimA.color.set(spec.rim2 || "#ffffff"); P.rimB.color.set(spec.rim || spec.c2 || "#ffffff"); P.kick.intensity = air ? 0.55 : 0.2;
+    // light skin catches the studio lights (and the skin's sheen) much harder than dark skin: expose for the face
+    const sk = new THREE.Color(o.skin), skl = 0.2126 * sk.r + 0.7152 * sk.g + 0.0722 * sk.b;
+    P.r.toneMappingExposure = spec.exposure || clamp(1.05 - 0.85 * skl, 0.46, 0.95);
+    const rimK = clamp(1.15 - 0.6 * skl, 0.7, 1.1); P.rimA.intensity = 3.1 * rimK; P.rimB.intensity = 3.3 * rimK;
+    for (const l of [P.key, P.fill, P.rimA, P.rimB, P.kick]) { l.target.position.set(cx, cy, 0); }
+    const g = P.g;
+    for (let tries = 0; tries < 3; tries++) {
+      P.cam.position.set(cx, cy + view.el * (y1 - y0), D); P.cam.up.set(Math.sin(roll), Math.cos(roll), 0); P.cam.lookAt(cx, cy, 0); P.cam.updateMatrixWorld(true);
+      P.r.render(P.scene, P.cam);
+      // cut out: crop to what was drawn
+      g.clearRect(0, 0, P.W, P.Hh); g.drawImage(P.cv, 0, 0);
+      px = g.getImageData(0, 0, P.W, P.Hh).data; ax0 = P.W; ax1 = -1; ay0 = P.Hh; ay1 = -1;
+      for (let y = 0; y < P.Hh; y++) { const row = y * P.W * 4; for (let x = 0; x < P.W; x++) if (px[row + x * 4 + 3] > 10) { if (x < ax0) ax0 = x; if (x > ax1) ax1 = x; if (y < ay0) ay0 = y; if (y > ay1) ay1 = y; } }
+      if (ax1 < 0) throw new Error("empty photo");
+      if (ax0 > 1 && ay0 > 1 && ax1 < P.W - 2 && ay1 < P.Hh - 2) break; // nothing cut off by the frame
+      D *= 1.18;
+    }
     ax0 = Math.max(0, ax0 - 2); ay0 = Math.max(0, ay0 - 2); ax1 = Math.min(P.W - 1, ax1 + 2); ay1 = Math.min(P.Hh - 1, ay1 + 2);
     const w = ax1 - ax0 + 1, h = ay1 - ay0 + 1, out = document.createElement("canvas"); out.width = w; out.height = h;
     out.getContext("2d").drawImage(P.cv, ax0, ay0, w, h, 0, 0, w, h);
     const proj = v => { const q = v.clone().project(P.cam); return [Math.round(((q.x + 1) / 2 * P.W - ax0) * 10) / 10, Math.round(((1 - q.y) / 2 * P.Hh - ay0) * 10) / 10]; };
-    const ppf = P.Hh / 2 / (D * tf);
+    const ppf = P.Hh / 2 / (Math.hypot(D, view.el * (y1 - y0)) * tf);
     const lowFoot = [wp(m.legs[0].ankle), wp(m.legs[1].ankle)].sort((a, b) => a.y - b.y)[0];
     const a = { head: proj(headC).concat([Math.round(0.065 * H * ppf * 10) / 10]), hL: proj(hand(0)), hR: proj(hand(1)), chest: proj(m.chest.localToWorld(new V3(0, 0.02 * H, 0.11 * H))),
       pelvis: proj(wp(m.hips)), feet: proj(lowFoot.clone().setY(lowFoot.y - m.ankleH)), floor: proj(new V3(m.root.position.x, 0, (wp(m.legs[0].ankle).z + wp(m.legs[1].ankle).z) / 2)) };
