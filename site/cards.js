@@ -143,6 +143,7 @@ async function pcOpen(i, key) {
       <p>${pcEarned(c)} ${c.col === "base" ? "" : `<span class="m">${esc(C.blurb || "")}</span>`}</p>
       ${built && Object.keys(built.boosts).length ? `<p class="boostline">This card's build: ${Object.entries(built.boosts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `<b>${BB.RLABEL[k]}</b> <span class="up">+${v}</span>`).join(" · ")}${Object.keys(built.boosts).length > 5 ? ` <span class="m">and ${Object.keys(built.boosts).length - 5} more</span>` : ""}</p>` : c.col !== "base" ? `<p class="m small">This card keeps his ratings as they were that season.</p>` : ""}
       <p><a class="btn" href="#player-${c.pid}" onclick="pcClose()">Player page →</a> ${c.col !== "base" ? `<a class="btn ghost" href="#cards-${c.col}" onclick="pcClose()">${esc(C.name)} collection →</a>` : ""}</p></div>
+      ${cgCardBox(c)}</div>
     <h4>Attributes on this card</h4><div class="agrid">${attrs}</div></div>`;
   m.hidden = false; document.body.classList.add("noscroll");
 }
@@ -532,7 +533,7 @@ function pcHome(all) {
     const HC = CC.COLLECTIONS.find(c => c.hol === next[1]), list = byCol[HC.key] || [], top = list.slice().sort((a, b) => b.ovr - a.ovr)[0], days = Math.round((next[0] - today) / 864e5);
     h = h.replace(`<h3>Rarest cards ever</h3>`, `<a class="holi" href="#cards-${HC.key}"><span class="mini">${CART.front(top)}</span><div><small>${days === 0 ? "Today" : days === 1 ? "Tomorrow" : `In ${days} days`} · ${new Date(next[0]).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" })}</small><b>${esc(HC.name)}</b><p>${list.length} cards from every ${esc(HC.name.toLowerCase().includes("day") ? HC.name : HC.name + " game")} in league history. Best: ${esc(top.name)} ${top.season} (${top.ovr}).</p></div></a><h3>Rarest cards ever</h3>`);
   }
-  h = h.replace(`<h3>Rarest cards ever</h3>`, `<div class="packcta"><a class="btn" href="#cards-packs">Open packs</a><a class="btn ghost" href="#cards-mine">My collection · ${owned}/${all.length}</a></div><h3>Rarest cards ever</h3>`);
+  h = h.replace(`<h3>Rarest cards ever</h3>`, `${cgHomeStrip()}<div class="packcta"><a class="btn" href="#cards-packs">Open packs</a><a class="btn ghost" href="#cards-mine">My collection · ${owned}/${all.length}</a></div><h3>Rarest cards ever</h3>`);
   for (const [grp, title] of Object.entries(CC.GROUP_NAMES)) {
     h += `<h3>${title}</h3><div class="colgrid">`;
     for (const C of CC.COLLECTIONS.filter(c => c.group === grp)) {
@@ -545,20 +546,11 @@ function pcHome(all) {
   return h;
 }
 
-// ---------- my collection (kept in this browser only) ----------
-const pcKey = c => c.col + ":" + c.season + ":" + c.pid;
-const MY = {
-  k: "ubl-cards-v1", d: null,
-  load() { if (this.d) return this.d; try { this.d = JSON.parse(localStorage.getItem(this.k)); } catch (e) { this.d = null; } if (!this.d || !this.d.owned) this.d = { owned: {}, packs: 0, cards: 0 }; return this.d; },
-  save() { try { localStorage.setItem(this.k, JSON.stringify(this.d)); } catch (e) { /* storage blocked: keep it for this visit */ } },
-  add(c) { const d = this.load(), k = pcKey(c), isNew = !d.owned[k]; d.owned[k] = (d.owned[k] || 0) + 1; d.cards++; return isNew; },
-  reset() { this.d = { owned: {}, packs: 0, cards: 0 }; this.save(); }
-};
-
 // ---------- packs ----------
-// Each slot rolls a rarity tier first (weights below), then a card from that tier, so the odds
-// stay the same no matter how many cards a tier holds.
-const TIER_W = { rubber: 30, bronze: 26, silver: 22, gold: 18, emerald: 12, sapphire: 8, ruby: 4.5, amethyst: 2.5, diamond: 1.2, opal: 0.45, vulcan: 0.15 };
+// The collection, the store and the pack opening live in site/cardgame.js (the card game).
+const pcKey = c => c.col + ":" + c.season + ":" + c.pid;
+// Each slot rolls a rarity tier first (odds in src/cardeco.js), then a card from that tier, so the
+// odds stay the same no matter how many cards a tier holds.
 function pcPackList(all) {
   const seasons = [...new Set(all.map(c => c.season))].sort((a, b) => a - b), decades = [...new Set(seasons.map(y => Math.floor(y / 10) * 10))];
   const P = [
@@ -577,66 +569,10 @@ function pcPool(all, pk) { return all.filter(c => (!pk.groups || pk.groups.inclu
 function pcDraw(pool, minOvr) {
   const byT = {}; for (const c of pool) if (!minOvr || c.ovr >= minOvr) (byT[c.tier.key] = byT[c.tier.key] || []).push(c);
   const tiers = Object.keys(byT); if (!tiers.length) return pool[Math.floor(Math.random() * pool.length)];
-  let r = Math.random() * tiers.reduce((s, t) => s + TIER_W[t], 0), t = tiers[0];
-  for (const x of tiers) { r -= TIER_W[x]; if (r <= 0) { t = x; break; } }
+  let r = Math.random() * tiers.reduce((s, t) => s + BB.ECO.TIER_W[t], 0), t = tiers[0];
+  for (const x of tiers) { r -= BB.ECO.TIER_W[x]; if (r <= 0) { t = x; break; } }
   return byT[t][Math.floor(Math.random() * byT[t].length)];
 }
-function pcPacks(all) {
-  const my = MY.load(), P = pcPackList(all); PC.packs = P;
-  const odds = (() => { const tot = Object.values(TIER_W).reduce((a, b) => a + b, 0); return CC.TIERS.slice().reverse().map(t => `<span class="tchip"><span class="gem t-${t.key}"></span>${t.name} <b>${(TIER_W[t.key] / tot * 100).toFixed(TIER_W[t.key] / tot < 0.01 ? 2 : 1)}%</b></span>`).join(""); })();
-  let h = `<p><a href="#cards">← All collections</a></p><div class="vh"><h2>Packs</h2><a class="btn ghost" href="#cards-mine">My collection →</a></div>`;
-  h += `<p class="m">Free packs, as many as you like. Every card you pull goes into your collection on this device. ${my.packs ? `You've opened ${my.packs} pack${my.packs === 1 ? "" : "s"} and own ${Object.keys(my.owned).length} of ${all.length} cards.` : ""}</p>`;
-  h += `<div class="packs">${P.map((pk, i) => `<button class="packt" onclick="pcOpenPack(${i})"><span class="pk">${CART.packSVG(pk, pk.key)}</span><b>${esc(pk.name)}</b><small>${esc(pk.sub)} · ${pcPool(all, pk).length} cards</small></button>`).join("")}</div>`;
-  h += `<h3>Odds per card</h3><div class="chips">${odds}</div><p class="m small">Packs with a guarantee roll the last card only from cards at or above that overall.</p>`;
-  return h;
-}
-async function pcOpenPack(i) {
-  const all = pcAll(await pcIndex()), pk = PC.packs[i], pool = pcPool(all, pk);
-  const cards = []; for (let k = 0; k < pk.n; k++) cards.push(pcDraw(pool, k === pk.n - 1 && pk.guarantee ? pk.guarantee : 0));
-  cards.sort((a, b) => a.ovr - b.ovr); // best card last, like a real pack
-  const my = MY.load(); my.packs++;
-  const news = cards.map(c => MY.add(c)); MY.save();
-  PC.pull = cards; pcSetList(cards, "pull");
-  let m = $("packmodal");
-  if (!m) { m = document.createElement("div"); m.id = "packmodal"; m.className = "cmodal packm"; document.body.appendChild(m); }
-  m.innerHTML = `<div class="cm-box"><button class="cm-x" onclick="pcClosePack()" aria-label="Close">✕</button>
-    <div class="tearwrap" id="tearwrap" onclick="pcTear()"><div class="tear">${CART.packSVG(pk, pk.key)}</div><p class="m">Tap the pack to open it</p></div>
-    <div class="pull" id="pull" hidden>${cards.map((c, k) => `<div class="pslot t-${c.tier.key}${c.ovr >= 81 ? " rare" : ""}${c.ovr >= 90 ? " ultra" : ""}" style="--d:${k * 0.12}s"><div class="fcard tilt pflip" onclick="pcReveal(this, ${k})"><div class="fc-in"><div class="fc-f">${CART.mystery()}</div><div class="fc-b">${CART.front(c)}</div></div><div class="glare"></div></div>${news[k] ? `<span class="newb">NEW</span>` : ""}<span class="ctl pl">${esc(c.tier.name)} · ${esc((CC.CBY[c.col] || {}).name || "")}</span></div>`).join("")}</div>
-    <div class="pullbar" id="pullbar" hidden><button onclick="pcRevealAll()">Reveal all</button><button onclick="pcOpenPack(${i})">Open another</button><a class="btn ghost" href="#cards-mine" onclick="pcClosePack()">My collection</a></div></div>`;
-  m.hidden = false; document.body.classList.add("noscroll");
-}
-function pcTear() { const w = $("tearwrap"); if (!w || w.classList.contains("go")) return; w.classList.add("go"); setTimeout(() => { w.hidden = true; $("pull").hidden = false; $("pullbar").hidden = false; }, 520); }
-function pcReveal(el, k) {
-  if (!el.classList.contains("flip")) { el.classList.add("flip"); el.closest(".pslot").classList.add("shown"); return; }
-  pcOpen(k, "pull");
-}
-function pcRevealAll() { document.querySelectorAll("#pull .pflip").forEach((el, k) => setTimeout(() => { el.classList.add("flip"); el.closest(".pslot").classList.add("shown"); }, k * 260)); }
-function pcClosePack() { const m = $("packmodal"); if (m) { m.hidden = true; m.innerHTML = ""; } document.body.classList.remove("noscroll"); if (location.hash.startsWith("#cards")) route(); }
-
-function pcMine(all) {
-  const my = MY.load(), byCol = {}; for (const c of all) (byCol[c.col] = byCol[c.col] || []).push(c);
-  const mine = all.filter(c => my.owned[pcKey(c)]).sort((a, b) => b.ovr - a.ovr);
-  let h = `<p><a href="#cards">← All collections</a></p><div class="vh"><h2>My collection</h2><a class="btn" href="#cards-packs">Open packs</a></div>`;
-  if (!mine.length) return h + `<p class="m">Nothing yet. Open a pack and your cards land here. Your collection is saved in this browser only.</p>`;
-  const pct = mine.length / all.length * 100;
-  h += `<div class="kv"><div><b>${mine.length}</b><span>Unique cards</span></div><div><b>${my.cards}</b><span>Cards pulled</span></div><div><b>${my.packs}</b><span>Packs opened</span></div><div><b>${pct.toFixed(1)}%</b><span>Of every card</span></div></div>`;
-  const byTier = {}; for (const c of mine) byTier[c.tier.key] = (byTier[c.tier.key] || 0) + 1;
-  h += `<div class="chips">${CC.TIERS.slice().reverse().filter(t => byTier[t.key]).map(t => `<span class="tchip"><span class="gem t-${t.key}"></span>${t.name} <b>${byTier[t.key]}</b></span>`).join("")}</div>`;
-  const best = mine.slice(0, 8); pcSetList(best, "mine");
-  h += `<h3>Best pulls</h3><div class="cgrid">${best.map((c, i) => pcTile(c, i, `${c.season}`, "mine")).join("")}</div>`;
-  h += `<h3>Sets</h3><div class="sets">`;
-  for (const [grp, title] of Object.entries(CC.GROUP_NAMES)) {
-    h += `<div class="setg"><b>${title}</b>`;
-    for (const C of CC.COLLECTIONS.filter(c => c.group === grp)) {
-      const list = byCol[C.key] || [], have = list.filter(c => my.owned[pcKey(c)]).length; if (!list.length) continue;
-      h += `<a class="setr${have === list.length ? " done" : ""}" href="#cards-${C.key}" onclick="PC.ownF='own'"><span>${esc(C.name)}</span><i class="prog"><em style="width:${(have / list.length * 100).toFixed(1)}%"></em></i><small>${have}/${list.length}</small></a>`;
-    }
-    h += `</div>`;
-  }
-  h += `</div><p class="m small">Saved in this browser only. <button class="linkbtn" onclick="if(this.dataset.sure){MY.reset();route()}else{this.dataset.sure=1;this.textContent='Tap again to erase your collection'}">Reset my collection</button></p>`;
-  return h;
-}
-
 // ---------- 3D tilt + glare on the big cards ----------
 (function () {
   const set = (el, x, y) => { el.style.setProperty("--ry", ((x - 0.5) * 18).toFixed(1) + "deg"); el.style.setProperty("--rx", ((0.5 - y) * 18).toFixed(1) + "deg"); el.style.setProperty("--px", ((x - 0.5) * 2).toFixed(2)); el.style.setProperty("--py", ((y - 0.5) * 2).toFixed(2)); el.style.setProperty("--gx", (x * 100).toFixed(0) + "%"); el.style.setProperty("--gy", (y * 100).toFixed(0) + "%"); };
