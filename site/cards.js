@@ -16,6 +16,12 @@ async function pcIndex() {
   }).catch(() => null);
   return PC.idxP;
 }
+// base cards (one per player-season) for packs and team sets; older data without index/base.json has none
+async function pcBaseLoad() {
+  if (PC.base) return PC.base;
+  if (!PC.baseP) PC.baseP = J("index/base.json").then(x => { const out = []; for (const [y, rows] of Object.entries(x.seasons || {})) for (const r of rows) out.push(pcCard("base", +y, r[0], r[1], r[2], 0, null, r[3])); return out; }).catch(() => []);
+  return (PC.base = await PC.baseP);
+}
 async function pcDetail(id) {
   const ix = await pcIndex(); if (!ix) return null;
   const sh = id % ix.shards;
@@ -105,8 +111,8 @@ function pcLine(c) {
   return [["PTS", pg(s.pts)], ["REB", pg(s.oreb + s.dreb)], ["AST", pg(s.ast)], ["TKL", pg(s.tkl)], [extra[0], extra[1] === undefined ? "–" : pg(extra[1])]];
 }
 function pcTile(c, i, label, key) {
-  const own = c.col !== "base" && MY.load().owned[pcKey(c)];
-  return `<button class="ctile t-${c.tier.key}${own ? " own" : ""}" onclick="pcOpen(${i},'${key || "main"}')" aria-label="${esc(c.name)} ${c.season} ${esc((CC.CBY[c.col] || {}).name || "")}">${CART.front(c)}${own ? `<span class="owned" title="In your collection">✓${own > 1 ? " ×" + own : ""}</span>` : ""}${label ? `<span class="ctl">${label}</span>` : ""}</button>`;
+  const s = MY.load(), own = !c.upcoming && s.owned[pcKey(c)], cp = c.cp || (own ? MY.best(c) : null), v = cp && cp !== c.cp ? Object.assign({}, c, { cp }) : c;
+  return `<button class="ctile t-${c.tier.key}${own ? " own" : ""}" onclick="pcOpen(${i},'${key || "main"}')" aria-label="${esc(c.name)} ${c.season} ${esc((CC.CBY[c.col] || {}).name || "")}">${CART.front(v)}${own ? `<span class="owned" title="In your collection">✓${own > 1 ? " ×" + own : ""}</span>` : ""}${cp && BB.ECO.special(cp) ? `<span class="vtag">${cgChips(cp, false, true)}</span>` : ""}${label ? `<span class="ctl">${label}</span>` : ""}</button>`;
 }
 function pcSetList(list, key) { PC.lists[key || "main"] = list; PC.list = list; }
 // open the card viewer on one player's cards from a season (used by the broadcast box score)
@@ -118,8 +124,9 @@ async function pcQuick(pid, season) {
 }
 async function pcOpen(i, key) {
   if (key && PC.lists[key]) PC.list = PC.lists[key];
-  PC.at = i; const c = PC.list[i]; if (!c) return;
-  if (!c.r && c.col) { const det = await pcDetail(c.pid); const s = det && det.s.find(x => x[0] === c.season); if (s) { c.r = pcR(s); c.wt = s[4]; } }
+  PC.at = i; const c0 = PC.list[i]; if (!c0) return;
+  const c = window.cgViewCard ? cgViewCard(c0) : c0;
+  if (!c.r && c.col) { const det = await pcDetail(c.pid); const s = det && det.s.find(x => x[0] === c.season); if (s) { c.r = c0.r = pcR(s); c.wt = c0.wt = s[4]; } }
   let m = $("cmodal");
   if (!m) { m = document.createElement("div"); m.id = "cmodal"; m.className = "cmodal"; document.body.appendChild(m); m.addEventListener("click", e => { if (e.target === m) pcClose(); }); }
   const C = CC.CBY[c.col] || CC.CBY.base, base = c.r, built = pcBuild(c), boosted = built ? built.r : null;
@@ -136,7 +143,7 @@ async function pcOpen(i, key) {
   const bump = pcBump(c);
   m.innerHTML = `<div class="cm-box" role="dialog" aria-label="Card viewer">
     <button class="cm-x" onclick="pcClose()" aria-label="Close">✕</button>
-    <div class="cm-top"><button class="cm-nav" onclick="pcStep(-1)" ${i ? "" : "disabled"} aria-label="Previous card">‹</button>${pcFlip(c, "big")}<button class="cm-nav" onclick="pcStep(1)" ${i < PC.list.length - 1 ? "" : "disabled"} aria-label="Next card">›</button></div>
+    ${c.cp ? cgSlab(c) : ""}<div class="cm-top"><button class="cm-nav" onclick="pcStep(-1)" ${i ? "" : "disabled"} aria-label="Previous card">‹</button>${pcFlip(c, "big")}<button class="cm-nav" onclick="pcStep(1)" ${i < PC.list.length - 1 ? "" : "disabled"} aria-label="Next card">›</button></div>
     <p class="cm-hint m small">Tap the card to flip it · ${i + 1} of ${PC.list.length}</p>
     <div class="cm-info"><div><b>${esc(c.name)}</b> <span class="m">· ${c.season} · ${esc(C.name)}</span></div>
       <div class="tierline"><span class="gem t-${c.tier.key}"></span>${c.tier.name} · ${c.ovr} OVR${c.ovr > c.base ? ` <span class="m">(${c.base} base <span class="up">+${c.ovr - c.base}</span> card boost)</span>` : ""}</div>
@@ -486,13 +493,15 @@ function psCareer() {
 async function vCards(col, season) {
   const ix = await pcIndex();
   if (!ix) return `<h2>Cards</h2><p>Card collections need the card index. Run <code>node scripts/build-index.js data</code> (the history workflow does this) and reload.</p>`;
-  const all = pcAll(ix);
+  const all = pcAll(ix); await pcBaseLoad();
   if (!col) return pcHome(all);
+  if (col === "album") return cgAlbumPage(all, season);
+  if (col === "team") { cgPrep(all); return cgTeamPage(season); }
   if (col === "packs") return pcPacks(all);
   if (col === "mine") return pcMine(all);
   const C = CC.CBY[col]; if (!C) return `<p>Unknown collection.</p>`;
   if (PC.lastCol !== col) { PC.lastCol = col; PC.tierF = null; }
-  let list = all.filter(c => c.col === col);
+  let list = col === "base" ? (PC.base || []).slice() : all.filter(c => c.col === col);
   const seasons = [...new Set(list.map(c => c.season))].sort((a, b) => b - a);
   if (season) list = list.filter(c => c.season === +season);
   const sort = PC.sort || "ovr";
@@ -533,7 +542,7 @@ function pcHome(all) {
     const HC = CC.COLLECTIONS.find(c => c.hol === next[1]), list = byCol[HC.key] || [], top = list.slice().sort((a, b) => b.ovr - a.ovr)[0], days = Math.round((next[0] - today) / 864e5);
     h = h.replace(`<h3>Rarest cards ever</h3>`, `<a class="holi" href="#cards-${HC.key}"><span class="mini">${CART.front(top)}</span><div><small>${days === 0 ? "Today" : days === 1 ? "Tomorrow" : `In ${days} days`} · ${new Date(next[0]).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" })}</small><b>${esc(HC.name)}</b><p>${list.length} cards from every ${esc(HC.name.toLowerCase().includes("day") ? HC.name : HC.name + " game")} in league history. Best: ${esc(top.name)} ${top.season} (${top.ovr}).</p></div></a><h3>Rarest cards ever</h3>`);
   }
-  h = h.replace(`<h3>Rarest cards ever</h3>`, `${cgHomeStrip()}<div class="packcta"><a class="btn" href="#cards-packs">Open packs</a><a class="btn ghost" href="#cards-mine">My collection · ${owned}/${all.length}</a></div><h3>Rarest cards ever</h3>`);
+  h = h.replace(`<h3>Rarest cards ever</h3>`, `${cgHomeStrip()}<div class="packcta"><a class="btn" href="#cards-packs">Open packs</a><a class="btn ghost" href="#cards-mine">My collection · ${owned}/${all.length + (PC.base || []).length}</a></div><h3>Rarest cards ever</h3>`);
   for (const [grp, title] of Object.entries(CC.GROUP_NAMES)) {
     h += `<h3>${title}</h3><div class="colgrid">`;
     for (const C of CC.COLLECTIONS.filter(c => c.group === grp)) {
@@ -554,7 +563,7 @@ const pcKey = c => c.col + ":" + c.season + ":" + c.pid;
 function pcPackList(all) {
   const seasons = [...new Set(all.map(c => c.season))].sort((a, b) => a - b), decades = [...new Set(seasons.map(y => Math.floor(y / 10) * 10))];
   const P = [
-    { key: "standard", name: "Standard Pack", sub: "Any collection, any era", c1: "#2563c9", c2: "#13285a", icon: "base", n: 5 },
+    { key: "standard", name: "Standard Pack", sub: "Any collection, any era · plus 2 base cards", c1: "#2563c9", c2: "#13285a", icon: "base", n: 5, base: 2 },
     { key: "premium", name: "Premium Pack", sub: "Last card Ruby or better", c1: "#b3122b", c2: "#3a0e4f", icon: "mvp", n: 5, guarantee: 81 },
     { key: "leaders", name: "Leaders Pack", sub: "Season leaders only", c1: "#0f8a57", c2: "#06341f", icon: "posterized", n: 5, groups: ["leaders"] },
     { key: "feats", name: "Moments Pack", sub: "Moments, feats, playoffs", c1: "#d9480f", c2: "#3b0d02", icon: "moments", n: 4, groups: ["feats"] },
@@ -562,15 +571,17 @@ function pcPackList(all) {
     { key: "legends", name: "Legends Pack", sub: "Legacies & awards · Amethyst+ last", c1: "#7a2bff", c2: "#140632", icon: "immortals", n: 4, groups: ["legacy", "awards"], guarantee: 84 },
     { key: "oddballs", name: "Oddballs Pack", sub: "Built different & eras", c1: "#c99a06", c2: "#3a2a00", icon: "rapsheet", n: 4, groups: ["odd", "eras", "rising"] }
   ];
-  for (const d of decades) P.push({ key: "era" + d, name: `${d}s Pack`, sub: `${Math.max(d, seasons[0])}–${Math.min(d + 9, seasons[seasons.length - 1])} only`, c1: ["#8a6a3e", "#2b8a8a", "#c2410c", "#be185d", "#4338ca", "#0f766e", "#334155", "#9333ea"][(d / 10) % 8], c2: "#120d08", icon: d < 1962 ? "founders" : "ageless", n: 5, from: d, to: d + 9 });
+  for (const d of decades) P.push({ key: "era" + d, name: `${d}s Pack`, sub: `${Math.max(d, seasons[0])}–${Math.min(d + 9, seasons[seasons.length - 1])} only`, c1: ["#8a6a3e", "#2b8a8a", "#c2410c", "#be185d", "#4338ca", "#0f766e", "#334155", "#9333ea"][(d / 10) % 8], c2: "#120d08", icon: d < 1962 ? "founders" : "ageless", n: 5, base: 2, from: d, to: d + 9 });
   return P;
 }
 function pcPool(all, pk) { return all.filter(c => (!pk.groups || pk.groups.includes((CC.CBY[c.col] || {}).group)) && (!pk.from || (c.season >= pk.from && c.season <= pk.to))); }
-function pcDraw(pool, minOvr) {
+// boost (the featured Spotlight pack): Emerald and up are that many times as likely
+function pcDraw(pool, minOvr, boost) {
   const byT = {}; for (const c of pool) if (!minOvr || c.ovr >= minOvr) (byT[c.tier.key] = byT[c.tier.key] || []).push(c);
   const tiers = Object.keys(byT); if (!tiers.length) return pool[Math.floor(Math.random() * pool.length)];
-  let r = Math.random() * tiers.reduce((s, t) => s + BB.ECO.TIER_W[t], 0), t = tiers[0];
-  for (const x of tiers) { r -= BB.ECO.TIER_W[x]; if (r <= 0) { t = x; break; } }
+  const w = t => BB.ECO.TIER_W[t] * (boost && CC.TIERS.findIndex(x => x.key === t) >= CC.TIERS.findIndex(x => x.key === "emerald") ? boost : 1);
+  let r = Math.random() * tiers.reduce((s, t) => s + w(t), 0), t = tiers[0];
+  for (const x of tiers) { r -= w(x); if (r <= 0) { t = x; break; } }
   return byT[t][Math.floor(Math.random() * byT[t].length)];
 }
 // ---------- 3D tilt + glare on the big cards ----------

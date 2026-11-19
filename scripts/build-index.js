@@ -4,6 +4,7 @@
 //   index/players/<n>.json      player detail, sharded by id % SHARDS: ratings by season, league
 //                               ranks, single-game highs, career timeline, earned cards
 //   index/cards.json            every collection card ever earned (base cards excluded)
+//   index/base.json             every base card (one per player-season, rated as the season began), for packs and team sets
 //   index/records.json          v0.7 record book: all-time career, season and single-game lists (overall and by
 //                               decade), advanced-stat leaders, franchise records, all-time ability rankings
 //   index/drafts.json           v0.7 every draft in hindsight: what each pick became, steals and busts, a re-draft
@@ -176,6 +177,10 @@ fs.writeFileSync(path.join(OUT, "index", "cards.json"), JSON.stringify({
   shards: SHARDS, rkeys: P.RKEYS, ratingKeys: ["season", "team", "num", "ovr", "wt"].concat(P.RKEYS, ["abs"]), advKeys: ["season", "team", "ts", "efg", "usg", "rat", "wv", "pm"],
   highKeys, featKeys, cardKeys, cards: allCards
 }));
+// base cards: [pid, team, ovr, num] by season (the card game puts them in packs and builds team sets from them)
+const baseBy = {}; for (const [id, d] of Object.entries(det)) for (const r of d.s) (baseBy[r[0]] = baseBy[r[0]] || []).push([+id, r[1], r[3], r[2]]);
+for (const rows of Object.values(baseBy)) rows.sort((a, b) => a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : b[2] - a[2]);
+fs.writeFileSync(path.join(OUT, "index", "base.json"), JSON.stringify({ keys: ["pid", "team", "ovr", "num"], seasons: baseBy }));
 // ---------- v0.7: the record book and the drafts ----------
 const career = {}; for (const [id, ls] of Object.entries(lines)) { const t = {}; for (const l of ls) statKeys.forEach((k, i) => t[k] = (t[k] || 0) + (l[i + 2] || 0)); t.reb = (t.oreb || 0) + (t.dreb || 0); career[id] = t; }
 const careerLists = {}; for (const k of REC_STATS.concat(["gp"])) careerLists[k] = Object.entries(career).filter(([, t]) => t[k] > 0).map(([id, t]) => [+id, t[k], (players[id] || {}).retired ? 1 : 0]).sort((a, b) => b[1] - a[1]).slice(0, 50);

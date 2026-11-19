@@ -942,8 +942,8 @@ ${Array.from({ length: 8 }, (_, i) => `<line x1="0" y1="${30 + i * 40}" x2="${W}
 <g font-family="${FONT}" text-anchor="middle">
  <g transform="translate(125 112)"><circle r="44" fill="rgba(5,7,10,.55)" stroke="#fff" stroke-opacity=".7" stroke-width="2"/><g transform="scale(2.6)" style="color:#fff">${ICON[p.icon] || ICON.base}</g></g>
  <text x="125" y="196" font-size="15" fill="#fff" letter-spacing="5" opacity=".85">UBL</text>
- <text x="125" y="226" font-size="${p.name.length > 14 ? 22 : 28}" font-weight="700" fill="#fff" stroke="rgba(0,0,0,.4)" stroke-width="1" paint-order="stroke">${xe(p.name.toUpperCase())}</text>
- <text x="125" y="246" font-size="11" fill="#fff" opacity=".85" letter-spacing="1.5">${xe((p.sub || "").toUpperCase())}</text>
+ <text x="125" y="226" font-size="${p.name.length > 14 ? 22 : 28}" font-weight="700" fill="#fff" stroke="rgba(0,0,0,.4)" stroke-width="1" paint-order="stroke"${p.name.length > 16 ? ` textLength="206" lengthAdjust="spacingAndGlyphs"` : ""}>${xe(p.name.toUpperCase())}</text>
+ <text x="125" y="246" font-size="${(p.sub || "").length > 40 ? 8 : (p.sub || "").length > 24 ? 9.5 : 11}" fill="#fff" opacity=".85" letter-spacing="1.5"${(p.sub || "").length > 24 ? ` textLength="206" lengthAdjust="spacingAndGlyphs"` : ""}>${xe((p.sub || "").toUpperCase())}</text>
  <g transform="translate(125 286)"><rect x="-38" y="-12" width="76" height="24" rx="12" fill="#fff"/><text y="5" font-size="12" font-weight="700" fill="${mix(p.c1, "#000", .5)}" letter-spacing="1">${p.n || 5} CARDS</text></g>
 </g></svg>`;
 }
@@ -985,7 +985,7 @@ const CSS = `.cardsvg .holo{animation:cardholo 5s ease-in-out infinite alternate
 .fcard.tilting .cardsvg .lay-fg{transform:translate(calc(var(--px,0) * 9px),calc(var(--py,0) * 8px))}
 .fcard.tilting .cardsvg .lay-bg,.fcard.tilting .cardsvg .lay-fig,.fcard.tilting .cardsvg .lay-fg{transition:transform .06s linear}
 .fcard.tilting .cardsvg .holo{animation:none!important;transform:translateX(calc(var(--px,0) * 190px))}
-.cardsvg .prism{animation:cardprism 7s linear infinite}@keyframes cardprism{to{transform:translate(18px,-14px)}}
+.cardsvg .prism{animation:cardprism 7s linear infinite}.cardsvg .sfrac{animation:sfhue 4s linear infinite}@keyframes sfhue{to{filter:hue-rotate(360deg)}}.ctile .cardsvg .sfrac{animation:none}@keyframes cardprism{to{transform:translate(18px,-14px)}}
 .fcard.tilting .cardsvg .prism{animation:none!important;transform:translate(calc(var(--px,0) * 40px),calc(var(--py,0) * 30px))}
 .ctile .cardsvg .prism{animation:none!important}
 .cardsvg .photo.fadein{animation:phin .35s ease-out both}@keyframes phin{from{opacity:0}to{opacity:1}}
@@ -1162,9 +1162,32 @@ function photoLayer(ph, o, fade) {
 }
 
 // c: { col, season, pid, team, ovr, rank, value, num, name, role, ht, wt, c1, c2, teamId, tier, serial }
+// ---------- variants: parallels recolor the frame; autographs and game-worn patches add a sticker and a swatch ----------
+const PFR = { B: ["#06235e", "#4f9dff", "#0b3fa8", "#cfe4ff", "#08296e"], G: ["#5a3d00", "#ffd54a", "#a87400", "#fff4c2", "#6b4a00"], R: ["#47040f", "#ff2f4f", "#8c0a1e", "#ffc2cb", "#52061a"],
+  K: ["#050507", "#3a3d46", "#0c0d10", "#6f7480", "#060608"], S: ["#6b4a00", "#ffe27a", "#ff8fd8", "#8fd3ff", "#ffe27a"] };
+const PINK = { B: "#7fb8ff", G: "#ffd54a", R: "#ff5c76", K: "#e6e9ef", S: "#ffe27a" };
+function autoSticker(c, id) {
+  const sg = signature(c.name, rngOf("sig" + c.pid)), k = Math.min(1.15, 96 / sg.w);
+  return `<g transform="translate(124 188) rotate(-3)" filter="url(#${id}-ds)"><rect x="0" y="0" width="104" height="40" rx="4" fill="#f6f1e4"/><rect x="0" y="0" width="104" height="40" rx="4" fill="url(#${id}-sheen)"/>
+<rect x="3" y="3" width="98" height="34" rx="3" fill="none" stroke="#c9b98f" stroke-width=".6"/>
+<g transform="translate(${f1(52 - sg.w * k / 2)} 22) scale(${f1(k * 100) / 100})" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="${sg.d}" stroke="#1d3fbf" stroke-width="2.1"/></g>
+<text x="52" y="35.5" font-family="${FONT}" font-size="5" font-weight="700" fill="#7a6a45" text-anchor="middle" letter-spacing="1.1">CERTIFIED AUTOGRAPH · UBL</text></g>`;
+}
+function patchWindow(c, id, T) {
+  const a = c.c1, b = c.c2 || "#222", lt = mix(a, "#ffffff", .25), dk = mix(a, "#000000", .3);
+  let mesh = ""; for (let y = 0; y < 6; y++) for (let x = 0; x < 5; x++) mesh += `<circle cx="${f1(4 + x * 8.4 + (y % 2) * 4.2)}" cy="${f1(4 + y * 8.6)}" r="1.5" fill="${dk}" opacity=".55"/>`;
+  return `<g transform="translate(22 146)"><defs><clipPath id="${id}-pw"><rect x="0" y="0" width="44" height="50" rx="6"/></clipPath></defs>
+<rect x="-3" y="-3" width="50" height="56" rx="8" fill="rgba(5,7,10,.75)" stroke="url(#${id}-fr)" stroke-width="2.2"/>
+<g clip-path="url(#${id}-pw)"><rect width="44" height="50" fill="${a}"/><rect width="44" height="50" fill="${lt}" opacity=".25"/>${mesh}
+<path d="M-4,30 L48,14 L48,22 L-4,38Z" fill="${b}"/><path d="M-4,40 L48,24 L48,26 L-4,42Z" fill="#fff" opacity=".7"/>
+<path d="M3,3 H41 V47 H3Z" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width=".7" stroke-dasharray="2 1.6"/>
+<rect width="44" height="50" fill="url(#${id}-sheen)"/></g>
+<text x="22" y="62" font-family="${FONT}" font-size="6.2" font-weight="700" fill="${T.ink}" text-anchor="middle" letter-spacing="1">GAME-WORN</text></g>`;
+}
 function front(c) {
   install();
-  const id = "cd" + (++UID), T = TP[c.tier.key] || TP.gold, R = rngOf(c.col + ":" + c.season + ":" + c.pid);
+  const VO = c.cp && BB.ECO ? BB.ECO.parseCopy(c.cp) : null, PAR = VO && VO.par, T0 = TP[c.tier.key] || TP.gold;
+  const id = "cd" + (++UID), T = PAR ? Object.assign({}, T0, { frame: PFR[PAR.code] }, PAR.code === "K" ? { deep: "#f4f6fa" } : {}) : T0, R = rngOf(c.col + ":" + c.season + ":" + c.pid);
   const C = BB.CARDS.CBY[c.col] || BB.CARDS.CBY.base;
   const g = { id, R, c1: c.c1, c2: c.c2, acc: T.acc, season: c.season, value: c.value, extra: c.extra, num: c.num, floor: 268, stage: STAGED.has(c.col) };
   let art = (ART[c.col] || ART.base)(g); if (typeof art === "string") art = { bg: art, fg: "" };
@@ -1208,7 +1231,7 @@ function front(c) {
   const pos = BB.CARDS.POS[c.role] || "";
   const icon = ICON[c.col] || ICON.base;
   const serial = c.serial ? `No. ${c.serial}` : `#${c.num}`;
-  const signed = c.col !== "rapsheet" && (c.ovr >= 81 || ["hof", "immortals", "mvp", "fmvp", "numberone", "franchise"].includes(c.col));
+  const signed = !(VO && VO.auto) && c.col !== "rapsheet" && (c.ovr >= 81 || ["hof", "immortals", "mvp", "fmvp", "numberone", "franchise"].includes(c.col));
   let sig = "";
   if (signed) {
     const sg = signature(c.name, rngOf("sig" + c.pid)), k = Math.min(1.25, 92 / sg.w);
@@ -1228,7 +1251,8 @@ function front(c) {
 </defs>
 <path d="${OUTER}" fill="url(#${id}-fr)"/>
 ${material(id, T, R)}
-${prism(id, T, c.tier.key)}
+${prism(id, T, PAR ? "diamond" : c.tier.key)}
+${PAR ? `<g clip-path="url(#${id}-band)"${PAR.code === "S" ? ` class="sfrac"` : ""}><rect width="${W}" height="${H}" fill="url(#${id}-holo)" opacity="${PAR.code === "S" ? .55 : PAR.code === "K" ? .12 : .2}" style="mix-blend-mode:overlay"/></g>` : ""}
 <path d="${chamf(3, 3, W - 6, H - 6, 16)}" fill="none" stroke="url(#${id}-frv)" stroke-width="1.6" opacity=".9"/>
 ${frameOverlay(C.frame, id, T, R)}
 ${bevel(id, T)}
@@ -1242,11 +1266,13 @@ ${bevel(id, T)}
  <rect width="${W}" height="${H}" fill="url(#${id}-vig)"/>
  <rect x="0" y="214" width="${W}" height="136" fill="url(#${id}-plate)"/>
  ${sig}
+ ${VO && VO.auto ? autoSticker(c, id) : ""}
  ${glints}
  <rect width="${W}" height="${H}" fill="url(#${id}-sheen)"/>
 </g>
 <path d="${INNER}" fill="none" stroke="#000" stroke-opacity=".7" stroke-width="2.4"/>
 <path d="${chamf(13, 13, W - 26, H - 26, 10)}" fill="none" stroke="${T.acc}" stroke-opacity=".55" stroke-width=".9"/>
+${PAR ? `<path d="${INNER}" fill="none" stroke="${PINK[PAR.code]}" stroke-width="2.2" opacity=".85"/>` : ""}
 ${corners(T, c.tier.key)}
 <g font-family="${FONT}">
  <path d="M18,10 H70 V88 L44,100 L18,88Z" fill="rgba(5,7,10,.62)" stroke="url(#${id}-fr)" stroke-width="2.4"/>
@@ -1259,12 +1285,14 @@ ${corners(T, c.tier.key)}
  <g transform="translate(210 74)"><rect x="-20" y="-8" width="40" height="16" rx="3" fill="rgba(5,7,10,.72)" stroke="${T.acc}" stroke-width=".9"/><text y="4.5" font-size="11" font-weight="700" fill="${T.ink}" text-anchor="middle">'${String(c.season).slice(2)}</text></g>
  ${ribbon ? `<g transform="translate(125 238)"><path d="M${-ribW / 2},-10 H${ribW / 2} L${ribW / 2 + 7},0 L${ribW / 2},10 H${-ribW / 2} L${-ribW / 2 - 7},0Z" fill="url(#${id}-fr)" stroke="#000" stroke-opacity=".5"/><text y="4" font-size="11" font-weight="700" fill="${T.deep}" text-anchor="middle" letter-spacing="1.2"${ribFit}>${xe(ribbon)}</text></g>` : ""}
  <text x="125" y="268" font-size="12" fill="#d4dbe4" text-anchor="middle" letter-spacing="3.5">${xe(first)}</text>
- <g transform="translate(125 296) skewX(-7)"><text x="2" y="2.5" font-size="31" font-weight="700" fill="${T.deep}" opacity=".85" text-anchor="middle" letter-spacing=".6"${lastFit}>${xe(last)}</text><text x="0" y="0" font-size="31" font-weight="700" fill="url(#${id}-nm)" text-anchor="middle" letter-spacing=".6" stroke="rgba(0,0,0,.55)" stroke-width="1.1" paint-order="stroke"${lastFit}>${xe(last)}</text></g>
+ <g transform="translate(125 296) skewX(-7)"><text x="2" y="2.5" font-size="31" font-weight="700" fill="${T0.deep}" opacity=".85" text-anchor="middle" letter-spacing=".6"${lastFit}>${xe(last)}</text><text x="0" y="0" font-size="31" font-weight="700" fill="url(#${id}-nm)" text-anchor="middle" letter-spacing=".6" stroke="rgba(0,0,0,.55)" stroke-width="1.1" paint-order="stroke"${lastFit}>${xe(last)}</text></g>
  <path d="M24,304 H226 L220,318 H30Z" fill="url(#${id}-fr)" opacity=".95"/>
  <path d="M24,304 H226" stroke="#fff" stroke-opacity=".45" stroke-width=".8"/>
  <text x="125" y="314.5" font-size="10" font-weight="700" fill="${T.deep}" text-anchor="middle" letter-spacing="1.4"${subFit}>${xe(subTxt)}</text>
- <text x="30" y="333" font-size="8.5" fill="#9aa4b2" letter-spacing="1.2">${xe(c.tier.name.toUpperCase())}</text>
- <text x="220" y="333" font-size="8.5" fill="#9aa4b2" letter-spacing="1.2" text-anchor="end">${xe(serial)}</text>
+ <text x="30" y="333" font-size="8.5" fill="${PAR ? PINK[PAR.code] : "#9aa4b2"}" letter-spacing="1.2"${PAR ? ` font-weight="700"` : ""}${PAR && c.tier.name.length + PAR.name.length > 11 ? ` textLength="78" lengthAdjust="spacingAndGlyphs"` : ""}>${xe(c.tier.name.toUpperCase() + (PAR ? " · " + (PAR.code === "S" ? "SUPER 1/1" : PAR.name.toUpperCase()) : ""))}</text>
+ ${PAR ? `<g transform="translate(205 330)"><rect x="-22" y="-9" width="44" height="13" rx="2.5" fill="url(#${id}-fr)" stroke="#000" stroke-opacity=".6" stroke-width=".8"/><text y="1" font-size="9" font-weight="700" fill="${PAR.code === "K" ? "#fff" : "#120d02"}" text-anchor="middle" letter-spacing=".8">${PAR.run === 1 ? "1/1" : `${VO.n}/${PAR.run}`}</text></g>`
+    : `<text x="220" y="333" font-size="8.5" fill="#9aa4b2" letter-spacing="1.2" text-anchor="end">${xe(serial)}</text>`}
+ ${VO && VO.patch != null ? patchWindow(c, id, T) : ""}
 </g>
 ${gemSVG(T, c.tier.key, 125, 336)}
 </svg>`;
@@ -1277,7 +1305,8 @@ ${gemSVG(T, c.tier.key, 125, 336)}
 function wrapText(str, n) { const out = []; let line = ""; for (const w of String(str || "").split(/\s+/)) { if ((line + " " + w).trim().length > n) { if (line) out.push(line); line = w; } else line = (line + " " + w).trim(); } if (line) out.push(line); return out; }
 function back(c, r) {
   install();
-  const id = "cb" + (++UID), T = TP[c.tier.key] || TP.gold, R = rngOf("b" + c.pid + c.season), CC = BB.CARDS;
+  const VO = c.cp && BB.ECO ? BB.ECO.parseCopy(c.cp) : null, PAR = VO && VO.par, T0 = TP[c.tier.key] || TP.gold;
+  const id = "cb" + (++UID), T = PAR ? Object.assign({}, T0, { frame: PFR[PAR.code] }) : T0, R = rngOf("b" + c.pid + c.season), CC = BB.CARDS;
   const gs = CC.groupScores(r), bd = CC.badges(r).slice(0, 6), C = CC.CBY[c.col] || CC.CBY.base;
   const BC = { hof: "#c58bff", gold: "#f6cf55", silver: "#dfe6ee", bronze: "#e0a46a" };
   const team = (BB.TEAMS || []).find(t => t.id === c.teamId), first = c.name.split(" ")[0].toUpperCase(), last = (c.name.split(" ").slice(1).join(" ") || c.name).toUpperCase();
@@ -1305,7 +1334,8 @@ function back(c, r) {
 <linearGradient id="${id}-in" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${mix(c.c1, "#05070a", .55)}"/><stop offset=".35" stop-color="${mix(c.c1, "#05070a", .82)}"/><stop offset="1" stop-color="#05070a"/></linearGradient>
 <linearGradient id="${id}-nm" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="${mix(T.acc, "#ffffff", .55)}"/><stop offset=".56" stop-color="${mix(T.acc, "#ffffff", .25)}"/><stop offset="1" stop-color="${mix(T.acc, "#ffffff", .7)}"/></linearGradient>
 <filter id="${id}-ds" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.4" flood-color="#000" flood-opacity=".6"/></filter></defs>
-<path d="${OUTER}" fill="url(#${id}-fr)"/>${material(id, T, R)}${prism(id, T, c.tier.key)}${bevel(id, T)}
+<path d="${OUTER}" fill="url(#${id}-fr)"/>${material(id, T, R)}${prism(id, T, PAR ? "diamond" : c.tier.key)}
+${PAR ? `<g clip-path="url(#${id}-band)"${PAR.code === "S" ? ` class="sfrac"` : ""}><rect width="${W}" height="${H}" fill="url(#${id}-holo)" opacity="${PAR.code === "S" ? .55 : PAR.code === "K" ? .12 : .2}" style="mix-blend-mode:overlay"/></g>` : ""}${bevel(id, T)}
 <path d="${INNER}" fill="url(#${id}-in)"/>
 <g clip-path="url(#${id}-clip)"><g opacity=".07" transform="translate(196 300) scale(3.2)">${crest(c.teamId, "#ffffff", "#ffffff", 30)}</g>${halftone(id + "-ht", "#ffffff", .04, 5)}
  <path d="M10,10 H240 V84 H10Z" fill="${tc}" opacity=".22"/><path d="M10,84 H240" stroke="${T.acc}" stroke-opacity=".6"/></g>
