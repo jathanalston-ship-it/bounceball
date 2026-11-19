@@ -261,7 +261,78 @@ function spot(x, y, x2, w, col, op, id) { const gid = id + "-bm" + (++SPOT); ret
 function rimSVG(x, y, k, net) {
   return `<g transform="translate(${x} ${y}) scale(${k})"><rect x="-8" y="-62" width="74" height="50" rx="2" fill="rgba(210,235,255,.14)" stroke="rgba(255,255,255,.85)" stroke-width="2.6"/><rect x="13" y="-40" width="28" height="21" fill="none" stroke="rgba(255,255,255,.8)" stroke-width="2.2"/><rect x="25" y="-12" width="4" height="9" fill="#d65c10"/><ellipse cx="14" cy="-2" rx="23" ry="5.4" fill="none" stroke="#ff7a1a" stroke-width="3.8"/>${net ? `<path d="M-8,-1 L-1,27 M2,1 L4,28 M12,2 L11,29 M22,2 L18,28 M35,0 L28,27 M-8,-1 L4,28 M2,1 L18,28 M12,2 L28,27 M35,0 L11,29 M22,2 L-1,27 M-4,12 H32 M-1,22 H30" stroke="rgba(255,255,255,.75)" stroke-width="1.1" fill="none"/>` : ""}</g>`;
 }
+// ---------- the arena behind the card ----------
+// An era-specific room drawn in neutral tones; bg() lays each collection's colors over it, partly
+// see-through, so every card keeps its identity and gains a place: a 1950s gym (brick, tall windows,
+// wooden bleachers), a classic arena (hanging scoreboard, spotlights, haze), a 1990s dome (jumbotron,
+// ribbon boards, lasers) or the LED era (light rig, LED ribbons and courtside boards, phone lights).
+// It has its own random stream, so it never shifts a card's pose or other draws.
+function stage(g) {
+  const y = g.season, id = g.id, R = rngOf("stage:" + g.season + ":" + g.c1 + ":" + (g.num || 0)), c1 = g.c1, c2 = g.c2;
+  const era = y < 1966 ? "gym" : y < 1990 ? "arena" : y < 2010 ? "dome" : "led";
+  const head = (pid, sc, col, sh, dx) => `<pattern id="${id}-${pid}" width="${f1(9 * sc)}" height="${f1(10 * sc)}" patternUnits="userSpaceOnUse" patternTransform="translate(${f1(dx || 0)} 0)"><circle cx="${f1(4.5 * sc)}" cy="${f1(3.4 * sc)}" r="${f1(2.5 * sc)}" fill="${col}"/><ellipse cx="${f1(4.5 * sc)}" cy="${f1(9.2 * sc)}" rx="${f1(4 * sc)}" ry="${f1(2.8 * sc)}" fill="${sh}"/></pattern>`;
+  let d = "", s = "";
+  // the floor: a wood court in perspective, glossy under the lights
+  d += `<linearGradient id="${id}-fl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8a6a44"/><stop offset="1" stop-color="#3a2a18"/></linearGradient>`;
+  let planks = ""; for (let i = -10; i <= 10; i++) planks += `<line x1="${125 + i * 9}" y1="${g.floor}" x2="${125 + i * 34}" y2="${H}" stroke="#2a1d10" stroke-width=".6" opacity=".55"/>`;
+  const floorS = `<rect x="0" y="${g.floor - 2}" width="${W}" height="${H - g.floor + 2}" fill="url(#${id}-fl)"/>${planks}<ellipse cx="125" cy="${g.floor + 10}" rx="120" ry="14" fill="#fff" opacity=".12"/>`;
+  if (era === "gym") {
+    d += `<pattern id="${id}-brick" width="18" height="8" patternUnits="userSpaceOnUse"><rect width="18" height="8" fill="#6e4a36"/><path d="M0,0 H18 M0,4 H18 M9,0 V4 M0,4 V8 M18,4 V8" stroke="#3b271b" stroke-width=".9"/></pattern>`
+      + `<linearGradient id="${id}-win" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff7dc"/><stop offset="1" stop-color="#cfd9e2"/></linearGradient>`
+      + `<linearGradient id="${id}-shaft" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff4cc" stop-opacity=".55"/><stop offset="1" stop-color="#fff4cc" stop-opacity="0"/></linearGradient>`
+      + head("cr", 1.1, "#3a3330", "#4a423c");
+    s += `<rect width="${W}" height="${g.floor}" fill="url(#${id}-brick)"/><rect width="${W}" height="${g.floor}" fill="#1a120c" opacity=".35"/>`;
+    for (const x of [26, 98, 170]) s += `<path d="M${x},96 V36 Q${x + 27},12 ${x + 54},36 V96Z" fill="url(#${id}-win)" opacity=".9"/><path d="M${x + 27},20 V96 M${x},62 H${x + 54}" stroke="#4b3426" stroke-width="2.2"/>`
+      + `<polygon points="${x},96 ${x + 54},96 ${x + 120},${g.floor} ${x + 30},${g.floor}" fill="url(#${id}-shaft)" style="mix-blend-mode:screen"/>`;
+    for (let i = 0; i < 6; i++) s += `<rect x="0" y="${150 + i * 14}" width="${W}" height="3" fill="#a07a4e" opacity=".8"/><rect x="0" y="${153 + i * 14}" width="${W}" height="11" fill="#2a1d14" opacity=".55"/>`;
+    s += `<rect x="0" y="146" width="${W}" height="${g.floor - 146}" fill="url(#${id}-cr)" opacity=".7"/>`;
+    for (const x of [62, 188]) s += `<line x1="${x}" y1="0" x2="${x}" y2="20" stroke="#222" stroke-width="1"/><path d="M${x - 9},26 L${x - 4},18 H${x + 4} L${x + 9},26Z" fill="#2b2b2b"/><ellipse cx="${x}" cy="26" rx="9" ry="2.2" fill="#ffe9b0"/>`;
+    return `<defs>${d}</defs>${s}${floorS}`;
+  }
+  // a bowl full of people: three bands of rows, smaller and darker toward the rafters
+  d += head("c1", 0.55, "#2a2e36", "#22262d", R() * 5) + head("c2", 0.75, "#3a404a", "#30353e", R() * 5) + head("c3", 1.0, "#4c5360", "#3e4450", R() * 5);
+  d += `<linearGradient id="${id}-bowl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#05070a"/><stop offset="1" stop-color="#1b1f27"/></linearGradient>`;
+  s += `<rect width="${W}" height="${g.floor}" fill="url(#${id}-bowl)"/>`;
+  s += `<rect x="0" y="40" width="${W}" height="58" fill="url(#${id}-c1)" opacity=".75"/><rect x="0" y="98" width="${W}" height="56" fill="url(#${id}-c2)" opacity=".85"/><rect x="0" y="158" width="${W}" height="${g.floor - 178}" fill="url(#${id}-c3)"/>`;
+  s += `<rect x="0" y="154" width="${W}" height="4" fill="#0b0d12"/>`; // the rail between decks
+  // the deck rail and the courtside wall
+  s += `<rect x="0" y="${g.floor - 22}" width="${W}" height="20" fill="#0c0f14"/>`;
+  if (era === "arena") {
+    // a hanging scoreboard cube with bulbs, spotlights crossing in haze
+    s += `<line x1="125" y1="0" x2="125" y2="8" stroke="#111" stroke-width="2"/><rect x="101" y="8" width="48" height="30" rx="2" fill="#111419" stroke="#3b414b"/><rect x="106" y="13" width="38" height="12" fill="#1a0a05"/>`;
+    for (let i = 0; i < 9; i++) s += `<circle cx="${f1(109 + i * 4)}" cy="19" r="1.1" fill="#ffb347" opacity="${f1(.4 + R() * .6)}"/>`;
+    s += `<text x="125" y="34" font-family="${FONT}" font-size="6" fill="#ff6a1f" text-anchor="middle" letter-spacing="1">HOME ${10 + Math.floor(R() * 90)} · ${10 + Math.floor(R() * 90)} VIS</text>`;
+    d += `<linearGradient id="${id}-beam" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff6dc" stop-opacity=".5"/><stop offset="1" stop-color="#fff6dc" stop-opacity="0"/></linearGradient>`;
+    for (const [x, tx] of [[10, 150], [240, 100], [60, 210]]) s += `<polygon points="${x - 4},0 ${x + 4},0 ${tx + 26},${g.floor} ${tx - 26},${g.floor}" fill="url(#${id}-beam)" style="mix-blend-mode:screen" opacity=".55"/>`;
+    for (let i = 0; i < 9; i++) s += star4(R() * W, 45 + R() * 150, 1.5 + R() * 2.5, "#ffffff", f1(.5 + R() * .5)); // flashbulbs
+    s += `<ellipse cx="125" cy="150" rx="160" ry="40" fill="#9aa3b0" opacity=".1" filter="url(#${id}-blur)"/>`;
+  } else {
+    // ribbon boards around the bowl in the team's colors
+    d += `<linearGradient id="${id}-rib" x1="0" y1="0" x2="1" y2="0">${[c1, c2, c1, c2, c1].map((c, i) => `<stop offset="${i / 4}" stop-color="${c}"/>`).join("")}</linearGradient>`;
+    s += `<rect x="0" y="152" width="${W}" height="7" fill="url(#${id}-rib)"/><rect x="0" y="152" width="${W}" height="7" fill="#fff" opacity=".18"/>`;
+    for (let x = 4; x < W; x += 6) s += `<rect x="${x}" y="154" width="3" height="3" fill="#fff" opacity=".35"/>`;
+    // the big screen over center court
+    s += `<line x1="104" y1="0" x2="104" y2="6" stroke="#111" stroke-width="1.5"/><line x1="146" y1="0" x2="146" y2="6" stroke="#111" stroke-width="1.5"/><rect x="92" y="6" width="66" height="36" rx="2" fill="#0d1016" stroke="#454c58"/><rect x="96" y="10" width="58" height="26" fill="${mix(c1, "#000", .35)}"/><rect x="96" y="10" width="58" height="26" fill="url(#${id}-rib)" opacity=".35"/><text x="125" y="27" font-family="${FONT}" font-weight="700" font-size="10" fill="#fff" text-anchor="middle" opacity=".85">${era === "led" ? "DEFENSE!" : "MAKE NOISE"}</text>`;
+    if (era === "dome") { // lasers
+      for (let i = 0; i < 5; i++) { const x0 = R() * W, x1 = R() * W; s += `<line x1="${f1(x0)}" y1="0" x2="${f1(x1)}" y2="${g.floor}" stroke="${i % 2 ? "#3ff2ff" : "#ff3fa4"}" stroke-width=".9" opacity=".45" style="mix-blend-mode:screen"/>`; }
+      for (let i = 0; i < 7; i++) s += star4(R() * W, 45 + R() * 150, 1.4 + R() * 2.2, "#ffffff", f1(.5 + R() * .5));
+    } else { // the light rig, phones in the crowd, LED boards courtside
+      s += `<rect x="0" y="0" width="${W}" height="5" fill="#15181e"/>`;
+      for (let x = 14; x < W; x += 28) s += `<circle cx="${x}" cy="6" r="2.4" fill="#e9f4ff"/><polygon points="${x - 2},7 ${x + 2},7 ${x + 22},120 ${x - 22},120" fill="#cfe6ff" opacity=".05" style="mix-blend-mode:screen"/>`;
+      for (let i = 0; i < 34; i++) s += `<circle cx="${f1(R() * W)}" cy="${f1(42 + R() * 180)}" r="${f1(.6 + R() * .7)}" fill="${R() < .7 ? "#ffffff" : "#9ed8ff"}" opacity="${f1(.55 + R() * .45)}"/>`;
+      s += `<rect x="0" y="${g.floor - 20}" width="${W}" height="14" fill="url(#${id}-rib)" opacity=".85"/><rect x="0" y="${g.floor - 20}" width="${W}" height="14" fill="#000" opacity=".25"/>`;
+    }
+  }
+  return `<defs>${d}</defs>${s}${floorS}`;
+}
+const STAGED = new Set(["base", "posterized", "swat", "wrecking", "escape", "fouralarm", "splash", "dimes", "boards", "pickpockets", "buckets", "mvp", "fmvp", "dpoy", "roy", "champ",
+  "moments", "fifty", "tripledouble", "postseason", "breakout", "younggun", "numberone", "bench", "prime", "opening", "game7", "dunktober", "rookie", "dynasty",
+  // holiday games were played in arenas too: their decorations hang over the room
+  "halloween", "thanksgiving", "christmas", "newyear", "valentine", "leapday", "piday", "stpatricks", "friday13"]);
 function bg(g, top, bot, glowCol) {
+  if (g.stage) return stage(g) + `<defs><linearGradient id="${g.id}-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${top}"/><stop offset="1" stop-color="${bot}"/></linearGradient>
+<radialGradient id="${g.id}-halo" cx=".52" cy=".46" r=".5"><stop offset="0" stop-color="${glowCol || g.acc}" stop-opacity=".55"/><stop offset=".55" stop-color="${glowCol || g.acc}" stop-opacity=".12"/><stop offset="1" stop-color="${glowCol || g.acc}" stop-opacity="0"/></radialGradient>
+</defs><rect width="${W}" height="${H}" fill="url(#${g.id}-bg)" opacity=".5" style="mix-blend-mode:color"/><rect width="${W}" height="${H}" fill="url(#${g.id}-bg)" opacity=".42"/>`;
   return `<defs><linearGradient id="${g.id}-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${top}"/><stop offset="1" stop-color="${bot}"/></linearGradient>
 <radialGradient id="${g.id}-halo" cx=".52" cy=".46" r=".5"><stop offset="0" stop-color="${glowCol || g.acc}" stop-opacity=".55"/><stop offset=".55" stop-color="${glowCol || g.acc}" stop-opacity=".12"/><stop offset="1" stop-color="${glowCol || g.acc}" stop-opacity="0"/></radialGradient>
 </defs>
@@ -760,6 +831,41 @@ function gemSVG(T, key, x, y) {
   return `<g transform="translate(${x} ${y})"><path d="M-12,-3 L-7,-9 H7 L12,-3 L0,11Z" fill="${c3}" stroke="${d}" stroke-width=".8"/><path d="M-7,-9 L-4,-3 H4 L7,-9Z" fill="${c1}"/><path d="M-12,-3 L-4,-3 L-7,-9Z" fill="${c2}"/><path d="M12,-3 L4,-3 L7,-9Z" fill="${c2}"/><path d="M-12,-3 L0,11 L-4,-3Z" fill="${c4}"/><path d="M12,-3 L0,11 L4,-3Z" fill="${c2}"/><path d="M-4,-3 L0,11 L4,-3Z" fill="${c3}"/><path d="M-5,-7 L-3,-5" stroke="#fff" stroke-width="1.2" opacity=".9"/>${star4(6, -9, 4, "#fff", .9)}</g>`;
 }
 
+// ---------- premium frame finishes ----------
+// A raised bevel on the frame band: light catches the top-left edges, the bottom-right fall into shadow.
+function bevel(id, T) {
+  return `<linearGradient id="${id}-bvl" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".85"/><stop offset=".45" stop-color="#fff" stop-opacity=".1"/><stop offset=".55" stop-color="#000" stop-opacity=".15"/><stop offset="1" stop-color="#000" stop-opacity=".75"/></linearGradient>
+<linearGradient id="${id}-bvi" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#000" stop-opacity=".8"/><stop offset=".5" stop-color="#000" stop-opacity=".1"/><stop offset="1" stop-color="#fff" stop-opacity=".6"/></linearGradient>
+<path d="${chamf(1.5, 1.5, W - 3, H - 3, 17)}" fill="none" stroke="url(#${id}-bvl)" stroke-width="3"/>
+<path d="${chamf(8.6, 8.6, W - 17.2, H - 17.2, 12.6)}" fill="none" stroke="url(#${id}-bvi)" stroke-width="2.8"/>
+<path d="${chamf(5, 5, W - 10, H - 10, 15)}" fill="none" stroke="${mix(T.acc, "#ffffff", .5)}" stroke-width=".5" opacity=".55"/>`;
+}
+// Emerald and up: a refractor of fine rainbow lines on the frame band that slides as the card tilts
+function prism(id, T, key) {
+  const gem = ["emerald", "sapphire", "ruby", "amethyst", "diamond", "opal", "vulcan"].includes(key); if (!gem) return "";
+  const cols = T.molten ? ["#ff3d00", "#ffd166", "#ff6a1f", "#fff1e6"] : ["#ff5ec4", "#7ad7ff", "#9dff9a", "#fff27a", "#c58bff"];
+  return `<pattern id="${id}-pr" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(-38)">${cols.map((c, i) => `<rect x="${f1(i * 9 / cols.length)}" width="${f1(9 / cols.length * .55)}" height="9" fill="${c}"/>`).join("")}</pattern>
+<g clip-path="url(#${id}-band)" style="mix-blend-mode:overlay" opacity="${key === "emerald" || key === "sapphire" ? .3 : .45}"><rect class="prism" x="-60" y="-60" width="${W + 120}" height="${H + 120}" fill="url(#${id}-pr)"/></g>`;
+}
+// corners: brackets for the metals, faceted gem studs for the gems, star bursts for Diamond and up
+function corners(T, key) {
+  const at = [[10, 10, 1, 1], [240, 10, -1, 1], [10, 340, 1, -1], [240, 340, -1, -1]];
+  let s = at.map(([x, y, sx, sy]) => `<path d="M${x + sx * 4},${y + sy * 22} V${y + sy * 8} L${x + sx * 8},${y + sy * 4} H${x + sx * 22}" stroke="${T.acc}" stroke-width="2.2" fill="none"/>`).join("");
+  const ti = TIERK.indexOf(key);
+  if (ti >= TIERK.indexOf("emerald")) s += at.map(([x, y, sx, sy]) => { const cx = x + sx * 6.5, cy = y + sy * 6.5; return `<g transform="translate(${cx} ${cy})"><path d="M0,-4.4 L4.4,0 L0,4.4 L-4.4,0Z" fill="${T.acc}" stroke="${T.deep}" stroke-width=".7"/><path d="M0,-4.4 L4.4,0 L0,0Z" fill="#fff" opacity=".55"/><path d="M0,4.4 L-4.4,0 L0,0Z" fill="#000" opacity=".3"/></g>`; }).join("");
+  if (ti >= TIERK.indexOf("diamond")) s += at.map(([x, y, sx, sy]) => star4(x + sx * 6.5, y + sy * 6.5, 9, "#ffffff", .9)).join("");
+  return s;
+}
+const TIERK = ["rubber", "bronze", "silver", "gold", "emerald", "sapphire", "ruby", "amethyst", "diamond", "opal", "vulcan"];
+// a team crest drawn from the team: its shape, stripes and stars come from the team id
+function crest(teamId, c1, c2, sz) {
+  const h = rngOf("crest:" + teamId), shape = Math.floor(h() * 4), k = (sz || 30) / 30, ab = String(teamId || "").slice(0, 3);
+  const tc = lum(c1) > 0.6 ? "#111" : "#fff", ring = lum(c2) < 0.12 && lum(c1) < 0.12 ? "#d7dbe0" : c2;
+  const paths = ["M0,-15 H13 V-2 Q13,10 0,16 Q-13,10 -13,-2 V-15Z", "M0,-15 A15,15 0 1,1 -0.01,-15Z", "M0,-15 L13,-7.5 V7.5 L0,15 L-13,7.5 V-7.5Z", "M-13,-14 H13 V4 L0,16 L-13,4Z"];
+  const p = paths[shape], stripe = h() < 0.6, stars = Math.floor(h() * 3);
+  return `<g transform="scale(${f1(k * 100) / 100})"><path d="${p}" fill="${ring}" transform="scale(1.16)"/><path d="${p}" fill="${c1}"/>${stripe ? `<clipPath id="cr-${teamId}-${shape}"><path d="${p}"/></clipPath><g clip-path="url(#cr-${teamId}-${shape})"><rect x="-16" y="5" width="32" height="3.2" fill="${ring}"/><rect x="-16" y="9.6" width="32" height="1.4" fill="${ring}" opacity=".8"/></g>` : ""}${Array.from({ length: stars }, (_, i) => star4((i - (stars - 1) / 2) * 7, -9.5, 2.3, ring, 1)).join("")}<text y="${stripe ? 3 : 4.5}" font-family="${FONT}" font-size="${ab.length > 2 ? 10 : 12}" font-weight="700" fill="${tc}" text-anchor="middle" stroke="rgba(0,0,0,.35)" stroke-width=".6" paint-order="stroke">${xe(ab)}</text></g>`;
+}
+
 // ---------- collection frames (overlays on the tier frame band) ----------
 function frameOverlay(kind, id, T, R) {
   const band = `clip-path="url(#${id}-band)"`;
@@ -878,6 +984,10 @@ const CSS = `.cardsvg .holo{animation:cardholo 5s ease-in-out infinite alternate
 .fcard.tilting .cardsvg .lay-fig{transform:translate(calc(var(--px,0) * 5px),calc(var(--py,0) * 4px))}
 .fcard.tilting .cardsvg .lay-fg{transform:translate(calc(var(--px,0) * 9px),calc(var(--py,0) * 8px))}
 .fcard.tilting .cardsvg .lay-bg,.fcard.tilting .cardsvg .lay-fig,.fcard.tilting .cardsvg .lay-fg{transition:transform .06s linear}
+.fcard.tilting .cardsvg .holo{animation:none!important;transform:translateX(calc(var(--px,0) * 190px))}
+.cardsvg .prism{animation:cardprism 7s linear infinite}@keyframes cardprism{to{transform:translate(18px,-14px)}}
+.fcard.tilting .cardsvg .prism{animation:none!important;transform:translate(calc(var(--px,0) * 40px),calc(var(--py,0) * 30px))}
+.ctile .cardsvg .prism{animation:none!important}
 .cardsvg .photo.fadein{animation:phin .35s ease-out both}@keyframes phin{from{opacity:0}to{opacity:1}}
 @media (prefers-reduced-motion:reduce){.cardsvg *{animation:none!important}.cardsvg .lay-bg,.cardsvg .lay-fig,.cardsvg .lay-fg{transform:none!important}}`;
 let installed = false;
@@ -913,7 +1023,7 @@ function rimFilter(id, acc, fill) {
 // Rendered on demand by the broadcast's photo booth (Broadcast3D.photo), kept as blob URLs in memory
 // and in IndexedDB between visits. Cards ask only once they are on screen (or about to be).
 const PH = { mem: new Map(), spec: new Map(), lay: new Map(), q: [], qs: new Set(), busy: false, off: false, fails: 0, ok: undefined, io: null, db: undefined };
-const PV = 2; // bump to re-shoot every photo (2: the arcade athletes of broadcast v11)
+const PV = 3; // bump to re-shoot every photo (2: the arcade athletes of broadcast v11; 3: hero camera, tier-colored rim)
 function photoOK() {
   if (PH.ok === undefined) {
     let off = false; try { off = localStorage.getItem("ubl-photos") === "off"; } catch (e) { /* storage blocked */ }
@@ -922,10 +1032,12 @@ function photoOK() {
   }
   return PH.ok && !PH.off;
 }
-function photoKey(c, pose, hat) { return [PV, c.pid, c.season, c.teamId || "", c.num, c.ht || "", c.wt || "", c.c1, pose, hat || ""].join("|"); }
+function photoKey(c, pose, hat) { return [PV, c.pid, c.season, c.teamId || "", c.num, c.ht || "", c.wt || "", c.c1, pose, hat || "", c.tier ? c.tier.key : ""].join("|"); }
 function photoSpec(c, pose, hat) {
   const tm = (BB.TEAMS || []).find(t => t.id === c.teamId) || { id: "UBL", city: "UBL", name: "UBL", c1: c.c1, c2: c.c2 };
-  return { r: { id: c.pid, ht: c.ht, wt: c.wt, num: c.num, name: c.name }, season: c.season, tm, c1: c.c1, c2: c.c2, pose, hat, rim: lum(c.c2) > 0.22 ? c.c2 : mix(c.c1, "#ffffff", 0.3) };
+  // rims: the card's tier color on one edge, the team's color on the other
+  const T = TP[c.tier && c.tier.key] || TP.gold, team = lum(c.c1) > 0.25 ? c.c1 : lum(c.c2) > 0.25 ? c.c2 : mix(c.c1, "#ffffff", 0.45);
+  return { r: { id: c.pid, ht: c.ht, wt: c.wt, num: c.num, name: c.name }, season: c.season, tm, c1: c.c1, c2: c.c2, pose, hat, rim: mix(T.acc, "#ffffff", 0.15), rim2: team };
 }
 function photoGet(key) { const ph = PH.mem.get(key); if (ph) { PH.mem.delete(key); PH.mem.set(key, ph); } return ph; }
 function photoWatch() {
@@ -987,13 +1099,18 @@ async function photoPump() {
     }
   } finally { PH.busy = false; }
 }
-// the photo pops off the card: a dark contour, a soft glow in the tier color, a touch more contrast
-function photoFilter(id, acc) {
-  return `<filter id="${id}-phf" x="-25%" y="-12%" width="150%" height="124%" color-interpolation-filters="sRGB">
+const ACTION = new Set(["dunk", "block", "shoot", "tackle", "stiffarm", "pass", "rebound", "steal", "dribble", "fadeaway", "hangrim", "crossover"]);
+// the photo pops off the card: a dark contour, a soft glow in the tier color, a touch more contrast.
+// Also: tier-colored motion blur for afterimages, and the mask that fades his floor reflection.
+function photoFilter(id, acc, floorY) {
+  const fy = floorY || 268;
+  return `<filter id="${id}-mb" x="-30%" y="-10%" width="160%" height="120%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceAlpha" stdDeviation="6 .6" result="b"/><feFlood flood-color="${acc}"/><feComposite in2="b" operator="in"/></filter>
+<linearGradient id="${id}-rfg" gradientUnits="userSpaceOnUse" x1="0" y1="${fy}" x2="0" y2="${fy + 58}"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<mask id="${id}-rfm" maskUnits="userSpaceOnUse" x="0" y="${fy}" width="${W}" height="${H - fy}"><rect x="0" y="${fy}" width="${W}" height="${H - fy}" fill="url(#${id}-rfg)"/></mask>
+<filter id="${id}-phf" x="-25%" y="-12%" width="150%" height="124%" color-interpolation-filters="sRGB">
 <feMorphology in="SourceAlpha" operator="dilate" radius="1.2" result="d"/><feGaussianBlur in="d" stdDeviation="1.1" result="db"/><feFlood flood-color="#04060a" flood-opacity=".8"/><feComposite in2="db" operator="in" result="edge"/>
 <feGaussianBlur in="SourceAlpha" stdDeviation="7" result="g0"/><feFlood flood-color="${acc}" flood-opacity=".38"/><feComposite in2="g0" operator="in" result="aura"/>
-<feComponentTransfer in="SourceGraphic" result="pc"><feFuncR type="linear" slope="1.1" intercept="-.04"/><feFuncG type="linear" slope="1.1" intercept="-.04"/><feFuncB type="linear" slope="1.1" intercept="-.04"/></feComponentTransfer>
-<feMerge><feMergeNode in="aura"/><feMergeNode in="edge"/><feMergeNode in="pc"/></feMerge></filter>`;
+<feMerge><feMergeNode in="aura"/><feMergeNode in="edge"/></feMerge></filter>`;
 }
 // place the cutout on the card: feet on the floor (or a hand on the rim), held inside the frame
 function photoLayer(ph, o, fade) {
@@ -1012,9 +1129,27 @@ function photoLayer(ph, o, fade) {
   const X = q => x0 + q[0] * k, Y = q => y0 + q[1] * k, s = upf / 28, w = ph.w * k, h = ph.h * k;
   const img = (extra, op, dx) => `<image href="${ph.url}" x="${f1(x0 + (dx || 0))}" y="${f1(y0)}" width="${f1(w)}" height="${f1(h)}" preserveAspectRatio="none"${op ? ` opacity="${op}"` : ""}${extra || ""}/>`;
   let out = "";
-  if (!o.portrait) { const air = (a.floor[1] - a.feet[1]) * k > 8; out += `<ellipse cx="${f1(X(a.floor))}" cy="${o.floor + 2}" rx="${f1((air ? 26 : 42) * s / 1.1)}" ry="${f1((air ? 3.5 : 6) * s / 1.1)}" fill="#000" opacity="${air ? .3 : .5}" filter="url(#${o.id}-soft)"/>`; }
+  const airy = (a.floor[1] - a.feet[1]) * k > 8, action = ACTION.has(o.pose), acc = o.acc || "#ffffff";
+  let sd = Math.floor(Math.abs(x0 * 977 + y0 * 131)) % 2147483647 || 7; const rnd = () => (sd = sd * 48271 % 2147483647) / 2147483647;
+  // speed lines behind a player in motion (he moves to the right)
+  if (action && !o.portrait) {
+    const top = y0 + h * 0.12, bot = Math.min(o.floor - 4, y0 + h * 0.92), back = x0 + w * 0.42;
+    let ln = ""; for (let i = 0; i < 11; i++) { const y = top + (bot - top) * rnd(), len = 40 + rnd() * 90, x2 = back - rnd() * 18, wd = 0.8 + rnd() * 2.2; ln += `<line x1="${f1(x2 - len)}" y1="${f1(y)}" x2="${f1(x2)}" y2="${f1(y)}" stroke="${i % 3 ? acc : "#ffffff"}" stroke-width="${f1(wd)}" stroke-linecap="round" opacity="${f1(.25 + rnd() * .45)}"/>`; }
+    out += `<g style="mix-blend-mode:screen">${ln}</g>`;
+  }
+  // an impact burst where the play happens: the rim hand on a dunk, the blocking hand, the hit
+  const burstAt = o.pose === "dunk" || o.pose === "hangrim" ? (a.rim || a.hR) : o.pose === "block" ? a.hL : o.pose === "tackle" ? [(a.hL[0] + a.hR[0]) / 2, (a.hL[1] + a.hR[1]) / 2] : null;
+  if (burstAt) { const bx = X(burstAt), by = Y(burstAt), n = 14; let d = ""; for (let i = 0; i < n * 2; i++) { const an = i / (n * 2) * Math.PI * 2, rr = i % 2 ? 9 * s : (26 + rnd() * 16) * s; d += (i ? "L" : "M") + f1(bx + Math.cos(an) * rr) + "," + f1(by + Math.sin(an) * rr); } out += `<path d="${d}Z" fill="${acc}" opacity=".5" style="mix-blend-mode:screen"/><circle cx="${f1(bx)}" cy="${f1(by)}" r="${f1(10 * s)}" fill="#fff" opacity=".55" filter="url(#${o.id}-soft)"/>`; }
+  if (!o.portrait) {
+    out += `<ellipse cx="${f1(X(a.floor))}" cy="${o.floor + 2}" rx="${f1((airy ? 26 : 42) * s / 1.1)}" ry="${f1((airy ? 3.5 : 6) * s / 1.1)}" fill="#000" opacity="${airy ? .3 : .5}" filter="url(#${o.id}-soft)"/>`;
+    // his reflection in a glossy floor
+    out += `<g mask="url(#${o.id}-rfm)" opacity="${airy ? .16 : .26}"><image href="${ph.url}" x="${f1(x0)}" y="${f1(y0)}" width="${f1(w)}" height="${f1(h)}" preserveAspectRatio="none" transform="translate(0 ${f1(2 * o.floor + 4)}) scale(1 -1)"/></g>`;
+  }
+  // afterimages: blurred, tier-colored copies trailing the move
+  if (action) out += [26, 13].map((dx, i) => img(` filter="url(#${o.id}-mb)"`, f1(.3 + i * .2), -dx * s)).join("");
   if (o.col === "escape") out += [34, 18].map((dx, i) => img("", f1(.14 + i * .12), -dx)).join("");
-  out += img(` class="ph" filter="url(#${o.id}-phf)"`);
+  // the contour and glow come from a copy underneath: run through a filter, the photo's own colors shift in some browsers
+  out += img(` filter="url(#${o.id}-phf)"`) + img(` class="ph"`);
   // props drawn over the photo
   const hL = [X(a.hL), Y(a.hL)], hR = [X(a.hR), Y(a.hR)];
   if (p.ball === "pass") out += `<g opacity=".6">${[0, 1, 2].map(i => `<line x1="${f1(hR[0] + 16 * s)}" y1="${f1(hR[1] - 5 + i * 5)}" x2="${f1(hR[0] + (36 + i * 6) * s)}" y2="${f1(hR[1] - 5 + i * 5)}" stroke="#fff" stroke-width="2" stroke-linecap="round"/>`).join("")}</g>` + ballSVG(hR[0] + 54 * s, hR[1], 8.8 * s);
@@ -1031,7 +1166,7 @@ function front(c) {
   install();
   const id = "cd" + (++UID), T = TP[c.tier.key] || TP.gold, R = rngOf(c.col + ":" + c.season + ":" + c.pid);
   const C = BB.CARDS.CBY[c.col] || BB.CARDS.CBY.base;
-  const g = { id, R, c1: c.c1, c2: c.c2, acc: T.acc, season: c.season, value: c.value, extra: c.extra, num: c.num, floor: 268 };
+  const g = { id, R, c1: c.c1, c2: c.c2, acc: T.acc, season: c.season, value: c.value, extra: c.extra, num: c.num, floor: 268, stage: STAGED.has(c.col) };
   let art = (ART[c.col] || ART.base)(g); if (typeof art === "string") art = { bg: art, fg: "" };
   const pv = R();
   const MPOSE = { pts: "fadeaway", reb: "rebound", ast: "pass", tkl: "tackle", dnk: "hangrim", fpm: "shoot" };
@@ -1049,12 +1184,12 @@ function front(c) {
   // the player's photo (his 3D model from the broadcast, posed for this card); the drawn figure stands in until it's ready
   let figLayer = `<g class="vec">${ghosts}${fig.svg}</g>`, phAttr = "";
   if (photoOK()) {
-    const key = photoKey(c, pose, hat), lo = { id, pose, portrait, cx, floor: g.floor, anchor, placard, col: c.col }, ph = photoGet(key);
+    const key = photoKey(c, pose, hat), lo = { id, pose, portrait, cx, floor: g.floor, anchor, placard, col: c.col, acc: T.acc }, ph = photoGet(key);
     if (ph) figLayer = photoLayer(ph, lo);
     else { PH.spec.set(key, photoSpec(c, pose, hat)); PH.lay.set(id, lo); if (PH.lay.size > 4000) for (const k of [...PH.lay.keys()].slice(0, 1500)) PH.lay.delete(k); phAttr = ` data-ph="${xe(key)}" data-cid="${id}"`; }
   }
   const last = (c.name.split(" ").slice(1).join(" ") || c.name).toUpperCase(), first = c.name.split(" ")[0].toUpperCase();
-  const lastFit = last.length > 11 ? ` textLength="${Math.min(204, last.length * 16.5)}" lengthAdjust="spacingAndGlyphs"` : "";
+  const lastFit = last.length > 9 ? ` textLength="${Math.min(192, last.length * 17.5)}" lengthAdjust="spacingAndGlyphs"` : "";
   const unit = (C.short || C.unit || "").toUpperCase();
   const val = C.kind === "leader" && c.value !== null && c.value !== undefined ? `${c.value} ${unit}` : "";
   const ft = h => `${Math.floor(h / 12)}'${h % 12}"`, ex = c.extra || {};
@@ -1087,12 +1222,16 @@ function front(c) {
  <linearGradient id="${id}-plate" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset=".42" stop-color="#05070a" stop-opacity=".78"/><stop offset="1" stop-color="#05070a" stop-opacity=".97"/></linearGradient>
  <radialGradient id="${id}-vig" cx=".5" cy=".45" r=".72"><stop offset=".6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".5"/></radialGradient>
  <linearGradient id="${id}-holo" x1="0" y1="0" x2="1" y2=".4">${(T.molten ? ["#ff3d00", "#ffb347", "#ff3d00", "#2a0904", "#ff6a1f", "#ffd166", "#ff3d00"] : ["#ff5ec4", "#7ad7ff", "#9dff9a", "#fff27a", "#ff9e5e", "#c58bff", "#ff5ec4"]).map((s, i, a) => `<stop offset="${f1(i / (a.length - 1))}" stop-color="${s}"/>`).join("")}</linearGradient>
+ <linearGradient id="${id}-nm" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="${mix(T.acc, "#ffffff", .55)}"/><stop offset=".56" stop-color="${mix(T.acc, "#ffffff", .25)}"/><stop offset="1" stop-color="${mix(T.acc, "#ffffff", .7)}"/></linearGradient>
+ <filter id="${id}-ds" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.4" flood-color="#000" flood-opacity=".6"/></filter>
  <linearGradient id="${id}-sheen" x1="0" y1="0" x2="1" y2="1"><stop offset=".35" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".22"/><stop offset=".65" stop-color="#fff" stop-opacity="0"/></linearGradient>
 </defs>
 <path d="${OUTER}" fill="url(#${id}-fr)"/>
 ${material(id, T, R)}
+${prism(id, T, c.tier.key)}
 <path d="${chamf(3, 3, W - 6, H - 6, 16)}" fill="none" stroke="url(#${id}-frv)" stroke-width="1.6" opacity=".9"/>
 ${frameOverlay(C.frame, id, T, R)}
+${bevel(id, T)}
 <path d="${OUTER}" fill="none" stroke="#000" stroke-opacity=".6" stroke-width="1.4"/>
 <g clip-path="url(#${id}-clip)">
  <g class="lay-bg">${art.bg}</g>
@@ -1108,19 +1247,19 @@ ${frameOverlay(C.frame, id, T, R)}
 </g>
 <path d="${INNER}" fill="none" stroke="#000" stroke-opacity=".7" stroke-width="2.4"/>
 <path d="${chamf(13, 13, W - 26, H - 26, 10)}" fill="none" stroke="${T.acc}" stroke-opacity=".55" stroke-width=".9"/>
-${[[10, 10, 1, 1], [240, 10, -1, 1], [10, 340, 1, -1], [240, 340, -1, -1]].map(([x, y, sx, sy]) => `<path d="M${x + sx * 4},${y + sy * 22} V${y + sy * 8} L${x + sx * 8},${y + sy * 4} H${x + sx * 22}" stroke="${T.acc}" stroke-width="2.2" fill="none"/>`).join("")}
+${corners(T, c.tier.key)}
 <g font-family="${FONT}">
  <path d="M18,10 H70 V88 L44,100 L18,88Z" fill="rgba(5,7,10,.62)" stroke="url(#${id}-fr)" stroke-width="2.4"/>
  <path d="M22,14 H66 V20 H22Z" fill="${T.acc}" opacity=".85"/>
- <text x="44" y="58" font-size="${c.ovr >= 100 ? 30 : 38}" font-weight="700" fill="${T.ink}" text-anchor="middle" stroke="rgba(0,0,0,.6)" stroke-width="1" paint-order="stroke">${c.ovr}</text>
+ <text x="44" y="58" font-size="${c.ovr >= 100 ? 30 : 38}" font-weight="700" fill="url(#${id}-nm)" text-anchor="middle" stroke="rgba(0,0,0,.6)" stroke-width="1.2" paint-order="stroke">${c.ovr}</text>
  <line x1="28" y1="66" x2="60" y2="66" stroke="${T.acc}" stroke-width="1" opacity=".7"/>
  <text x="44" y="82" font-size="13" font-weight="700" fill="${T.ink}" text-anchor="middle" letter-spacing="1.4">${xe(pos)}</text>
- <g transform="translate(44 118)"><path d="M0,-15 L13,-7.5 V7.5 L0,15 L-13,7.5 V-7.5Z" fill="${tc}" stroke="${c.c2}" stroke-width="2"/><path d="M0,-15 L13,-7.5 V0 L-13,0 V-7.5Z" fill="#fff" opacity=".12"/><text y="4" font-size="${(c.teamId || "").length > 3 ? 8 : 9.5}" font-weight="700" fill="${tt}" text-anchor="middle">${xe(c.teamId || "")}</text></g>
+ <g transform="translate(44 120)" filter="url(#${id}-ds)">${crest(c.teamId, tc, c.c2, 30)}</g>
  <g transform="translate(210 40)" style="color:${T.ink}"><circle r="21" fill="rgba(5,7,10,.72)" stroke="url(#${id}-fr)" stroke-width="3.4"/><circle r="16.5" fill="none" stroke="${T.acc}" stroke-width=".8" opacity=".7"/><g transform="scale(.95)">${icon}</g></g>
  <g transform="translate(210 74)"><rect x="-20" y="-8" width="40" height="16" rx="3" fill="rgba(5,7,10,.72)" stroke="${T.acc}" stroke-width=".9"/><text y="4.5" font-size="11" font-weight="700" fill="${T.ink}" text-anchor="middle">'${String(c.season).slice(2)}</text></g>
  ${ribbon ? `<g transform="translate(125 238)"><path d="M${-ribW / 2},-10 H${ribW / 2} L${ribW / 2 + 7},0 L${ribW / 2},10 H${-ribW / 2} L${-ribW / 2 - 7},0Z" fill="url(#${id}-fr)" stroke="#000" stroke-opacity=".5"/><text y="4" font-size="11" font-weight="700" fill="${T.deep}" text-anchor="middle" letter-spacing="1.2"${ribFit}>${xe(ribbon)}</text></g>` : ""}
  <text x="125" y="268" font-size="12" fill="#d4dbe4" text-anchor="middle" letter-spacing="3.5">${xe(first)}</text>
- <text x="125" y="296" font-size="30" font-weight="700" fill="#ffffff" text-anchor="middle" letter-spacing=".6" stroke="rgba(0,0,0,.5)" stroke-width="1" paint-order="stroke"${lastFit}>${xe(last)}</text>
+ <g transform="translate(125 296) skewX(-7)"><text x="2" y="2.5" font-size="31" font-weight="700" fill="${T.deep}" opacity=".85" text-anchor="middle" letter-spacing=".6"${lastFit}>${xe(last)}</text><text x="0" y="0" font-size="31" font-weight="700" fill="url(#${id}-nm)" text-anchor="middle" letter-spacing=".6" stroke="rgba(0,0,0,.55)" stroke-width="1.1" paint-order="stroke"${lastFit}>${xe(last)}</text></g>
  <path d="M24,304 H226 L220,318 H30Z" fill="url(#${id}-fr)" opacity=".95"/>
  <path d="M24,304 H226" stroke="#fff" stroke-opacity=".45" stroke-width=".8"/>
  <text x="125" y="314.5" font-size="10" font-weight="700" fill="${T.deep}" text-anchor="middle" letter-spacing="1.4"${subFit}>${xe(subTxt)}</text>
@@ -1132,41 +1271,62 @@ ${gemSVG(T, c.tier.key, 125, 336)}
 }
 
 // ---------- back of the card ----------
-// r: ratings on the card. c.arch (archetype), c.line (season stat line), c.serial are optional.
+// r: ratings on the card. c.arch (archetype), c.line (season stat line), c.serial and c.boosts are optional.
+// Laid out like a real card back: a crest header, the collection's card text, a radar beside bars for
+// the six rating groups, a stat table for the season, badges, and a bio line with the card's numbers.
+function wrapText(str, n) { const out = []; let line = ""; for (const w of String(str || "").split(/\s+/)) { if ((line + " " + w).trim().length > n) { if (line) out.push(line); line = w; } else line = (line + " " + w).trim(); } if (line) out.push(line); return out; }
 function back(c, r) {
   install();
   const id = "cb" + (++UID), T = TP[c.tier.key] || TP.gold, R = rngOf("b" + c.pid + c.season), CC = BB.CARDS;
   const gs = CC.groupScores(r), bd = CC.badges(r).slice(0, 6), C = CC.CBY[c.col] || CC.CBY.base;
   const BC = { hof: "#c58bff", gold: "#f6cf55", silver: "#dfe6ee", bronze: "#e0a46a" };
-  // radar of the six rating groups
-  const n = CC.GROUPS.length, cx = 125, cy = 134, RR = 42;
+  const team = (BB.TEAMS || []).find(t => t.id === c.teamId), first = c.name.split(" ")[0].toUpperCase(), last = (c.name.split(" ").slice(1).join(" ") || c.name).toUpperCase();
+  const tc = c.c1, ft = h => h ? `${Math.floor(h / 12)}'${h % 12}"` : "";
+  // radar of the six rating groups, left
+  const n = CC.GROUPS.length, cx = 62, cy = 172, RR = 30;
   const pt = (i, v) => { const a = -Math.PI / 2 + i / n * Math.PI * 2, rr = RR * Math.max(0, v - 25) / 74; return [cx + Math.cos(a) * rr, cy + Math.sin(a) * rr]; };
   let radar = "";
   for (const lv of [50, 75, 99]) radar += `<polygon points="${CC.GROUPS.map((q, i) => P2(pt(i, lv))).join(" ")}" fill="none" stroke="#ffffff" stroke-opacity=".14"/>`;
-  radar += `<polygon points="${CC.GROUPS.map((q, i) => P2(pt(i, gs[q.key]))).join(" ")}" fill="${T.acc}" fill-opacity=".32" stroke="${T.acc}" stroke-width="1.8"/>`;
-  CC.GROUPS.forEach((q, i) => { const [x, y] = pt(i, 99), [lx, ly] = pt(i, 128); radar += `<line x1="${cx}" y1="${cy}" x2="${f1(x)}" y2="${f1(y)}" stroke="#fff" stroke-opacity=".1"/><text x="${f1(lx)}" y="${f1(ly - 1)}" font-size="8.5" fill="#aab3bf" text-anchor="middle" letter-spacing=".6">${q.name.toUpperCase()}</text><text x="${f1(lx)}" y="${f1(ly + 10)}" font-size="11" font-weight="700" fill="${CART.valColor(gs[q.key])}" text-anchor="middle">${gs[q.key]}</text>`; });
-  const line = c.line ? `<g transform="translate(0 236)">${c.line.map(([l, v], i, a) => { const x = 30 + i * (190 / (a.length - 1)); return `<text x="${f1(x)}" y="0" font-size="15" font-weight="700" fill="#fff" text-anchor="middle">${v}</text><text x="${f1(x)}" y="11" font-size="7.5" fill="#8b95a5" text-anchor="middle" letter-spacing="1">${l}</text>`; }).join("")}</g>` : "";
+  CC.GROUPS.forEach((q, i) => { const [x, y] = pt(i, 99); radar += `<line x1="${cx}" y1="${cy}" x2="${f1(x)}" y2="${f1(y)}" stroke="#fff" stroke-opacity=".1"/>`; });
+  radar += `<polygon points="${CC.GROUPS.map((q, i) => P2(pt(i, gs[q.key]))).join(" ")}" fill="${T.acc}" fill-opacity=".35" stroke="${T.acc}" stroke-width="1.6"/>`;
+  CC.GROUPS.forEach((q, i) => { const [x, y] = pt(i, gs[q.key]); radar += `<circle cx="${f1(x)}" cy="${f1(y)}" r="1.6" fill="#fff"/>`; });
+  // bars for the same six groups, right
+  const bars = CC.GROUPS.map((q, i) => { const v = Math.round(gs[q.key]), y = 143 + i * 11.8, w = 52 * Math.max(0, Math.min(99, v) - 25) / 74;
+    return `<text x="104" y="${f1(y + 3)}" font-size="7" fill="#aab3bf" letter-spacing=".3">${xe(q.name.toUpperCase())}</text><rect x="161" y="${f1(y - 2.5)}" width="52" height="5" rx="2.5" fill="#ffffff" opacity=".08"/><rect x="161" y="${f1(y - 2.5)}" width="${f1(w)}" height="5" rx="2.5" fill="${valColor(v)}"/><text x="228" y="${f1(y + 3.3)}" font-size="9.5" font-weight="700" fill="#fff" text-anchor="end">${v}</text>`; }).join("");
+  // the season's stat table
+  const line = c.line && c.line.length ? `<g transform="translate(0 226)"><rect x="22" y="-14" width="206" height="38" rx="5" fill="rgba(0,0,0,.35)" stroke="${T.acc}" stroke-opacity=".45"/><rect x="22" y="-14" width="206" height="12" rx="5" fill="${T.acc}" opacity=".22"/>`
+    + `<text x="30" y="-5" font-size="7.2" fill="${T.ink}" letter-spacing="1.4">${c.season} SEASON · PER GAME</text>`
+    + c.line.map(([l, v], i, a) => { const x = 40 + i * (170 / (a.length - 1)); return `<text x="${f1(x)}" y="14" font-size="15" font-weight="700" fill="#fff" text-anchor="middle">${v}</text><text x="${f1(x)}" y="21.5" font-size="6.6" fill="#8b95a5" text-anchor="middle" letter-spacing="1">${xe(l)}</text>`; }).join("") + `</g>` : "";
+  let text = wrapText(C.blurb || "", 54); if (text.length > 3) { text = text.slice(0, 3); text[2] = text[2].replace(/[\s,.;:]*\S*$/, "…"); }
+  const by = line ? 266 : 226;
+  const bio = [ft(c.ht), c.wt ? c.wt + " LB" : "", c.num !== undefined ? "#" + c.num : "", team ? (team.city + " " + team.name).toUpperCase() : ""].filter(Boolean).join("  ·  ");
   return `<svg class="cardsvg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
 <defs>${frameDefs(id, T, R)}
-<linearGradient id="${id}-in" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${mix(c.c1, "#05070a", .62)}"/><stop offset="1" stop-color="#05070a"/></linearGradient></defs>
-<path d="${OUTER}" fill="url(#${id}-fr)"/>${material(id, T, R)}
+<linearGradient id="${id}-in" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${mix(c.c1, "#05070a", .55)}"/><stop offset=".35" stop-color="${mix(c.c1, "#05070a", .82)}"/><stop offset="1" stop-color="#05070a"/></linearGradient>
+<linearGradient id="${id}-nm" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="${mix(T.acc, "#ffffff", .55)}"/><stop offset=".56" stop-color="${mix(T.acc, "#ffffff", .25)}"/><stop offset="1" stop-color="${mix(T.acc, "#ffffff", .7)}"/></linearGradient>
+<filter id="${id}-ds" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="1.5" stdDeviation="1.4" flood-color="#000" flood-opacity=".6"/></filter></defs>
+<path d="${OUTER}" fill="url(#${id}-fr)"/>${material(id, T, R)}${prism(id, T, c.tier.key)}${bevel(id, T)}
 <path d="${INNER}" fill="url(#${id}-in)"/>
-<g clip-path="url(#${id}-clip)"><g opacity=".06" style="color:#fff" transform="translate(190 300) scale(4)">${ICON[c.col] || ICON.base}</g>${halftone(id + "-ht", "#ffffff", .04, 5)}</g>
+<g clip-path="url(#${id}-clip)"><g opacity=".07" transform="translate(196 300) scale(3.2)">${crest(c.teamId, "#ffffff", "#ffffff", 30)}</g>${halftone(id + "-ht", "#ffffff", .04, 5)}
+ <path d="M10,10 H240 V84 H10Z" fill="${tc}" opacity=".22"/><path d="M10,84 H240" stroke="${T.acc}" stroke-opacity=".6"/></g>
 <path d="${INNER}" fill="none" stroke="#000" stroke-opacity=".7" stroke-width="2.4"/>
 <path d="${chamf(13, 13, W - 26, H - 26, 10)}" fill="none" stroke="${T.acc}" stroke-opacity=".5" stroke-width=".9"/>
+${corners(T, c.tier.key)}
 <g font-family="${FONT}">
- <path d="M18,10 H64 V64 L41,74 L18,64Z" fill="rgba(5,7,10,.62)" stroke="url(#${id}-fr)" stroke-width="2"/>
- <text x="41" y="46" font-size="30" font-weight="700" fill="#fff" text-anchor="middle">${c.ovr}</text>
- <text x="41" y="60" font-size="9" fill="${T.acc}" text-anchor="middle" letter-spacing="1">${xe(CC.POS[c.role] || "")}</text>
- <text x="74" y="28" font-size="9.5" fill="${T.acc}" letter-spacing="1.4"${(c.tier.name + C.name).length > 19 ? ` textLength="152" lengthAdjust="spacingAndGlyphs"` : ""}>${xe(c.tier.name.toUpperCase())} · ${xe(C.name.toUpperCase())}</text>
- <text x="74" y="46" font-size="17" font-weight="700" fill="#fff"${c.name.length > 17 ? ` textLength="152" lengthAdjust="spacingAndGlyphs"` : ""}>${xe(c.name.toUpperCase())}</text>
- <text x="74" y="60" font-size="9.5" fill="#cfd6e0" letter-spacing=".8"${(c.arch || "").length > 28 ? ` textLength="152" lengthAdjust="spacingAndGlyphs"` : ""}>${xe((c.arch || (BB.ROLES[c.role] ? BB.ROLES[c.role].name : "")).toUpperCase())}</text>
- ${radar}
- ${line ? `<line x1="26" y1="212" x2="224" y2="212" stroke="${T.acc}" stroke-opacity=".35"/><text x="125" y="222" font-size="7.5" fill="#8b95a5" text-anchor="middle" letter-spacing="1.6">${c.season} REGULAR SEASON · PER GAME</text>${line}` : ""}
- <text x="26" y="${line ? 266 : 232}" font-size="9" fill="${T.acc}" letter-spacing="1.6">BADGES</text>
- ${bd.length ? bd.map((b, i) => `<g transform="translate(${26 + (i % 2) * 100} ${(line ? 280 : 248) + Math.floor(i / 2) * 16})"><path d="M0,-5.5 L4.8,-2.8 V2.8 L0,5.5 L-4.8,2.8 V-2.8Z" transform="translate(4.5 -3.5)" fill="${BC[b.tier]}"/><text x="13" y="0" font-size="10" fill="#e9edf3">${xe(b.name)}</text></g>`).join("") : `<text x="26" y="${line ? 282 : 250}" font-size="10" fill="#8b95a5">None yet</text>`}
+ <g transform="translate(40 48)" filter="url(#${id}-ds)">${crest(c.teamId, tc, c.c2, 38)}</g>
+ <text x="66" y="31" font-size="9" fill="#d4dbe4" letter-spacing="2.6">${xe(first)}</text>
+ <g transform="translate(66 52) skewX(-7)"><text x="1.6" y="2" font-size="22" font-weight="700" fill="${T.deep}" opacity=".85"${last.length > 7 ? ` textLength="${Math.min(118, last.length * 13.5)}" lengthAdjust="spacingAndGlyphs"` : ""}>${xe(last)}</text><text font-size="22" font-weight="700" fill="url(#${id}-nm)" stroke="rgba(0,0,0,.5)" stroke-width=".9" paint-order="stroke"${last.length > 7 ? ` textLength="${Math.min(118, last.length * 13.5)}" lengthAdjust="spacingAndGlyphs"` : ""}>${xe(last)}</text></g>
+ <text x="66" y="68" font-size="8.4" fill="${T.acc}" letter-spacing="1.1"${(c.arch || "").length > 26 ? ` textLength="128" lengthAdjust="spacingAndGlyphs"` : ""}>${xe((c.arch || (BB.ROLES[c.role] ? BB.ROLES[c.role].name : "")).toUpperCase())}</text>
+ <g transform="translate(214 46)"><path d="M-20,-28 H20 V18 L0,28 L-20,18Z" fill="rgba(5,7,10,.65)" stroke="url(#${id}-fr)" stroke-width="2"/><text y="2" font-size="25" font-weight="700" fill="url(#${id}-nm)" text-anchor="middle" stroke="rgba(0,0,0,.6)" stroke-width="1" paint-order="stroke">${c.ovr}</text><text y="15" font-size="8.5" font-weight="700" fill="${T.acc}" text-anchor="middle" letter-spacing="1">${xe(CC.POS[c.role] || "")}</text></g>
+ <text x="22" y="99" font-size="8" fill="${T.acc}" letter-spacing="1.6">${xe(c.tier.name.toUpperCase())} · ${xe(C.name.toUpperCase())} · ${c.season}</text>
+ ${text.map((t, i) => `<text x="22" y="${110 + i * 9}" font-family="Inter, system-ui, sans-serif" font-size="7.3" fill="#cfd6e0" font-style="italic">${xe(t)}</text>`).join("")}
+ ${radar}${bars}
+ ${line}
+ <text x="22" y="${by}" font-size="8" fill="${T.acc}" letter-spacing="1.6">BADGES</text>
+ ${bd.length ? bd.map((b, i) => `<g transform="translate(${24 + (i % 2) * 102} ${by + 13 + Math.floor(i / 2) * 13})"><path d="M0,-5 L4.4,-2.5 V2.5 L0,5 L-4.4,2.5 V-2.5Z" transform="translate(4 -3)" fill="${BC[b.tier]}"/><text x="12" y="0" font-size="9" fill="#e9edf3">${xe(b.name)}</text></g>`).join("") : `<text x="24" y="${by + 13}" font-size="9" fill="#8b95a5">No badges yet</text>`}
+ <text x="125" y="318" font-size="7.4" fill="#aab3bf" text-anchor="middle" letter-spacing="1"${bio.length > 52 ? ` textLength="200" lengthAdjust="spacingAndGlyphs"` : ""}>${xe(bio)}</text>
  <text x="30" y="333" font-size="8" fill="#8b95a5" letter-spacing="1.4">${c.serial ? `NO. ${xe(c.serial)}` : `UBL ${c.season}`}</text>
- <text x="220" y="333" font-size="8" fill="${c.boosts && Object.keys(c.boosts).length ? T.acc : "#8b95a5"}" letter-spacing="1" text-anchor="end">${c.boosts && Object.keys(c.boosts).length ? Object.entries(c.boosts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${SHORT[k] || k.toUpperCase()} +${v}`).join("  ") : "TAP TO FLIP"}</text>
+ <text x="220" y="333" font-size="8" fill="${c.boosts && Object.keys(c.boosts).length ? T.acc : "#8b95a5"}" letter-spacing=".6" text-anchor="end">${c.boosts && Object.keys(c.boosts).length ? Object.entries(c.boosts).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([k, v]) => `${SHORT[k] || k.toUpperCase()} +${v}`).join(" ") : "TAP TO FLIP"}</text>
 </g>
 ${gemSVG(T, c.tier.key, 125, 336)}
 </svg>`;
