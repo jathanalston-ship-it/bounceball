@@ -211,7 +211,13 @@ Cards at Ruby (81+) and above, plus Hall of Fame, Immortals, MVP, Finals MVP, Nu
 
 Big cards tilt with a moving glare and parallax (background, player and foreground move at different depths). The Cards page features the next holiday on the real calendar.
 
-**Packs**: the Cards page has free packs (Standard, Premium with a Ruby-or-better last card, Leaders, Moments, Holiday, Legends, Oddballs and one per decade). Each card rolls its rarity tier first, then a card from that tier, so the odds are fixed whatever the pool. Pulled cards build **My collection** (set progress for every collection, owned and missing filters), stored in the browser.
+**The card game** (`src/cardeco.js` for the rules, `site/cardgame.js` for the screens): packs cost coins.
+- **Packs**: Standard 500, Oddballs and decade packs 600, Leaders 650, Moments 750, Holiday 750 (on sale only within 3 days of a holiday), Premium 1,600 (last card Ruby or better), Legends 2,800 (last card Amethyst or better). Each card rolls its rarity tier first, then a card from that tier, so the odds are fixed whatever the pool: Opal is about 0.36% per card and Vulcanized about 0.12%.
+- **Earning**: a new save starts with 1,500 coins, three Standard packs and a Premium pack. The daily reward is a free Standard pack plus coins (100 rising to 800 over a 7-day streak; day 7 adds a Premium pack; a missed day restarts it). Three weekly challenges a week are chosen from the ISO week, so everyone gets the same ones.
+- **Spare copies**: quick-sell for coins by tier (10 for Rubber up to 6,000 for Vulcanized; you always keep one copy), or trade them at exchanges (8 Rubber/Bronze for a Standard pack, up to 3 Diamonds for a 2-card pack whose last card is Opal or better).
+- **Sets**: every collection splits into one set per decade. A finished set pays 1.5× its cards' sell value plus a pack (Legends if it holds a Diamond or better); a finished collection pays 3× and two Legends packs.
+- **Opening**: the pack glows the color of its best card and shakes harder the rarer it is. Rare pulls get arcade callouts and announcer lines, and Ruby and up walk out of a tunnel in 3D first (`Broadcast3D.walkout()`, the player's own model). Sounds are synthesized with Web Audio. Quick open, walkouts and sound are toggles.
+- **Saves**: everything lives in this browser (`localStorage["ubl-game-v1"]`). The free-play collection (`ubl-cards-v1`) carries over. **Move to another device** makes a save code (`UBL1-…`: the save as JSON, deflate-raw compressed when the browser can, base64url, with a CRC-32 check) that loads on any other browser. There is no server, so there are no leaderboards and no trading between people.
 
 ### Era adjustment
 

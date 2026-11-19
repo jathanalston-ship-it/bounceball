@@ -1173,5 +1173,5 @@ ${gemSVG(T, c.tier.key, 125, 336)}
 }
 const SHORT = { spd: "SPD", acc: "ACC", str: "STR", vert: "VRT", bnc: "BNC", sta: "STA", hands: "HND", sec: "SEC", brk: "BRK", tck: "TCK", ins: "FIN", mid: "MID", thr: "3PT", fr: "4PT", ft: "FT", pas: "PAS", iq: "IQ", perD: "DEF", rim: "RIM", reb: "REB" };
 function valColor(v) { return v >= 90 ? "#c58bff" : v >= 80 ? "#35eaa3" : v >= 70 ? "#f6cf55" : v >= 60 ? "#ff9e5e" : "#ff5a6a"; }
-return { front, back, packSVG, mystery, valColor, TP, POSES, figure, mix, lum, rngOf, ABBR, ICON, W, H, photos: PH };
+return { front, back, packSVG, mystery, valColor, TP, POSES, figure, mix, lum, rngOf, ABBR, ICON, W, H, photos: PH, photoSpec };
 })();

@@ -1320,6 +1320,135 @@ function envMap(renderer) {
   return tex;
 }
 
+// ===================== PACK WALKOUT =====================
+// A big pull walks out of the tunnel: the house lights drop, light bars in the card's tier color fire
+// down the tunnel pair by pair, and the player (the same model as his card photo) walks into a
+// spotlight, looks into the camera and strikes his card's pose. Phone first: one figure, a handful
+// of lights, sprites for smoke and sparks, no post.
+// spec: a card photo spec ({ r, season, tm, c1, c2, hat }) plus { pose, color, color2, sparks }
+// opts.beat(name): "bar" for each pair of lights, "spot" when the spotlight hits, "pose" when he poses
+// returns { done: Promise, skip() }
+const WALK_POSES = ["flex", "point", "celebrate", "akimbo", "portrait", "trophy"];
+function walkout(canvas, spec, opts) {
+  opts = opts || {};
+  const beat = opts.beat || (() => {});
+  const W = Math.max(1, canvas.clientWidth || innerWidth), Hh = Math.max(1, canvas.clientHeight || innerHeight);
+  const r = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+  r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); r.setSize(W, Hh, false);
+  r.outputEncoding = THREE.sRGBEncoding; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x020305); scene.fog = new THREE.Fog(0x020305, 20, 48);
+  const col = new THREE.Color(spec.color || "#ff5571"), col2 = new THREE.Color(spec.color2 || spec.color || "#ffffff"), own = [];
+  const keep = x => { own.push(x); return x; };
+  // a glossy floor that catches the lights
+  const narrow = W / Hh < 0.8, bx = narrow ? 4.6 : 7.5;
+  const floor = new THREE.Mesh(keep(new THREE.PlaneGeometry(60, 90)), keep(new THREE.MeshStandardMaterial({ color: 0x050608, roughness: 0.42, metalness: 0.5 })));
+  floor.rotation.x = -PI / 2; floor.position.z = -18; scene.add(floor);
+  // the tunnel: pairs of light bars, dark until the lights drop
+  const bars = [], barGeo = keep(new THREE.BoxGeometry(0.32, 9, 0.32));
+  for (let i = 0; i < 7; i++) for (const sd of [-1, 1]) {
+    const mt = keep(new THREE.MeshBasicMaterial({ color: 0x000000, toneMapped: false })), b = new THREE.Mesh(barGeo, mt);
+    b.position.set(sd * bx, 4.5, 2 - i * 4.6); scene.add(b); bars.push({ mt, i, c: (i + (sd > 0 ? 1 : 0)) % 2 ? col2 : col });
+  }
+  // the end of the tunnel glows in the tier color
+  const glow = new THREE.Mesh(keep(new THREE.PlaneGeometry(30, 16)), keep(new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, depthWrite: false, toneMapped: false })));
+  glow.position.set(0, 6, -34); scene.add(glow);
+  const ring = new THREE.Mesh(keep(new THREE.RingGeometry(2.4, 2.75, 72)), keep(new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0, toneMapped: false, side: THREE.DoubleSide })));
+  ring.rotation.x = -PI / 2; ring.position.y = 0.03; scene.add(ring);
+  // the spotlight, with a soft cone of light you can see
+  const spot = new THREE.SpotLight(0xfff2dc, 0, 46, 0.3, 0.55, 1.1); spot.position.set(0, 24, 3); spot.target.position.set(0, 0, 0); scene.add(spot, spot.target);
+  const beam = keep(canvasTex(4, 128, (g, w, h) => { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.75, "rgba(255,255,255,.35)"); gr.addColorStop(1, "rgba(255,255,255,.12)"); g.fillStyle = gr; g.fillRect(0, 0, w, h); }));
+  const cone = new THREE.Mesh(keep(new THREE.ConeGeometry(2.9, 24, 48, 1, true)), keep(new THREE.MeshBasicMaterial({ color: 0xfff0d2, map: beam, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false })));
+  cone.position.set(0, 12, 0.5); scene.add(cone);
+  const key = new THREE.DirectionalLight(0xfff0de, 0); key.position.set(-5, 9, 12); scene.add(key, key.target);
+  const rimA = new THREE.DirectionalLight(col, 0), rimB = new THREE.DirectionalLight(col2, 0); rimA.position.set(-9, 7, -10); rimB.position.set(9, 6, -10); scene.add(rimA, rimB);
+  const amb = new THREE.HemisphereLight(0x8fa6ff, 0x101010, 0); scene.add(amb);
+  // smoke drifting over the floor, and sparks for the very rare ones
+  const soft = keep(canvasTex(64, 64, (g, w, h) => { const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(1, "rgba(255,255,255,0)"); g.fillStyle = gr; g.fillRect(0, 0, w, h); }));
+  glow.material.map = soft;
+  const smoke = [];
+  for (let i = 0; i < 14; i++) {
+    const sp = new THREE.Sprite(keep(new THREE.SpriteMaterial({ map: soft, color: 0x9aa4b8, transparent: true, opacity: 0, depthWrite: false })));
+    const sz = 7 + (i % 4) * 2.5; sp.scale.set(sz, sz * 0.45, 1); sp.position.set(((i * 37) % 17) - 8.5, 0.9 + (i % 3) * 0.5, -22 + (i * 13 % 26)); scene.add(sp); smoke.push(sp);
+  }
+  let sparks = null;
+  if (spec.sparks) {
+    const N = 160, g = keep(new THREE.BufferGeometry()), pos = new Float32Array(N * 3), vel = [];
+    for (let i = 0; i < N; i++) { pos.set([(Math.random() - 0.5) * 3, 16 + Math.random() * 10, (Math.random() - 0.5) * 3], i * 3); vel.push([(Math.random() - 0.5) * 6, -4 - Math.random() * 6, (Math.random() - 0.5) * 6]); }
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    sparks = { pts: new THREE.Points(g, keep(new THREE.PointsMaterial({ map: soft, color: col2, size: 0.45, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }))), vel, pos, g };
+    scene.add(sparks.pts);
+  }
+  // the player
+  const o = playerSpec(spec.r, spec.season, spec.tm, spec.c1, spec.c2);
+  if (spec.hat === "clover") { o.look = Object.assign({}, o.look, { headband: true }); o.accent = "#2f9e44"; }
+  const m = buildFigure(o), H = m.H; if (spec.hat === "santa") santaHat(m, o.look.hair);
+  scene.add(m.root);
+  const shadow = new THREE.Mesh(keep(new THREE.CircleGeometry(1.6, 32)), keep(new THREE.MeshBasicMaterial({ map: soft, color: 0x000000, transparent: true, opacity: 0.75, depthWrite: false })));
+  shadow.rotation.x = -PI / 2; shadow.position.y = 0.02; scene.add(shadow);
+  const C = CPOSE[WALK_POSES.includes(spec.pose) ? spec.pose : WALK_POSES[hash(+spec.r.id || 7) * 4 | 0]];
+  const cam = new THREE.PerspectiveCamera(narrow ? 40 : 34, W / Hh, 0.5, 120);
+  const fit = () => { const w = Math.max(1, canvas.clientWidth), h = Math.max(1, canvas.clientHeight); r.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); };
+  // the timeline (seconds)
+  const T0 = 1.25, WALK = [1.0, 4.4], POSE = 4.5, END = 6.2, Z0 = -20;
+  let ph = 0, raf = 0, last = 0, start = 0, fired = {}, stopped = false, resolve;
+  const done = new Promise(res => { resolve = res; });
+  const once = (k, t, fn) => { if (!fired[k] && t) { fired[k] = 1; fn(); } };
+  m.look = new V3(); m.lookW = 0;
+  function frame(now) {
+    if (stopped) return;
+    if (!start) start = last = now; // the clock starts on the first frame drawn, after the shaders are built
+    const dt = Math.min(0.05, (now - last) / 1000), t = (now - start) / 1000; last = now;
+    // lights: pairs fire from the far end of the tunnel toward the camera, then the spotlight
+    for (const b of bars) { const on = t > 0.3 + (6 - b.i) * 0.12; if (on && !b.on) { b.on = 1; if (b.c === col) once("bar" + b.i, 1, () => beat("bar")); } const k = b.on ? 1.6 + 0.4 * Math.sin(t * 6 + b.i) : 0; b.mt.color.copy(b.c).multiplyScalar(k); }
+    once("spot", t > T0, () => beat("spot"));
+    const lit = sstep((t - T0) / 0.25);
+    spot.intensity = 8 * lit; cone.material.opacity = 0.05 * lit; key.intensity = 1.1 * lit; rimA.intensity = rimB.intensity = 2.6 * sstep((t - 0.5) / 0.6); amb.intensity = 0.06 + 0.16 * lit;
+    glow.material.color.copy(col).multiplyScalar(0.55 * sstep((t - 0.25) / 0.8));
+    for (const [i, sp] of smoke.entries()) { sp.material.opacity = 0.11 * sstep((t - 0.2) / 1.2); sp.position.x += Math.sin(t * 0.3 + i) * dt * 0.4; }
+    // walk in, slowing into the light, then the pose
+    const u = clamp((t - WALK[0]) / (WALK[1] - WALK[0]), 0, 1), e = 1 - Math.pow(1 - u, 2.2), z = lerp(Z0, 0, e), speed = (WALK[1] > t && t > WALK[0]) ? 2.2 * Math.pow(1 - u, 1.2) * (-Z0) / (WALK[1] - WALK[0]) : 0;
+    ph += dt * TAU * speed / 5.4;
+    const pw = sstep((t - (WALK[1] - 0.25)) / 0.5);
+    const p = mix(walkPose(ph, clamp(0.35 + speed / 6, 0.35, 1)), Object.assign(base(), C.p || {}), pw);
+    m.root.position.set(0, 0, z); m.root.rotation.y = 0;
+    m.look.set(cam.position.x, cam.position.y, cam.position.z); m.lookW = sstep((t - 1.6) / 1.2);
+    applyPose(m, p, dt, true);
+    if (pw > 0) {
+      for (const [i, Tg] of [[0, C.L], [1, C.R]]) if (Tg) {
+        const A = m.arms[i], tw = m.chest.localToWorld(_pv.set(Tg[0] * H, Tg[1] * H, Tg[2] * H)).clone();
+        const pole = _pw.set(...(Tg[3] || [i ? -1 : 1, -1, -0.5])).transformDirection(m.chest.matrixWorld).clone();
+        ik2(A.shoulder, A.elbow, 0.17 * H, 0.202 * H, tw, pole, -1, pw);
+      }
+      m.root.updateMatrixWorld(true);
+    }
+    once("pose", t > POSE, () => beat("pose"));
+    shadow.position.z = z; ring.material.opacity = 0.85 * sstep((t - POSE + 0.3) / 0.4); ring.scale.setScalar(1 + 0.05 * Math.sin(t * 5));
+    if (sparks && t > POSE - 0.1) {
+      sparks.pts.material.opacity = Math.min(1, (t - POSE + 0.1) * 3);
+      for (let i = 0; i < sparks.vel.length; i++) { const v = sparks.vel[i]; v[1] -= 9 * dt; for (let k = 0; k < 3; k++) sparks.pos[i * 3 + k] += v[k] * dt; if (sparks.pos[i * 3 + 1] < 0.05) { sparks.pos[i * 3 + 1] = 0.05; v[1] *= -0.35; v[0] *= 0.6; v[2] *= 0.6; } }
+      sparks.g.attributes.position.needsUpdate = true;
+    }
+    // the camera starts wide on the tunnel and settles on him at chest height
+    const cu = sstep(t / (POSE + 0.6)), dist = narrow ? 14 : 15;
+    cam.position.set(lerp(0, 0.9, cu), lerp(4.6, H * 0.6, cu), lerp(dist + 3, dist, cu));
+    cam.lookAt(0, lerp(3.4, H * 0.62, cu), lerp(-12, 0, cu)); // room above his head for a raised arm
+    r.render(scene, cam);
+    if (t > END) finish(); else raf = requestAnimationFrame(frame);
+  }
+  function finish() {
+    if (stopped) return; stopped = true; cancelAnimationFrame(raf); removeEventListener("resize", fit);
+    m.root.traverse(ob => { if (ob.isMesh) { ob.geometry.dispose(); const mt = ob.material; if (mt.map) mt.map.dispose(); mt.dispose(); } });
+    for (const x of own) if (x.dispose) x.dispose();
+    r.dispose(); if (r.forceContextLoss) r.forceContextLoss();
+    resolve();
+  }
+  addEventListener("resize", fit);
+  m.look.set(0, 4, 14); applyPose(m, walkPose(0, 0.5), 0, true); m.root.position.z = Z0;
+  try { r.compile(scene, cam); } catch (e) { /* compiles on the first frame instead */ }
+  raf = requestAnimationFrame(frame);
+  return { done, skip: finish };
+}
+
 // ---------- post: HDR scene -> bloom -> filmic tone map, grade, vignette, grain ----------
 function makePost(renderer) {
   const ext = renderer.extensions;
@@ -2873,5 +3002,5 @@ function create(canvas, opts) {
     dispose() { renderer.dispose(); }
   };
 }
-window.Broadcast3D = { supported, create, makeAudio, photo, photoPoses: Object.keys(CPOSE) };
+window.Broadcast3D = { supported, create, makeAudio, photo, photoPoses: Object.keys(CPOSE), walkout };
 })();
