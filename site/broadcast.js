@@ -453,6 +453,7 @@ function playEvents(fromTick, toTick) {
   }
   for (const n of NOTABLE) if (n.tk > fromTick && n.tk <= toTick) { const a = arcadeFX(); callout(a ? arcadeLabel(n) : n.label, n.col, a ? arcadeSub(n) : ""); }
   if (window.cnOnPlay) cnOnPlay(GAME, fromTick, toTick, NOTABLE); // Classic Nights: coins for big plays you watch
+  if (window.luOnPlay) luOnPlay(GAME, fromTick, toTick); // the lineup game: the result card at the final buzzer
 }
 // free throw graphic: who's shooting, which attempt, how they've shot tonight
 function maybeFT(n) {
@@ -1246,7 +1247,7 @@ function updateAll(force) {
   if (!fin && V.card && V.card.kind === "fin") hideCard();
 }
 function maxTicks() { return V.channels ? Math.max(...V.channels.map(c => c.game.ticks)) : GAME.ticks; }
-function seek(tk) { stopReplay(); V.intro = null; V.hold = 0; if (V.card && V.card.kind !== "fin") hideCard(); V.tick = Math.max(0, Math.min(maxTicks(), tk)); V.live = false; V.visCount = -1; updateAll(true); if (window.cnOnSeek) cnOnSeek(GAME, V.tick); }
+function seek(tk) { stopReplay(); V.intro = null; V.hold = 0; if (V.card && V.card.kind !== "fin") hideCard(); V.tick = Math.max(0, Math.min(maxTicks(), tk)); V.live = false; V.visCount = -1; updateAll(true); if (window.cnOnSeek) cnOnSeek(GAME, V.tick); if (window.luOnPlay) luOnPlay(GAME, 0, V.tick); }
 function autoQuality(dt) {
   if (!B3 || !V.view3d || V.qMode !== "auto" || document.hidden) return;
   const f = V.fps; f.n++; f.t += dt;
