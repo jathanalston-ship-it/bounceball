@@ -90,7 +90,13 @@ function seasonCalendar(season, regDays) {
   const ck = season + ":" + regDays; if (calCache[ck]) return calCache[ck];
   let start = Date.UTC(season, 9, 20); while (new Date(start).getUTCDay() !== 2) start += DAY; // a Tuesday in late October
   const end = Date.UTC(season + 1, 3, 12), span = Math.round((end - start) / DAY), N = Math.max(2, regDays);
-  const slots = Array.from({ length: N }, (_, i) => Math.round(i * span / (N - 1))), fixed = new Set([0, span]);
+  // game nights cluster like a real schedule: some back-to-backs, some three-day breaks, the same average spacing
+  let sd = (season * 2654435761) >>> 0; const rnd = () => { sd = (Math.imul(sd, 1664525) + 1013904223) >>> 0; return sd / 4294967296; };
+  const gaps = Array.from({ length: N - 1 }, () => { const x = rnd(); return x < 0.18 ? 1 : x < 0.36 ? 3 : 2; });
+  let tot = gaps.reduce((a, b) => a + b, 0);
+  for (let guard = 0; tot !== span && guard < 200000; guard++) { const j = Math.floor(rnd() * gaps.length); if (tot < span && gaps[j] < 4) { gaps[j]++; tot++; } else if (tot > span && gaps[j] > 1) { gaps[j]--; tot--; } }
+  const slots = [0]; for (const g of gaps) slots.push(slots[slots.length - 1] + g);
+  const fixed = new Set([0, slots[slots.length - 1]]);
   const hol = holidaysOf(season).map(([t, k]) => [Math.round((t - start) / DAY), k]).filter(([o]) => o > 0 && o < span);
   for (const [o] of hol) {
     if (slots.includes(o)) { fixed.add(o); continue; }

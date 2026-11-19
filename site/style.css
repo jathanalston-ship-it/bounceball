@@ -146,6 +146,15 @@ code{background:var(--panel);padding:1px 5px;border-radius:4px}
 .callout{position:absolute;left:0;right:0;top:16%;text-align:center;font:700 clamp(30px,8vw,64px) Oswald,Impact,sans-serif;letter-spacing:2px;text-shadow:0 3px 0 #000,0 0 18px rgba(0,0,0,.7);opacity:0;pointer-events:none}
 .callout.on{animation:co 1.5s ease-out}
 @keyframes co{0%{opacity:0;transform:scale(.6)}12%{opacity:1;transform:scale(1.08)}25%{transform:scale(1)}80%{opacity:1}100%{opacity:0;transform:translateY(-14px)}}
+/* arcade callouts: huge, slanted, outlined, punched in over a burst of rays */
+.callout.arc{top:12%;font:900 clamp(38px,11vw,96px)/.95 Oswald,Impact,sans-serif;letter-spacing:1px;text-shadow:none;--cc:#fff;--ray:rgba(255,255,255,.5)}
+.callout.arc b{display:inline-block;position:relative;padding:0 .2em;transform:skewX(-10deg) rotate(-3deg);background:linear-gradient(180deg,#fff 0%,#fff 42%,var(--cc) 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:#fff;-webkit-text-stroke:2px #101010;filter:drop-shadow(0 5px 0 #000) drop-shadow(0 0 18px rgba(0,0,0,.6))}
+.callout.arc i{display:block;font:700 clamp(14px,3.6vw,26px) Oswald,Impact,sans-serif;font-style:normal;letter-spacing:4px;color:#fff;margin-top:.12em;transform:skewX(-10deg);text-shadow:0 2px 0 #000,0 0 10px rgba(0,0,0,.8)}
+.callout.arc .rays{position:absolute;left:50%;top:.5em;width:3.2em;height:3.2em;margin:-1.6em 0 0 -1.6em;border-radius:50%;background:repeating-conic-gradient(var(--ray) 0deg 7deg,transparent 7deg 18deg);-webkit-mask:radial-gradient(circle,#000 25%,transparent 70%);mask:radial-gradient(circle,#000 25%,transparent 70%);opacity:0;text-decoration:none}
+.callout.arc.on{animation:coArc 1.7s cubic-bezier(.2,.9,.3,1.15)}
+.callout.arc.on .rays{animation:coRay 1.7s ease-out}
+@keyframes coArc{0%{opacity:0;transform:scale(2.4) rotate(-8deg)}9%{opacity:1;transform:scale(.9) rotate(2deg)}17%{transform:scale(1.06) rotate(-1deg)}26%{transform:scale(1) rotate(0)}82%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.12) translateY(-18px)}}
+@keyframes coRay{0%{opacity:0;transform:scale(.3) rotate(0)}12%{opacity:1}100%{opacity:0;transform:scale(1.35) rotate(45deg)}}
 .replaytag{position:absolute;top:10px;right:10px;z-index:5;background:#d7263d;color:#fff;font:700 13px Oswald;letter-spacing:2px;padding:3px 9px;border-radius:4px;display:flex;gap:7px;align-items:center}
 .replaytag:before{content:"";width:7px;height:7px;border-radius:50%;background:#fff;animation:blink 1s infinite}
 .replaytag span{font-weight:500;letter-spacing:1px;opacity:.9}.replaytag em{font-style:normal;background:rgba(0,0,0,.3);padding:0 5px;border-radius:3px;letter-spacing:0}
@@ -449,3 +458,44 @@ div.tline{border-left:2px solid var(--line);margin:6px 0 0 8px;padding-left:16px
 @media (max-width:600px){.chalk{width:min(150px,40%)}.chalk .cht{font-size:10.5px}}
 .idtags{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}.idtags span{background:#222a36;border:1px solid #384356;border-radius:12px;padding:2px 10px;font:600 12px Oswald;letter-spacing:.5px;color:#e8ecf2}
 .idkv small{display:block;color:#8b95a6;font-size:11px}
+
+/* v0.6: officials, storylines, the head game */
+.card .crew{margin:8px auto 0;max-width:560px;font-size:12.5px;color:#d7dce4;text-align:center;line-height:1.4}
+.card .crew b{font:600 11px Oswald;letter-spacing:1.2px;color:#ffd166;text-transform:uppercase;margin-right:6px}
+.card .crew em{font-style:normal;color:#8b95a6}.card .crew span{display:block;color:#9aa4b5;font-size:11.5px}
+.card .crew.sm{margin-top:10px}
+.card .story{list-style:none;margin:8px auto 0;padding:0;max-width:560px;font-size:12.5px;color:#e8ecf2;text-align:center}
+.card .story li{margin:2px 0}.card .story li:before{content:"▸ ";color:#ffd166}
+.psytag{position:absolute;left:8px;top:118px;background:rgba(10,12,16,.88);border-left:4px solid var(--c);padding:2px 9px 3px;border-radius:3px;color:#fff;font:600 12px Oswald;letter-spacing:.8px;transform:translateX(-130%);transition:transform .3s ease;pointer-events:none;z-index:5}
+.psytag.on{transform:none}.psytag b{color:var(--t);margin-right:5px;letter-spacing:1.2px}
+.crewp{font-size:13px;margin:4px 0 8px}
+.rulebook{list-style:none;padding:0;margin:4px 0 14px}.rulebook li{padding:5px 0;border-bottom:1px solid #222a36;font-size:13.5px}.rulebook b{display:inline-block;width:52px;color:#ffd166;font:600 14px Oswald}
+/* ---------- league v0.7: the wire, season tabs, awards night, All-Star weekend, the draft, the record book ---------- */
+.ticker{margin:0 0 10px}.ticker[hidden]{display:none}
+.tk{display:flex;align-items:stretch;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;font-size:12.5px}
+.tk>b{background:var(--gold);color:#111;font:700 12px Oswald;letter-spacing:1px;padding:7px 10px;white-space:nowrap;display:flex;align-items:center}
+.tkm{overflow:hidden;flex:1;position:relative;mask-image:linear-gradient(90deg,transparent,#000 3%,#000 97%,transparent)}
+.tkr{display:inline-flex;gap:28px;white-space:nowrap;padding:7px 0;animation:tk 140s linear infinite}
+.tkm:hover .tkr{animation-play-state:paused}
+.tkr span i{font-style:normal;margin-right:5px}
+@keyframes tk{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:reduce){.tkr{animation:none;flex-wrap:wrap;white-space:normal}}
+.snav{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 10px}
+.snav a{font:600 12px Inter;color:var(--mut);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px 10px;text-decoration:none}
+.snav a.on{color:#111;background:var(--gold);border-color:var(--gold)}
+ul.news{list-style:none;margin:0;padding:0}
+ul.news li{display:flex;gap:8px;padding:6px 2px;border-bottom:1px solid var(--line)}
+ul.news li i{font-style:normal;width:20px;flex:none;text-align:center}
+ul.news li.dayh{color:var(--mut);font:600 12px Oswald;letter-spacing:.5px;border:0;padding-top:12px}
+.chips{display:flex;gap:4px;flex-wrap:wrap}.chipb{padding:3px 9px;font-size:12px;border-radius:999px}.chipb.on{background:var(--gold);color:#111;border-color:var(--gold)}
+.votes{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:8px}
+.vote{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px}.vote h4{margin:2px 0 4px}.vote table{width:100%}
+.asg{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0}
+.asg .sc{display:flex;align-items:baseline;gap:8px;font:700 15px Oswald}.asg .sc b{font-size:26px}.asg .sc b.w{color:var(--gold)}
+.btn{background:var(--gold);color:#111!important;font:700 13px Inter;border-radius:8px;padding:7px 12px;text-decoration:none}
+.asr{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media (max-width:560px){.asr{grid-template-columns:1fr}}
+table.dunks td{vertical-align:top;line-height:1.6}
+ol.board{columns:2;column-gap:24px;padding-left:22px}ol.board li{break-inside:avoid;margin:2px 0}@media (max-width:560px){ol.board{columns:1}}
+.lgrid.two{grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
+td.bad{color:#ff7b72}
+.vh .sp{max-width:160px}

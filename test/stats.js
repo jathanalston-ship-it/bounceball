@@ -12,7 +12,7 @@ const add = (o, k, v) => { o[k] = (o[k] || 0) + v; };
 let specs, t0 = Date.now();
 outer: while ((specs = L.nextGames(S))) {
   for (const sp of specs) {
-    const g = E.simulateGame({ id: sp.home }, { id: sp.away }, L.rostersFor(S, sp), sp.seed, { frames: games < 2, tactics: L.tacticsFor(S, sp), season: sp.season });
+    const g = E.simulateGame({ id: sp.home }, { id: sp.away }, L.rostersFor(S, sp), sp.seed, { frames: games < 2, tactics: L.tacticsFor(S, sp), season: sp.season, ctx: sp.ctx });
     if (g.frames.length) for (let f = 0; f < g.nFrames; f++) for (let k = 0; k < 10; k++) { const a = g.frames[f * E.C.FS + k * 8 + 6]; actCount[a] = (actCount[a] || 0) + 1; }
     const box = E.boxScore(g, 1e12), rep = E.strategyReport(g);
     for (const b of box) for (const k in b) if (typeof b[k] === "number" && k !== "idx" && k !== "t") tot[k] = (tot[k] || 0) + b[k];

@@ -27,6 +27,16 @@ function pickFirst(rng, born) {
   const x = rng.next();
   return rng.pick(x < w[0] ? FIRST_OLD : x < w[1] ? FIRST_MID : FIRST_NEW);
 }
+// v0.7: the league gets better. Each generation arrives bigger, faster and more skilled than the last:
+// raw rating points (and inches) the league has gained since the founders. The engine plays on this absolute
+// scale; the league's decisions, cards and the player screens use ratings relative to the era (eraRel).
+function eraGain(season) { const x = Math.max(0, (season || 1954) - 1954); return 9 * x / (x + 40); }
+function eraHt(season) { const x = Math.max(0, (season || 1954) - 1954); return 2.2 * x / (x + 30); }
+const rmax = season => 99 + Math.round(eraGain(season)); // absolute ceiling: a 99 in his era
+function eraRel(r, season) { const g = eraGain(season), o = {}; for (const k in r) o[k] = Math.round(clamp(r[k] - g, 1, 99)); return o; }
+function rate(p, season) { p.ovr = overall({ role: p.role, r: eraRel(p.r, season) }); return p.ovr; }
+// on one scale for all time (no ceiling): what he'd be against everyone who ever played
+function allTimeOvr(r, role) { const w = ROLES[role].w; let s = 0, ws = 0; for (const k in w) { s += r[k] * w[k]; ws += w[k]; } return Math.round(54 + (s / ws - 50) * 1.4); }
 function overall(p) {
   const w = ROLES[p.role].w; let s = 0, ws = 0;
   for (const k in w) { s += p.r[k] * w[k]; ws += w[k]; }
@@ -35,13 +45,13 @@ function overall(p) {
 // q shifts every rating; a rookie gets q around -10 (raw), veterans in an initial league around 0
 function genPlayer(rng, role, q, id, season, age) {
   const R = ROLES[role];
-  const htM = (R.ht[0] + R.ht[1]) / 2, wtM = (R.wt[0] + R.wt[1]) / 2;
-  const ht = Math.round(rng.range(R.ht[0], R.ht[1]) + rng.normal(0, 1));
-  const wt = Math.round(rng.range(R.wt[0], R.wt[1]) + (ht - htM) * 4 + rng.normal(0, 6));
+  const eh = eraHt(season), htM = (R.ht[0] + R.ht[1]) / 2 + eh, wtM = (R.wt[0] + R.wt[1]) / 2 + eh * 5;
+  const ht = Math.round(rng.range(R.ht[0], R.ht[1]) + eh + rng.normal(0, 1));
+  const wt = Math.round(rng.range(R.wt[0], R.wt[1]) + eh * 5 + (ht - htM) * 4 + rng.normal(0, 6));
   const wing = ht + Math.round(rng.normal(3, 2));
   if (age === undefined) age = Math.round(clamp(rng.normal(26.5, 3.6), 20, 37));
   const r = {};
-  for (const k of RKEYS) r[k] = rng.normal(46 + q, 8);
+  for (const k of RKEYS) r[k] = rng.normal(46 + q + eraGain(season), 8);
   for (const k in R.mods) r[k] += R.mods[k];
   r.str += (wt - wtM) * 0.3; r.spd -= (wt - wtM) * 0.18; r.acc -= (wt - wtM) * 0.15; r.brk += (wt - wtM) * 0.2;
   r.reb += (ht - htM) * 1.6; r.rim += (ht - htM) * 1.4; r.spd -= (ht - htM) * 0.8; r.sec -= (ht - htM) * 0.5;
@@ -53,12 +63,12 @@ function genPlayer(rng, role, q, id, season, age) {
   r.iq += (age - 25) * 0.9;
   let tier = 0;
   if (rng.chance(1 / 200)) {
-    tier = 2; const a = rng.pick(R.sig); const b = rng.pick(R.sig.filter(k => k !== a));
-    r[a] = Math.max(r[a], 90) + rng.range(2, 9); r[b] = Math.max(r[b], 88) + rng.range(0, 8);
+    tier = 2; const a = rng.pick(R.sig); const b = rng.pick(R.sig.filter(k => k !== a)), G = eraGain(season);
+    r[a] = Math.max(r[a], 90 + G) + rng.range(2, 9); r[b] = Math.max(r[b], 88 + G) + rng.range(0, 8);
   } else if (rng.chance(1 / 20)) {
-    tier = 1; const a = rng.pick(R.sig); r[a] = Math.max(r[a] + 18, 86) + rng.range(0, 6);
+    tier = 1; const a = rng.pick(R.sig); r[a] = Math.max(r[a] + 18, 86 + eraGain(season)) + rng.range(0, 6);
   }
-  for (const k of RKEYS) r[k] = Math.round(clamp(r[k], 20, 99));
+  for (const k of RKEYS) r[k] = Math.round(clamp(r[k], 20, rmax(season)));
   const p = {
     id, role, first: pickFirst(rng, season - age), last: rng.pick(LAST), ht, wt, wing, born: season - age, r, tier,
     drive: Math.round(clamp(rng.normal(50, 18), 1, 99)),   // hidden: who blooms, who wastes it
@@ -66,13 +76,21 @@ function genPlayer(rng, role, q, id, season, age) {
     trouble: Math.round(clamp(rng.normal(0.25, 0.18), 0, 1) * 100) / 100, // hidden: off-court risk (used in phase 4)
     num: 0, team: null, contract: null, injury: null, retired: null, draft: null, hof: null
   };
-  p.ovr = overall(p);
+  rate(p, season);
   return p;
 }
 
-// Yearly development. age = age during the coming season.
+// How a player ages, from his build and his own hash (no draw from any shared stream):
+// athletes fall off a cliff, craftsmen age well, a rare few seem ageless.
+function hash01(n) { return (((n * 2654435761) >>> 0) ^ ((n * 40503) >>> 0)) % 1000003 / 1000003; }
+function ageStyleOf(p) {
+  const r = p.r, ph = (r.spd + r.acc + r.vert + r.bnc) / 4, sk = (r.thr + r.fr + r.mid + r.pas + r.iq) / 5, u = hash01(p.id * 7 + 3);
+  return u < 0.05 ? "ageless" : ph - sk > 7 ? "athlete" : sk - ph > 5 ? "craftsman" : "steady";
+}
+const AGE_MULT = { athlete: [1.35, 1.0], craftsman: [0.85, 0.5], ageless: [0.5, 0.45], steady: [1, 1] }; // [physical, skill] decline
+// Yearly development. age = age during the coming season. Returns what happened (a cliff year).
 function develop(p, rng, season, coachDev) {
-  const age = season - p.born;
+  const age = season - p.born, st = p.ageStyle || (p.ageStyle = ageStyleOf(p)), am = AGE_MULT[st];
   const d = (p.drive - 50) / 50; // -1..1
   const cdev = age <= 27 ? (coachDev || 0) * 0.6 : 0; // a good development coach adds up to ~0.6/yr to young players
   let g;
@@ -81,19 +99,62 @@ function develop(p, rng, season, coachDev) {
   g += age <= 28 ? d * 1.6 : d * 0.7;
   g += cdev;              // drive: late bloomers vs. wasted talent; also slows decline
   const shock = rng.normal(0, 1.1);               // breakout / bust year
+  // the cliff: an athlete in his early thirties can lose his legs in one summer
+  const cliff = st === "athlete" && age >= 30 && age <= 34 && !p.cliff && hash01(p.id * 13 + season) < 0.22;
+  if (cliff) p.cliff = season;
+  const top = rmax(season);
   for (const k of RKEYS) {
     let gk = g;
-    if (PHYS.has(k)) gk = g < 0 ? g * 1.5 : g * 0.8; else gk = g < 0 ? g * 0.55 : g * 1.05;
+    if (PHYS.has(k)) gk = g < 0 ? g * 1.5 * am[0] : g * 0.8; else gk = g < 0 ? g * 0.55 * am[1] : g * 1.05;
     if (k === "iq") gk = age <= 32 ? 1.2 + d * 0.4 : -0.6;
     if (k === "str" && age <= 29) gk += 0.6;
-    p.r[k] = Math.round(clamp(p.r[k] + gk + shock * (PHYS.has(k) ? 0.6 : 1) + rng.normal(0, 0.9), 20, 99));
+    if (cliff && PHYS.has(k) && k !== "str") gk -= 4;
+    p.r[k] = Math.round(clamp(p.r[k] + gk + shock * (PHYS.has(k) ? 0.6 : 1) + rng.normal(0, 0.9), 20, top));
   }
   if (age > 28) p.wt += rng.int(0, 2);
-  p.ovr = overall(p);
+  rate(p, season);
+  return { cliff };
+}
+// Summer work: a player adds a skill, and sometimes that changes what kind of player he is.
+// The menu depends on his position and the era (bigs only start shooting from deep in the four-point era).
+function skillMenu(p, season) {
+  const fours = season >= 1979, m = {
+    PG: ["thr", "mid", "pas", "ins", "perD", fours ? "fr" : "thr"], WING: ["thr", "mid", "pas", "sec", "brk", fours ? "fr" : "mid"],
+    SNIPER: ["ins", "pas", "sec", "perD", "mid"], BRUISER: [season >= 1985 ? "thr" : "mid", "sec", "pas", "mid", "ins"],
+    BIG: ["mid", "pas", "ft", season >= 1988 ? "thr" : "ins", season >= 2006 ? "fr" : "mid"] }[p.role];
+  return m;
+}
+function growSkills(p, rng, season, coachDev, mentor) {
+  const age = season - p.born, d = (p.drive - 50) / 50, out = [];
+  const reinvent = p.ageStyle === "athlete" && age >= 30 && p.drive >= 55 && p.r.iq >= 60; // losing his legs, he learns to shoot
+  let pr = age <= 23 ? 0.3 : age <= 26 ? 0.24 : age <= 30 ? 0.13 : reinvent ? 0.22 : 0.04;
+  pr = clamp(pr + d * 0.14 + (coachDev || 0) * 0.08, 0, 0.6);
+  if (!rng.chance(pr)) return out;
+  const menu = reinvent ? ["thr", "mid", "pas", season >= 1979 ? "fr" : "thr", "iq"] : skillMenu(p, season);
+  // he works on what he's worst at among the things that matter to him (room to grow), with a bit of chance
+  const g = eraGain(season);
+  const w = menu.map(k => Math.max(4, 82 + g - p.r[k]) * (mentor && mentor.k === k ? 2.5 : 1));
+  let tot = w.reduce((a, b) => a + b, 0), x = rng.next() * tot, k = menu[menu.length - 1];
+  for (let i = 0; i < menu.length; i++) { x -= w[i]; if (x <= 0) { k = menu[i]; break; } }
+  const gain = Math.round(rng.range(4, 9) + d * 2 + (mentor && mentor.k === k ? 2 : 0));
+  p.r[k] = Math.round(clamp(p.r[k] + gain, 20, rmax(season)));
+  out.push({ k, gain, reinvent });
+  rate(p, season);
+  return out;
+}
+// what position his game says he plays now (only moves a body can make)
+const ROLE_HT = { PG: [0, 79], WING: [75, 83], SNIPER: [0, 99], BRUISER: [76, 99], BIG: [80, 99] };
+function roleFit(p, role, season) { return overall({ role, r: eraRel(p.r, season) }); }
+function bestRole(p, season) {
+  const cur = roleFit(p, p.role, season); let best = p.role, bv = cur + 3;
+  for (const role of ROLE_LIST) { if (role === p.role || p.ht < ROLE_HT[role][0] + eraHt(season) - 1 || p.ht > ROLE_HT[role][1] + eraHt(season) + 1) continue; const v = roleFit(p, role, season); if (v > bv) { bv = v; best = role; } }
+  return best;
 }
 
 // Hard cap grows ~8.4%/yr: $120k in 1954 → ~$40M by 2026
-function capFor(season) { return Math.round(120000 * Math.pow(1.084, season - 1954) / 1000) * 1000; }
+let CAPADJ = null; // v0.7: TV and labor deals bend the cap (the league installs this)
+function setCapAdj(fn) { CAPADJ = fn; }
+function capFor(season) { return Math.round(120000 * Math.pow(1.084, season - 1954) * (CAPADJ ? CAPADJ(season) : 1) / 1000) * 1000; }
 function salaryShare(ovr) { return clamp(0.012 * Math.exp((ovr - 50) * 0.1), 0.015, 0.30); }
 function askingSalary(p, season) {
   const age = season - p.born;
@@ -111,7 +172,7 @@ function tradeValue(p, season, mode) {
 function age(p, season) { return season - p.born; }
 function displayName(p) { return p.first + " " + p.last; }
 
-const API = { FIRST, LAST, pickFirst, RKEYS, RLABEL, ROLES, ROLE_LIST, overall, genPlayer, develop, capFor, salaryShare, askingSalary, minSalary, tradeValue, age, displayName };
+const API = { FIRST, LAST, pickFirst, RKEYS, RLABEL, ROLES, ROLE_LIST, overall, genPlayer, develop, eraGain, eraHt, eraRel, rate, rmax, allTimeOvr, growSkills, bestRole, ageStyleOf, hash01, setCapAdj, capFor, salaryShare, askingSalary, minSalary, tradeValue, age, displayName };
 if (typeof module !== "undefined" && module.exports) module.exports = API;
 else window.BB = Object.assign(window.BB || {}, API);
 })();

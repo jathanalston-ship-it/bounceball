@@ -172,7 +172,10 @@ async function vPlayerScreen(id, tab) {
   PC.ps = { id: +id, p, det, reg, post, cards, mode: "pg", which: "reg", rseason: null, ppt: null };
   // how he scored in his most recent season (play types, from the season file)
   const lastY = reg.length ? reg[reg.length - 1].season : null;
-  if (lastY) { try { const sd = await season(lastY); if (sd.ppt && sd.ppt[id]) PC.ps.ppt = { y: lastY, d: sd.ppt[id] }; } catch (e) { /* older data */ } }
+  if (lastY) { try {
+    const sd = await season(lastY); if (sd.ppt && sd.ppt[id]) PC.ps.ppt = { y: lastY, d: sd.ppt[id] };
+    PC.ps.make = sd.players && sd.players[id]; PC.ps.health = sd.health && sd.health[id];
+  } catch (e) { /* older data */ } }
   tab = PS_TABS.some(t => t[0] === tab) ? tab : "overview";
   const team = p.team ? TB[p.team] : TB[(reg[reg.length - 1] || {}).team] || null;
   const c1 = team ? team.c1 : "#59606b", c2 = team ? team.c2 : "#23272e";
@@ -231,9 +234,24 @@ function psOverview() {
   // trophy case
   if (p.awards && p.awards.length) {
     const c = {}; for (const [y, a] of p.awards) (c[a] = c[a] || []).push(y);
-    const order = ["mvp", "fmvp", "champ", "dpoy", "roy", "sniper"];
+    const order = ["mvp", "fmvp", "champ", "dpoy", "roy", "smoy", "mip", "all1", "all2", "all3", "def1", "as", "asmvp", "sniper"];
     h += `<h3>Trophy case</h3><div class="trophies">${order.filter(a => c[a]).map(a => `<div class="tro ${a}"><b>${c[a].length > 1 ? c[a].length + "×" : ""}</b><span>${AWS[a]}</span><small>${c[a].join(", ")}</small></div>`).join("")}${p.hof ? `<div class="tro hof"><b>HOF</b><span>Hall of Fame</span><small>Class of ${p.hof}</small></div>` : ""}</div>`;
   }
+  // his makeup (scouts' read on the hidden ratings) and his health history
+  const mk = PC.ps.make, tags = [];
+  if (mk && mk.temper !== undefined) {
+    if (mk.clutch >= 0.4) tags.push(["Clutch", "rises late in close games"]); else if (mk.clutch <= -0.4) tags.push(["Shrinks late", "tight in crunch time"]);
+    if (mk.streak >= 0.55) tags.push(["Streaky", "gets hot (and cold)"]);
+    if (mk.tough >= 0.75) tags.push(["Tough", "big hits make him angry"]); else if (mk.tough <= 0.3) tags.push(["Rattles easily", "big hits get to him"]);
+    if (mk.temper >= 0.72) tags.push(["Hothead", "quick to fight"]); else if (mk.temper <= 0.22) tags.push(["Cool customer", "never takes the bait"]);
+    if (mk.ego >= 0.72) tags.push(["Big ego", "wants the ball, the money and the spotlight"]); else if (mk.ego !== undefined && mk.ego <= 0.2) tags.push(["Team-first", "no ego"]);
+    if (mk.loyal >= 0.78) tags.push(["Loyal", "would rather stay home"]); else if (mk.loyal !== undefined && mk.loyal <= 0.22) tags.push(["Mercenary", "goes where the money and the rings are"]);
+    if (mk.show >= 0.75) tags.push(["Showman", "the fans love him"]);
+  }
+  if (p.ageStyle) tags.push({ athlete: ["Athlete", "lives on his legs: he'll age fast"], craftsman: ["Craftsman", "skill game that ages well"], ageless: ["Ageless", "time doesn't seem to touch him"], steady: null }[p.ageStyle] || null);
+  while (tags.includes(null)) tags.splice(tags.indexOf(null), 1);
+  const hh = PC.ps.health;
+  if (tags.length || hh) h += `<h3>Makeup and health</h3>${tags.length ? `<p class="idtags">${tags.map(([a, b]) => `<span title="${esc(b)}">${a}</span>`).join("")}</p>` : ""}${hh ? `<p class="m small">${hh.conc ? `${hh.conc} concussion${hh.conc > 1 ? "s" : ""} on record${hh.conc >= 3 ? " (at risk of retiring early)" : ""}` : ""}${hh.conc && hh.chronic.length ? " · " : ""}${hh.chronic.length ? "plays through a " + hh.chronic.map(esc).join(" and a ") : ""}</p>` : ""}`;
   // how he scores
   if (PC.ps.ppt) {
     const d = PC.ps.ppt.d, ks = Object.keys(d).filter(k => BB.PT_LABEL[k]).sort((a, b) => d[b][1] - d[a][1]), tot = ks.reduce((a, k) => a + d[k][1], 0);
@@ -345,6 +363,8 @@ function psRatings() {
   const sar = pcArch(cur.r, p, y);
   if (sar) h += `<p class="m">Archetype ${y === D.lg.nextSeason && p.r && !p.retired ? "now" : "that season"}: <b style="color:var(--ink)">${esc(sar.offName)}</b> on offense, <b style="color:var(--ink)">${esc(sar.defName)}</b> on defense.</p>`;
   h += `<div class="rtop"><div class="rovr t-${CC.tierFor(cur.ovr).key}"><b>${cur.ovr}</b><span>${CC.tierFor(cur.ovr).name}</span>${prev ? `<small class="${cur.ovr - prev.ovr >= 0 ? "up" : "dn"}">${cur.ovr - prev.ovr >= 0 ? "+" : ""}${cur.ovr - prev.ovr} from ${prevY}</small>` : ""}</div>${psRadar(gs, gp)}</div>`;
+  { const sr = det && det.s.find(x => x[0] === y), abs = sr && sr.length > 5 + BB.RKEYS.length ? sr[5 + BB.RKEYS.length] : null; // v0.7: the all-time scale
+    if (abs !== null) h += `<p class="m small">Ratings are measured against his era. On one scale for every era he rates <b style="color:var(--ink)">${abs}</b>: each generation arrives bigger, faster and more skilled, so the same rating means more later on.</p>`; }
   h += `<div class="agrid">${CC.GROUPS.map(g => `<div class="ag"><div class="agh"><span>${g.name}</span><b style="color:${CART.valColor(gs[g.key])}">${gs[g.key]}</b></div>${g.keys.map(k => {
     const v = cur.r[k], d = prev ? v - prev.r[k] : 0;
     return `<div class="ar"><span>${BB.RLABEL[k]}</span><i><em style="width:${v}%;background:${CART.valColor(v)}"></em><u style="left:${peak[k]}%" title="Career peak ${peak[k]}"></u></i><b>${v}</b><small class="${d > 0 ? "up" : d < 0 ? "dn" : ""}">${d > 0 ? "+" + d : d < 0 ? d : ""}</small></div>`;
@@ -413,10 +433,12 @@ function psCompare(cards) {
 }
 
 // ----- career timeline -----
+const CHASE_NAME = { pts: "points", reb: "rebounds", ast: "assists", stl: "steals", blk: "blocks", tkl: "tackles", btk: "broken tackles", dnk: "dunks", fpm: "fours", tpm: "threes" };
 function psCareer() {
   const { p, det } = PC.ps;
   const ev = (det ? det.tl.slice() : []);
-  for (const [y, a] of p.awards || []) ev.push([y, 300, "award", a]);
+  for (const [y, a] of p.awards || []) ev.push([y, a === "as" || a === "asmvp" ? 120 : 300, "award", a]);
+  for (const [y, m] of p.mentors || []) ev.push([y, -2, "mentor", m]);
   if (p.hof) ev.push([p.hof, 301, "hof"]);
   const T = t => TB[t] ? tlink(t, true) : esc(t || "");
   const when = d => d < 0 ? "Offseason" : d >= 300 ? "Season's end" : d >= 200 ? `Playoffs` : `Day ${d + 1}`;
@@ -433,6 +455,18 @@ function psCareer() {
       case "blot": return ["🚨", `${esc(p.name.split(" ")[0])} ${esc(e[4])}${e[6] ? ` <span class="k ${e[5]}">${e[6]}-game suspension</span>` : ""}${e[7] ? ` <span class="k">${money(e[7])} fine</span>` : ""}`];
       case "award": return ["🏆", e[3] === "champ" ? "Won the championship" : `Won ${AW[e[3]] || AWS[e[3]] || e[3]}`];
       case "hof": return ["🏛️", "Inducted into the Hall of Fame"];
+      // v0.7 storylines
+      case "demand": return ["📣", `Demanded a trade from ${T(e[3])}${e[4] === "feud" ? " after a falling-out" : " (tired of losing)"}`];
+      case "holdout": return ["✋", `Held out of ${T(e[3])} camp for a new deal (making ${money(e[4])}, wanted ${money(e[5])})`];
+      case "extend": return ["✍️", `Extended by ${T(e[3])} · ${money(e[4])}/yr${e[6] === "holdout" ? " (ended his holdout)" : ""}`];
+      case "walk": return ["🚪", `Turned down ${T(e[3])} to test free agency`];
+      case "feud": return ["💢", e[4] === "coach" ? `Feuding with coach ${clink(e[5])} (${T(e[3])})` : `Feuding with teammate ${plink(e[5])} (${T(e[3])})`];
+      case "skill": return ["🛠️", `${e[6] ? "Reinvented his game: added " : "Added "}${(BB.RLABEL[e[4]] || e[4]).toLowerCase()} over the summer (+${e[5]})${e[7] ? `, learning from ${plink(e[7])}` : ""}`];
+      case "role": return ["🔄", `Moved from ${BB.ROLES[e[4]].name} to ${BB.ROLES[e[5]].name}`];
+      case "cliff": return ["📉", "Lost a step over the summer"];
+      case "mile": return ["🎯", e[5] === "mile" ? `Reached ${e[6].toLocaleString()} career ${CHASE_NAME[e[4]]}` : e[5] === "record" ? `Took the all-time ${CHASE_NAME[e[4]]} record from ${plink(e[6])}` : e[5] === "season" ? `Broke ${plink(e[6])}'s single-season ${CHASE_NAME[e[4]]} record` : `Passed ${plink(e[6])} for No. ${e[7]} all-time in ${CHASE_NAME[e[4]]}`];
+      case "dunk": return ["🛫", "Won the dunk contest"];
+      case "mentor": return ["🤝", `Mentored by ${plink(e[3])}`];
     }
     return ["•", e[2]];
   };

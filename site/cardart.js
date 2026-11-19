@@ -913,7 +913,7 @@ function rimFilter(id, acc, fill) {
 // Rendered on demand by the broadcast's photo booth (Broadcast3D.photo), kept as blob URLs in memory
 // and in IndexedDB between visits. Cards ask only once they are on screen (or about to be).
 const PH = { mem: new Map(), spec: new Map(), lay: new Map(), q: [], qs: new Set(), busy: false, off: false, fails: 0, ok: undefined, io: null, db: undefined };
-const PV = 1; // bump to re-shoot every photo
+const PV = 2; // bump to re-shoot every photo (2: the arcade athletes of broadcast v11)
 function photoOK() {
   if (PH.ok === undefined) {
     let off = false; try { off = localStorage.getItem("ubl-photos") === "off"; } catch (e) { /* storage blocked */ }

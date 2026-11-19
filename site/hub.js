@@ -3,9 +3,9 @@
 const BASE = window.DATA_BASE || "../data/";
 const D = { lg: null, pl: null, idx: null, staff: { coaches: {}, owners: {} }, seasons: {} };
 async function J(p) { if (window.INLINE && p in window.INLINE) return window.INLINE[p]; const r = await fetch(BASE + p); if (!r.ok) throw new Error("missing " + p); return r.json(); }
-async function season(y) { return D.seasons[y] || (D.seasons[y] = await J("seasons/" + y + ".json")); }
-const AW = { mvp: "MVP", dpoy: "Defensive Player of the Year", roy: "Rookie of the Year", sniper: "Sniper Award (most fours)", fmvp: "Finals MVP", coy: "Coach of the Year" };
-const AWS = { mvp: "MVP", dpoy: "DPOY", roy: "ROY", sniper: "Sniper", fmvp: "Finals MVP", champ: "Champion" };
+async function season(y) { const S = D.seasons[y] || (D.seasons[y] = await J("seasons/" + y + ".json")); if (window.V7) V7.identity(S); return S; } // (v0.7: franchises move; show the city they played in that year)
+const AW = { smoy: "Sixth Man of the Year", mip: "Most Improved Player", asmvp: "All-Star MVP", as: "All-Star", all1: "All-UBL First Team", all2: "All-UBL Second Team", all3: "All-UBL Third Team", def1: "All-Defense First Team", def2: "All-Defense Second Team", eoy: "Executive of the Year", mvp: "MVP", dpoy: "Defensive Player of the Year", roy: "Rookie of the Year", sniper: "Sniper Award (most fours)", fmvp: "Finals MVP", coy: "Coach of the Year" };
+const AWS = { mvp: "MVP", dpoy: "DPOY", roy: "ROY", sniper: "Sniper", fmvp: "Finals MVP", champ: "Champion", smoy: "Sixth Man", mip: "Most Improved", all1: "All-UBL 1st", all2: "All-UBL 2nd", all3: "All-UBL 3rd", def1: "All-Defense", def2: "All-Defense 2nd", as: "All-Star", asmvp: "All-Star MVP" };
 const tname = id => TB[id] ? TB[id].city + " " + TB[id].name : id;
 const chip = id => `<span class="chip" style="--c:${TB[id] ? TB[id].c1 : "#888"};--c2:${TB[id] ? TB[id].c2 : "#333"}"></span>`;
 const tlink = (id, short) => `<a href="#team-${id}">${chip(id)}${esc(short ? TB[id].name : tname(id))}</a>`;
@@ -29,7 +29,7 @@ async function vStandings(y) {
   const S = await season(y), st = S.standings;
   const order = S.teams.slice().sort((a, b) => (st[b][0] / (st[b][0] + st[b][1])) - (st[a][0] / (st[a][0] + st[a][1])) || (st[b][2] - st[b][3]) - (st[a][2] - st[a][3]));
   const lead = st[order[0]], seeds = S.playoffs.seeds;
-  let h = `<div class="vh"><h2>${y} standings</h2>${seasonPicker(y, "standings")}</div>`;
+  let h = `<div class="vh"><h2>${y} standings</h2>${seasonPicker(y, "standings")}</div>${V7.seasonNav(y, "standings")}`;
   h += `<p class="m">${S.teams.length} teams · 82 games · cap ${money(S.cap)} · champion ${tlink(S.awards.champion)}</p>`;
   h += `<div class="tw"><table class="box"><thead><tr><th>#</th><th class="pn">Team</th><th>W</th><th>L</th><th>PCT</th><th>GB</th><th>PF</th><th>PA</th><th>DIFF</th></tr></thead><tbody>`;
   order.forEach((t, i) => {
@@ -51,8 +51,8 @@ async function vStandings(y) {
 }
 function awardsBlock(S) {
   let h = `<h3>Awards</h3><div class="aw">`;
-  for (const k of ["mvp", "fmvp", "dpoy", "roy", "sniper", "coy"]) if (S.awards[k] !== null && S.awards[k] !== undefined) h += `<div><span class="m">${AW[k]}</span>${k === "coy" ? clink(S.awards[k]) : plink(S.awards[k])}</div>`;
-  return h + `</div>`;
+  for (const k of ["mvp", "fmvp", "dpoy", "roy", "smoy", "mip", "sniper", "coy", "eoy"]) if (S.awards[k] !== null && S.awards[k] !== undefined) h += `<div><span class="m">${AW[k]}</span>${k === "coy" ? clink(S.awards[k]) : k === "eoy" ? V7.gmlink(S.awards[k]) : plink(S.awards[k])}</div>`;
+  return h + `</div>` + (S.awards.votes ? `<p class="m small"><a href="#awards-${S.season}">Awards night: the vote tallies, All-UBL and All-Defense teams →</a></p>` : "");
 }
 async function vLeaders(y) {
   const S = await season(y);
@@ -68,7 +68,7 @@ async function vLeaders(y) {
   let h = `<div class="vh"><h2>${y} leaders</h2>${seasonPicker(y, "leaders")}</div><p class="m small">Per game unless noted. Minimum 60% of games played.</p><div class="lgrid">`;
   for (const [name, f, d] of cats) {
     const top = q.map(r => [r, f(r)]).filter(x => x[1] >= 0).sort((a, b) => b[1] - a[1]).slice(0, 5);
-    h += `<div class="lcard"><h4>${name}</h4><ol>${top.map(([r, v]) => `<li>${plink(r.id)} <span class="m">${TB[r.team] ? TB[r.team].id : ""}</span><b>${v.toFixed(d)}</b></li>`).join("")}</ol></div>`;
+    h += `<div class="lcard"><h4>${name}</h4><ol>${top.map(([r, v]) => `<li>${plink(r.id)} <span class="m">${TB[r.team] ? V7.abbr(r.team) : ""}</span><b>${v.toFixed(d)}</b></li>`).join("")}</ol></div>`;
   }
   return h + `</div>`;
 }
@@ -80,7 +80,12 @@ async function vHistory() {
   h += `<h3>Championships</h3><div class="bars2">` + Object.entries(titles).sort((a, b) => b[1] - a[1]).map(([t, n]) => `<div>${tlink(t, true)}<i style="--w:${n / tmax * 100}%;--c:${TB[t].c1}"></i><b>${n}</b></div>`).join("") + `</div>`;
   h += `<h3>Every final</h3><div class="tw"><table class="box"><thead><tr><th>Season</th><th class="pn">Champion</th><th class="pn">Runner-up</th><th class="pn">Finals MVP</th><th class="pn">MVP</th></tr></thead><tbody>`;
   for (const c of ch) h += `<tr><td><a href="#standings-${c.season}">${c.season}</a></td><td class="pn">${tlink(c.champ)}</td><td class="pn">${tlink(c.runnerUp, true)}</td><td class="pn">${c.fmvp ? plink(c.fmvp) : "–"}</td><td class="pn">${c.mvp ? plink(c.mvp) : "–"}</td></tr>`;
-  return h + `</tbody></table></div>`;
+  h += `</tbody></table></div>`;
+  // the rulebook: how the game changed
+  const rules = Object.entries(BB.RULE_YEARS).sort((a, b) => a[1] - b[1]);
+  h += `<h3>The rulebook</h3><ul class="rulebook">${rules.map(([k, yr]) => `<li><b>${yr}</b>${esc(BB.RULE_NOTES[k])}</li>`).join("")}</ul>`;
+  h += V7.leagueBizHTML();
+  return h;
 }
 async function vHof() {
   let h = `<h2>Hall of Fame</h2><p class="m">Players become eligible three years after retiring. Induction goes by career production, peak and hardware: roughly the top 2% of careers.</p>`;
@@ -91,8 +96,8 @@ async function vHof() {
 }
 async function vTeams() {
   let h = `<h2>Teams</h2><div class="tgrid">`;
-  for (const t of BB.TEAMS) {
-    const tm = D.lg.teams[t.id]; if (!tm) continue;
+  for (const t0 of BB.TEAMS) {
+    const tm = D.lg.teams[t0.id]; if (!tm) continue; const t = TB[t0.id];
     const last = tm.hist[tm.hist.length - 1];
     h += `<a class="tcard" href="#team-${t.id}" style="--c:${t.c1};--c2:${t.c2}"><span class="sw"></span><div><b>${esc(t.city)} ${esc(t.name)}</b><small>since ${tm.joined || t.joined} · ${tm.titles} title${tm.titles === 1 ? "" : "s"}${last ? ` · ${last.w}-${last.l} in ${last.season}` : ""}</small></div></a>`;
   }
@@ -100,15 +105,17 @@ async function vTeams() {
 }
 async function vTeam(id) {
   const t = TB[id], tm = D.lg.teams[id];
-  let h = `<div class="thead" style="--c:${t.c1};--c2:${t.c2}"><span class="sw big"></span><div><h2>${esc(t.city)} ${esc(t.name)}</h2><p class="m">${esc(t.arena)} · joined ${t.joined} (${t.how}) · ${tm.titles} championship${tm.titles === 1 ? "" : "s"} · payroll ${money(tm.payroll)}</p></div></div>`;
+  V7.identity(null);
+  let h = `<div class="thead" style="--c:${t.c1};--c2:${t.c2}"><span class="sw big"></span><div><h2>${esc(t.city)} ${esc(t.name)}</h2><p class="m">${esc(t.arena)} · joined ${t.joined} (${t.how}) · ${tm.titles} championship${tm.titles === 1 ? "" : "s"} · payroll ${money(tm.payroll)} · <a href="#records-franchise-${id}">franchise records</a></p></div></div>`;
   if (tm.coach || tm.owner) {
     const c = D.staff.coaches[tm.coach], o = D.staff.owners[tm.owner];
     h += `<div class="aw">${c ? `<div><span class="m">Head coach${c.ex ? " (former player)" : ""}</span>${clink(c.id)} <span class="m">${c.w}-${c.l} career${c.phil ? " · " + philLine(c) : ""}</span></div>` : ""}${o ? `<div><span class="m">Owner${o.how === "heir" ? " (inherited)" : o.how === "purchase" ? " (bought the team)" : ""}</span>${esc(o.name)} <span class="m">${esc(o.biz || "")}</span></div>` : ""}</div>`;
     if (tm.coachHist && tm.coachHist.length > 1) h += `<p class="m small">Coaching history: ${tm.coachHist.slice().reverse().map(x => `${clink(x.cid)} (${x.from}–${x.to || "now"}${x.why ? ", " + x.why : ""})`).join(" · ")}</p>`;
     if (tm.ownerHist && tm.ownerHist.length > 1) h += `<p class="m small">Ownership: ${tm.ownerHist.map(x => `${esc(oname(x.oid))} (${x.from}, ${x.how})`).join(" → ")}</p>`;
   }
+  h += V7.teamBizHTML(id, tm);
   const last = tm.hist[tm.hist.length - 1];
-  if (last) { try { h += identityHTML(id, await season(last.season)); } catch (e) { /* older data has no identity numbers */ } }
+  if (last) { try { const sd = await season(last.season); h += identityHTML(id, sd); h += rivalsHTML(id, sd); } catch (e) { /* older data has no identity numbers */ } }
   const roster = Object.values(D.pl).filter(p => p.team === id).sort((a, b) => b.ovr - a.ovr);
   h += `<h3>Current roster (${D.lg.nextSeason})</h3><div class="tw"><table class="box"><thead><tr><th class="pn">Player</th><th>Pos</th><th>Type</th><th>Age</th><th>OVR</th><th>Contract</th></tr></thead><tbody>`;
   for (const p of roster) { const ar = p.r && BB.archetype ? BB.archetype(p, D.lg.nextSeason) : null; h += `<tr><td class="pn"><span class="num">${p.num}</span>${plink(p.id)}${p.injury ? ` <span class="inj">${esc(p.injury.name)}</span>` : ""}</td><td>${BB.ROLES[p.role].name}</td><td class="m small">${ar ? ar.offName + " / " + ar.defName : ""}</td><td>${D.lg.nextSeason - p.born}</td><td><span class="ovrc t-${BB.CARDS.tierFor(p.ovr).key}">${p.ovr}</span></td><td>${p.contract ? money(p.contract.salary) + " thru " + p.contract.thru : "–"}</td></tr>`; }
@@ -117,6 +124,12 @@ async function vTeam(id) {
   return h + `</tbody></table></div>`;
 }
 async function vPlayer(id, tab) { return vPlayerScreen(id, tab); }
+// ---- rivalries: geography, playoff wars, fights and cheap shots ----
+function rivalsHTML(id, sd) {
+  const rs = (sd.rivals || []).filter(r => r[0] === id || r[1] === id).map(r => [r[0] === id ? r[1] : r[0], r[2]]).sort((a, b) => b[1] - a[1]).slice(0, 4);
+  if (!rs.length) return "";
+  return `<h3>Rivals</h3><p class="idtags">${rs.map(([t, v]) => `<span>${tlink(t, true)} ${v >= 0.45 ? "· bad blood" : v >= 0.25 ? "· heated" : ""}</span>`).join("")}</p>`;
+}
 // ---- team identity: how a team played over a season, ranked against the league ----
 const ID_STATS = [
   ["pace", "Possessions", s => s.poss / s.g, "fast", "slow"],
@@ -137,9 +150,9 @@ function identityHTML(id, sd) {
   const teams = Object.keys(sd.style).filter(t => sd.style[t].g), n = teams.length;
   const rank = (f, t) => 1 + teams.filter(u => f(sd.style[u]) > f(sd.style[t])).length;
   const me = sd.style[id], tags = [];
-  const cells = ID_STATS.map(([k, label, f, hi, lo]) => {
+  const cells = ID_STATS.filter(([k, label, f]) => { const vs = teams.map(t => f(sd.style[t])); return Math.max(...vs) - Math.min(...vs) > 1e-9; }).map(([k, label, f, hi, lo]) => { // (a stat every team ties on, like fours before 1979, says nothing)
     const r = rank(f, id), v = f(me);
-    if (hi && r <= 3) tags.push(hi); else if (lo && r > n - 3) tags.push(lo);
+    if (hi && r <= 3 && v > 0) tags.push(hi); else if (lo && r > n - 3) tags.push(lo);
     return `<div><b>${k === "big" ? v.toFixed(0) + "%" : k === "flag" ? v : v.toFixed(1)}</b><span>${label}</span><small>${r === 1 ? "1st" : r === 2 ? "2nd" : r === 3 ? "3rd" : r + "th"} of ${n}</small></div>`;
   });
   const cov = Object.keys(BB.COVERS).map(k => [k, me["cov_" + k] || 0]).sort((a, b) => b[1] - a[1]), ct = cov.reduce((a, x) => a + x[1], 0);
@@ -150,11 +163,11 @@ async function vMoves(y) {
   const S = await season(y);
   const fmt = t => {
     switch (t.type) {
-      case "trade": return `${tlink(t.teams[1], true)} get ${t.toB.map(plink).join(", ")} from ${tlink(t.teams[0], true)} for ${t.toS.map(plink).concat(t.picks.map(k => `${k[0]} ${k[1] === 1 ? "1st" : "2nd"}-round pick`)).join(", ") || "nothing"}`;
+      case "trade": return (t.why === "demand" ? '<span class="k susp">trade demand</span> ' : t.why === "dump" ? '<span class="k">salary dump</span> ' : "") + `${tlink(t.teams[1], true)} get ${t.toB.map(plink).join(", ")} from ${tlink(t.teams[0], true)} for ${t.toS.map(plink).concat(t.picks.map(k => `${k[0]} ${k[1] === 1 ? "1st" : "2nd"}-round pick`)).join(", ") || "nothing"}`;
       case "draft": return `${tlink(t.team, true)} draft ${plink(t.pid)} (round ${t.round}, pick ${t.pick})`;
       case "sign": return `${tlink(t.team, true)} sign ${plink(t.pid)}${t.how === "free agent" ? ` · ${money(t.salary)}/yr for ${t.years}` : t.how === "hardship" ? " (injury hardship)" : " (minimum deal)"}`;
-      case "resign": return `${tlink(t.team, true)} re-sign ${plink(t.pid)} · ${money(t.salary)}/yr`;
-      case "retire": return `${plink(t.pid)} retires (${TB[t.team].name})`;
+      case "resign": return `${tlink(t.team, true)} re-sign ${plink(t.pid)} · ${money(t.salary)}/yr${t.disc ? ` <span class="m">(a ${100 - t.disc}% discount to stay)</span>` : ""}`;
+      case "retire": return `${plink(t.pid)} retires (${TB[t.team].name})${t.why === "concussions" ? " after too many concussions" : ""}`;
       case "waive": return `${tlink(t.team, true)} waive ${plink(t.pid)}${t.dead ? ` · ${money(t.dead)} dead money` : ""}`;
       case "expansion": return `${tlink(t.team, true)} take ${plink(t.pid)} from ${TB[t.from].name} in the expansion draft`;
       case "merger": return `${tlink(t.team)} join from the WBA with their roster`;
@@ -163,14 +176,15 @@ async function vMoves(y) {
       case "coach-retired": return `${tlink(t.team, true)} coach ${clink(t.cid)} retires`;
       case "owner-change": return `${tlink(t.team, true)}: ${esc(oname(t.from))} ${t.how === "heir" ? "hands the team to " + esc(oname(t.to)) : t.how === "forced sale" ? "is forced to sell to " + esc(oname(t.to)) : "sells the team to " + esc(oname(t.to))}`;
     }
-    return t.type;
+    return V7.moveFmt7(t) || t.type;
   };
   const pre = S.tx.filter(t => t.day < 0), mid = S.tx.filter(t => t.day >= 0);
   const filt = new URLSearchParams("").get("x");
   let h = `<div class="vh"><h2>${y} transactions</h2>${seasonPicker(y, "moves")}</div>`;
   const grp = (title, list, types) => { const l = list.filter(t => types.includes(t.type)); return l.length ? `<h4>${title} (${l.length})</h4><ul class="tx">${l.map(t => `<li>${fmt(t)}</li>`).join("")}</ul>` : ""; };
-  h += `<h3>Offseason before ${y}</h3>` + grp("Front offices", pre, ["coach-hire", "coach-fired", "coach-retired", "owner-change"]) + grp("Expansion & merger", pre, ["expansion", "merger"]) + grp("Draft", pre, ["draft"]) + grp("Trades", pre, ["trade"]) + grp("Free agency", pre, ["sign", "resign"]) + grp("Retirements", pre, ["retire"]) + grp("Waived", pre, ["waive"]);
-  h += `<h3>During the season</h3>` + (grp("Trade deadline", mid, ["trade"]) + grp("Coaching changes", mid, ["coach-hire", "coach-fired"]) + grp("Signings & releases", mid, ["sign", "waive"]) || `<p class="m">Quiet year.</p>`);
+  h += V7.seasonNav(y, "moves");
+  h += `<h3>Offseason before ${y}</h3>` + grp("Front offices", pre, ["coach-hire", "coach-fired", "coach-retired", "owner-change", "gm-hire", "gm-fired", "gm-retired", "relocate"]) + grp("Expansion & merger", pre, ["expansion", "merger"]) + grp("Draft", pre, ["draft", "draft-trade"]) + grp("Trades", pre, ["trade"]) + grp("Stars and their contracts", pre, ["demand", "walk", "holdout", "extend"]) + grp("Free agency", pre, ["sign", "resign"]) + grp("Summer work", pre, ["skill", "role", "cliff"]) + grp("Retirements", pre, ["retire"]) + grp("Waived", pre, ["waive"]);
+  h += `<h3>During the season</h3>` + (grp("Trade deadline", mid, ["trade"]) + grp("Stars and their contracts", mid, ["demand", "holdout", "extend"]) + grp("Locker rooms", mid, ["feud"]) + grp("Coaching changes", mid, ["coach-hire", "coach-fired"]) + grp("Signings & releases", mid, ["sign", "waive"]) || `<p class="m">Quiet year.</p>`);
   h += `<h4>Injuries (${S.injuries.length})</h4><ul class="tx">${S.injuries.filter(i => i[4] >= 10).map(i => `<li>${plink(i[1])} (${TB[i[2]].name}): ${esc(i[3])}, out ${i[4] >= 82 ? "for the season" : i[4] + " games"}</li>`).join("")}</ul><p class="m small">Showing injuries of 10+ games. Tackles cause most of them.</p>`;
   return h;
 }
@@ -205,7 +219,19 @@ async function vBlotter(y) {
   const list = (S.blotter || []).slice().reverse();
   let h = `<div class="vh"><h2>${y} police blotter</h2>${seasonPicker(y, "blotter")}</div><p class="m small">Fines, suspensions and bad luck. Suspended players can't play until they've served their games.</p><ul class="tx blot">`;
   for (const e of list) h += `<li>${chip(e.team)}${who(e)} ${esc(e.text)}${e.kind === "luck" ? ` <span class="k luck">out ${e.games} games</span>` : e.games ? ` <span class="k ${e.kind}">${e.games}-game suspension</span>` : ""}${e.fine ? ` <span class="k">${money(e.fine)} fine</span>` : ""}${e.released ? ` <span class="k arrest">released</span>` : ""}</li>`;
-  return h + (list.length ? "" : "<li>A quiet year. Suspiciously quiet.</li>") + `</ul>`;
+  h += (list.length ? "" : "<li>A quiet year. Suspiciously quiet.</li>") + `</ul>`;
+  const fights = S.fights || [];
+  if (fights.length) {
+    h += `<h3>Fights (${fights.length})</h3><p class="m small">${y < BB.RULE_YEARS.fightBan ? "Before the 1977 crackdown a fight meant an ejection and a fine." : "Since the 1977 crackdown, fighting means an automatic suspension; leaving your spot in a brawl costs a game."}</p><ul class="tx">`;
+    for (const [gid, a, b, brawl] of fights.slice(-60).reverse()) h += `<li>${brawl ? '<span class="k susp">brawl</span> ' : ""}${plink(a)} and ${plink(b)} · <a href="#watch-${y}-${gid}">watch</a></li>`;
+    h += `</ul>`;
+  }
+  const refs = Object.values(S.refs || {});
+  if (refs.length) {
+    const d = r => [r.whistle >= 1.06 ? "tight" : r.whistle <= 0.94 ? "lets them play" : "", r.strict >= 0.68 ? "quick to flag" : r.strict <= 0.32 ? "slow to flag" : "", r.home >= 0.6 ? "home-friendly" : ""].filter(Boolean).join(", ") || "by the book";
+    h += `<h3>Officials (${refs.length})</h3><div class="tw"><table class="box"><thead><tr><th class="pn">Referee</th><th>Since</th><th class="pn">Reputation</th></tr></thead><tbody>${refs.sort((a, b) => a.hired - b.hired).map(r => `<tr><td class="pn">${esc(r.name)}</td><td>${r.hired}</td><td class="pn m small">${d(r)}</td></tr>`).join("")}</tbody></table></div>`;
+  }
+  return h;
 }
 // a coach's philosophy: what he runs, and how he coaches
 function philLine(c) {
@@ -237,6 +263,13 @@ async function vCoach(id) {
   h += `<h3>Seasons</h3><div class="tw"><table class="box"><thead><tr><th>Season</th><th>Team</th><th>W-L</th></tr></thead><tbody>${(c.seasons || []).slice().reverse().map(s => `<tr><td><a href="#standings-${s.season}">${s.season}</a></td><td>${s.team}</td><td>${s.w}-${s.l}${s.partial ? " (fired mid-season)" : ""}</td></tr>`).join("")}</tbody></table></div>`;
   return h;
 }
+async function vDunk(y) {
+  const S = await season(y);
+  if (!S.dunk || !window.Broadcast3D) return `<p class="m">No dunk contest to show for ${y}.</p>`;
+  $("broadcast").hidden = false;
+  loadDunk(S);
+  return `<p><a href="#allstar-${y}">← ${y} All-Star weekend</a> · <span class="m">The contest as it happened: every dunk, every miss, every judge's card.</span></p>`;
+}
 async function vWatch(y, gid) {
   const S = await season(y);
   const row = S.games.find(g => g[0] === +gid);
@@ -250,14 +283,17 @@ async function route() {
   const hsh = (location.hash || "").slice(1) || "standings-" + lastSeason();
   const [v, a, b] = hsh.split("-");
   document.querySelectorAll("nav.main a").forEach(x => x.classList.toggle("on", x.dataset.v === v));
-  if (v !== "watch" && v !== "tv") { $("broadcast").hidden = true; stopBroadcast(); }
+  if (v !== "watch" && v !== "tv" && v !== "dunk") { $("broadcast").hidden = true; stopBroadcast(); }
+  if (window.V7) V7.identity(null);
   const y = a && /^\d{4}$/.test(a) ? +a : lastSeason();
   let html;
   try {
     html = v === "standings" ? await vStandings(y) : v === "leaders" ? await vLeaders(y) : v === "history" ? await vHistory()
       : v === "hof" ? await vHof() : v === "teams" ? await vTeams() : v === "team" ? await vTeam(a) : v === "player" ? await vPlayer(a, b) : v === "cards" ? await vCards(a, b)
       : v === "moves" ? await vMoves(y) : v === "games" ? await vGames(y, b) : v === "watch" ? await vWatch(y, b) : v === "tv" ? await vTv(y, b, hsh.split("-")[3])
-      : v === "blotter" ? await vBlotter(y) : v === "coaches" ? await vCoaches() : v === "coach" ? await vCoach(a) : await vStandings(lastSeason());
+      : v === "blotter" ? await vBlotter(y) : v === "coaches" ? await vCoaches() : v === "coach" ? await vCoach(a)
+      : v === "news" ? await V7.vNews(y) : v === "awards" ? await V7.vAwards(y) : v === "allstar" ? await V7.vAllStar(y) : v === "draft" ? await V7.vDraft(y)
+      : v === "records" ? await V7.vRecords(a, b) : v === "gm" ? await V7.vGM(a) : v === "dunk" ? await vDunk(y) : await vStandings(lastSeason());
   } catch (e) { html = `<p class="bad">Couldn't load that: ${esc(e.message)}</p>`; }
   $("view").innerHTML = html;
   window.scrollTo(0, 0);
@@ -271,6 +307,7 @@ async function boot() {
     return;
   }
   $("sub").textContent = `${D.lg.seasons.length} seasons on the record · ${D.lg.seasons[0]}–${lastSeason()}`;
+  V7.installCaps(); V7.identity(null); V7.fillTicker();
   initBroadcast();
   window.addEventListener("hashchange", route);
   route();

@@ -11,8 +11,9 @@
 <div class="wrap">
 <header><a class="logo" href="#">UBL</a><div><b>United Bounceball League</b><small id="sub">Loading the record…</small></div></header>
 <nav class="main">
-  <a data-v="standings" href="#standings">Standings</a><a data-v="leaders" href="#leaders">Leaders</a><a data-v="cards" href="#cards">Cards</a><a data-v="games" href="#games">Games</a><a data-v="history" href="#history">History</a><a data-v="hof" href="#hof">Hall of Fame</a><a data-v="blotter" href="#blotter">Blotter</a><a data-v="coaches" href="#coaches">Coaches</a><a data-v="teams" href="#teams">Teams</a><a data-v="moves" href="#moves">Moves</a>
+  <a data-v="standings" href="#standings">Standings</a><a data-v="news" href="#news">Headlines</a><a data-v="leaders" href="#leaders">Leaders</a><a data-v="records" href="#records">Records</a><a data-v="cards" href="#cards">Cards</a><a data-v="games" href="#games">Games</a><a data-v="history" href="#history">History</a><a data-v="hof" href="#hof">Hall of Fame</a><a data-v="blotter" href="#blotter">Blotter</a><a data-v="coaches" href="#coaches">Coaches</a><a data-v="teams" href="#teams">Teams</a><a data-v="moves" href="#moves">Moves</a>
 </nav>
+<div class="ticker" id="ticker" hidden></div>
 <section id="broadcast" hidden>
   <div id="channels" class="channels" hidden></div>
   <div class="courtwrap" id="courtwrap">
@@ -22,6 +23,7 @@
     <div class="callout" id="callout"></div>
     <div class="calltag" id="calltag"></div>
     <div class="covtag" id="covtag"></div>
+    <div class="psytag" id="psytag"></div>
     <div class="chalk" id="chalk"></div>
     <div class="plancard" id="plancard"></div>
     <div class="replaytag" id="replayTag" hidden>REPLAY</div>
@@ -40,7 +42,7 @@
   <div class="controls c2">
     <select id="cam" aria-label="Camera" title="Camera (C)"><option value="auto">🎥 Auto director</option><option value="sideline">Broadcast sideline</option><option value="endline">Behind the basket</option><option value="baseline">Baseline (low, under the rim)</option><option value="follow">Rail cam (follow the ball)</option><option value="low">Courtside low</option><option value="sky">Sky cam</option><option value="overhead">Overhead</option><option value="player">Player cam (P, or 🎥 in the box score)</option><option value="free">Free cam (drag / pinch)</option><option value="tactical">Tactical (2D)</option></select>
     <select id="q" aria-label="Graphics quality"><option value="auto">Quality: auto</option><option value="high">High (reflections, bloom)</option><option value="medium">Medium (bloom)</option><option value="low">Low (fast)</option></select>
-    <button id="snd" title="Arena sound (M)">🔈</button><button id="ann" title="Announcer (A)">🎙</button><button id="era" title="Broadcast look of the game's era (V)">📼 Era TV</button><button id="rpl" class="on" title="Automatic instant replays">Auto replays</button><button id="plans" title="Show both teams' gameplans">📋 Plans</button><button id="fs" title="Fullscreen (F)">⛶</button>
+    <button id="snd" title="Arena sound (M)">🔈</button><button id="ann" title="Announcer (A)">🎙</button><button id="era" title="Broadcast look of the game's era (V)">📼 Era TV</button><button id="rpl" class="on" title="Automatic instant replays">Auto replays</button><button id="hlb" class="on" title="Outline the ball carrier, the shooter and whoever just made a play (H)">✨ Highlights</button><button id="plans" title="Show both teams' gameplans">📋 Plans</button><button id="fs" title="Fullscreen (F)">⛶</button>
   </div>
   <div class="seed" id="seed"></div>
   <nav class="tabs bctabs"><button data-t="pbp" class="on">Play-by-play</button><button data-t="top">Top plays</button><button data-t="box">Box score</button><button data-t="strat">Strategy</button></nav>
@@ -54,12 +56,14 @@
 <script src="vendor/three.min.js"></script>
 <script src="../src/engine.js"></script>
 <script src="../src/players.js"></script>
+<script src="../src/business.js"></script>
 <script src="../src/teams.js"></script>
 <script src="../src/cards.js"></script>
 <script src="cardart.js"></script>
 <script src="broadcast3d.js"></script>
 <script src="broadcast.js"></script>
 <script src="cards.js"></script>
+<script src="v7.js"></script>
 <script src="hub.js"></script>
 </body>
 </html>
