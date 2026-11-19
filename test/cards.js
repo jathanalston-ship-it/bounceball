@@ -44,7 +44,7 @@ ok(n("fifty") === 1 && n("tripledouble") === 1, "fifty club and triple threat fr
 ok(cards.some(c => c[0] === "breakout" && c[2] === 30 && c[7] === "+9"), "breakout from last season's overall");
 ok(n("numberone") === 1 && n("skyscrapers") === 1 && n("immortals") === 1 && n("dynasty") === 1, "number one, skyscrapers, immortals, dynasty");
 ok(n("postseason") >= 3, "postseason scorers");
-ok(C.COLLECTIONS.every(c => c.group && C.GROUP_NAMES[c.group] || c.key === "base"), "every collection sits in a group");
+ok(C.COLLECTIONS.every(c => c.group && C.GROUP_NAMES[c.group] || c.key === "base" || c.kind === "witness"), "every collection sits in a group (base cards and Classic Nights witness cards stand apart)");
 const lead = cards.find(c => c[0] === "posterized" && c[6] === 1);
 ok(lead && lead[4] >= Math.min(99, lead[5] + 4), "leader card lifts the overall");
 // every card has its own build: same player and season, different collections, different ratings

@@ -94,7 +94,16 @@ const XPACKS = {
   xdiamond: { key: "xdiamond", name: "Diamond Exchange", sub: "3 cards · last Diamond or better", c1: "#7fd8ff", c2: "#0b2638", icon: "hof", n: 3, guarantee: TMIN.diamond },
   xopal: { key: "xopal", name: "Opal Exchange", sub: "2 cards · last Opal or better", c1: "#e15bff", c2: "#14062a", icon: "immortals", n: 2, guarantee: TMIN.opal }
 };
-const XWORTH = { xgold: 600, xruby: 1000, xdiamond: 2000, xopal: 0 };
+// the season pass's exclusive pack: one Diamond-or-better card, always a Red parallel or better, always signed
+XPACKS.passx = { key: "passx", name: "Pass Exclusive", sub: "1 card · Diamond+ · Red /25 or rarer · signed", c1: "#ff3fa4", c2: "#1a0420", icon: "immortals", n: 1, guarantee: TMIN.diamond, force: { par: "R", auto: true } };
+const XWORTH = { xgold: 600, xruby: 1000, xdiamond: 2000, xopal: 0, passx: 0 };
+// a copy with at least these variants (keeps the rolled grade and anything rarer)
+function forceCopy(cp, f, rnd) {
+  const o = parseCopy(cp), R = rnd || Math.random;
+  if (f.par) { const min = "BGRKS".indexOf(f.par); if (!o.par || "BGRKS".indexOf(o.par.code) < min) { const k = R() < 0.06 ? "S" : R() < 0.25 ? "K" : f.par; o.par = PBY[k]; o.n = 1 + Math.floor(R() * o.par.run); } }
+  if (f.auto) o.auto = true;
+  return copyStr(o);
+}
 const EXCHANGES = [
   { key: "e1", from: ["rubber", "bronze"], n: 8, gives: "standard" },
   { key: "e2", from: ["silver", "gold"], n: 5, gives: "xgold" },
@@ -248,7 +257,12 @@ const CHALLENGES = [
   { k: "days", n: 5, coins: 900, token: "premium", text: () => "Claim the daily reward on 5 days" },
   { k: "par", n: 2, coins: 800, text: () => "Pull 2 parallels" },
   { k: "gem", n: 2, coins: 700, text: () => "Pull 2 Gem Mint 10s" },
-  { k: "team", n: 1, coins: 900, token: "pick", text: () => "Complete a team set" }
+  { k: "team", n: 1, coins: 900, token: "pick", text: () => "Complete a team set" },
+  // Classic Nights (watching and pick'em)
+  { k: "watch", n: 3, coins: 900, text: () => "Watch 3 Classic Nights games to the final buzzer" },
+  { k: "wpop", n: 50, coins: 600, text: () => "Catch 50 big plays while watching Classic Nights" },
+  { k: "picks", n: 10, coins: 500, text: () => "Make 10 Classic Nights picks" },
+  { k: "pickw", n: 5, coins: 800, token: "premium", text: () => "Win 5 Classic Nights picks" }
 ];
 function weekly(wk, decades, groups, names) {
   let h = hashStr(wk); const rnd = () => { h = (Math.imul(h, 1664525) + 1013904223) >>> 0; return h / 4294967296; };
@@ -266,11 +280,13 @@ function ensureWeek(s, wk, decades, groups, names) {
   return s.week;
 }
 // ev: { type: "open" } | { type: "pull", tier, season, group, isNew, cp } | { type: "daily" } | { type: "teamset" }
+//     | Classic Nights: { type: "watch" } | { type: "pop" } | { type: "pick" } | { type: "pickw" }
 // returns challenges finished now
 function track(s, ev) {
   const W = s.week; if (!W) return [];
   const o = ev.cp ? parseCopy(ev.cp) : null;
-  const hit = ch => ev.type === "open" ? ch.id === "open" : ev.type === "daily" ? ch.id === "days" : ev.type === "teamset" ? ch.id === "team"
+  const NK = { watch: "watch", pop: "wpop", pick: "picks", pickw: "pickw" };
+  const hit = ch => NK[ev.type] ? ch.id === NK[ev.type] : ev.type === "open" ? ch.id === "open" : ev.type === "daily" ? ch.id === "days" : ev.type === "teamset" ? ch.id === "team"
     : ev.type === "pull" && ((ch.id === "rare" && tierAt(ev.tier) >= tierAt("ruby")) || (ch.id === "new" && ev.isNew) || (ch.id === "dec" && Math.floor(ev.season / 10) * 10 === ch.param) || (ch.id === "grp" && ev.group === ch.param)
       || (ch.id === "par" && o && o.par) || (ch.id === "gem" && o && o.g === 10));
   const fin = [];
@@ -483,7 +499,7 @@ const unutf8 = b => NODE ? Buffer.from(b).toString("utf8") : new TextDecoder().d
 function packSave(s) {
   const o = Object.entries(s.owned).filter(([, n]) => n > 0).sort().map(([k]) => k.replace(/:/g, ".") + "~" + copiesOf(s, k).join(",")).join(";");
   return JSON.stringify({ v: 2, c: s.coins, t: s.tokens, o, p: s.packs, n: s.cards, sd: s.sold, x: s.exch, b: s.best, d: s.daily, w: s.week, st: Object.keys(s.sets).join(","), op: s.opts, bn: s.born,
-    pi: s.pity || 0, xp: s.xp || 0, lv: s.lvl || 1, a: Object.keys(s.ach || {}).join(","), ss: s.st || {}, sh: s.shelf || [], fr: s.frame || "wood" });
+    pi: s.pity || 0, xp: s.xp || 0, lv: s.lvl || 1, a: Object.keys(s.ach || {}).join(","), ss: s.st || {}, sh: s.shelf || [], fr: s.frame || "wood", cn: s.cn || null, wi: s.wit || null });
 }
 function unpackSave(json) {
   const j = JSON.parse(json); if (!j || (j.v !== 1 && j.v !== 2)) throw new Error("not a UBL save");
@@ -510,6 +526,12 @@ function unpackSave(json) {
   }
   if (Array.isArray(j.sh)) s.shelf = j.sh.filter(x => typeof x === "string").map(x => x.split("|")).filter(([k, cp]) => s.owned[k] && copiesOf(s, k).includes(cp)).map(x => x.join("|")).slice(0, SHELF_N);
   if (FRAMES.some(f => f.key === j.fr)) s.frame = j.fr;
+  // Classic Nights: picks, results, watch records and the pass, copied with light checks
+  if (j.cn && typeof j.cn === "object") {
+    const c = j.cn, obj = x => x && typeof x === "object" && !Array.isArray(x) ? x : {}, idOk = k => /^\d{8}(_\d)?$/.test(k), pick = o => Object.fromEntries(Object.entries(obj(o)).filter(([k]) => idOk(k)));
+    s.cn = { picks: pick(c.picks), bold: pick(c.bold), res: pick(c.res), bres: pick(c.bres), w: pick(c.w), streak: int(c.streak, 1e5), best: int(c.best, 1e5), pass: c.pass && typeof c.pass.id === "string" ? { id: c.pass.id.slice(0, 6), xp: int(c.pass.xp, 1e7), lvl: int(c.pass.lvl, 50) } : { id: "", xp: 0, lvl: 0 } };
+  }
+  if (j.wi && typeof j.wi === "object") { s.wit = {}; for (const [k, w] of Object.entries(j.wi)) if (KEY_RE.test(k) && k.startsWith("witness:") && w && typeof w === "object") s.wit[k] = { d: String(w.d || "").slice(0, 10), line: String(w.line || "").slice(0, 60), vs: String(w.vs || "").slice(0, 60), ovr: Math.min(99, int(w.ovr, 99)), team: String(w.team || "").slice(0, 5), gs: +w.gs || 0, num: int(w.num, 99), game: String(w.game || "").slice(0, 12) }; }
   return s;
 }
 // a code is "UBL1-<z|j><crc>-<data>": z = deflate-raw (the viewer compresses), j = plain JSON bytes
@@ -524,7 +546,7 @@ function checkCode(crc, jsonBytes) { if (crc32(jsonBytes) !== crc) throw new Err
 const API = { TIER_W, SELL, BASE_X, PRICE, priceOf, cardValue, slotValue, XPACKS, EXCHANGES, STREAK, CHALLENGES, newSave, upgrade, migrate, addTokens, spareOf, canOpen, payFor, sell, sellCopy,
   exchangeTake, exchange, claimDaily, dayKey, weekKey, weekEnds, weekly, ensureWeek, track, setsOf, baseSetsOf, setReward, setHave, paySets, holidayNow, crc32, b64u, unb64u, utf8, unutf8,
   packSave, unpackSave, wrapCode, readCode, checkCode, KEY_RE, hashStr,
-  GRADES, GRADE_NAME, GRADE_X, PARALLELS, AUTO_P, PATCH_P, parseCopy, copyStr, rollCopy, copyMult, special, copyValue, copyName, copiesOf, addCopy, dropCopy, plainSpares, isBaseKey,
+  forceCopy, GRADES, GRADE_NAME, GRADE_X, PARALLELS, AUTO_P, PATCH_P, parseCopy, copyStr, rollCopy, copyMult, special, copyValue, copyName, copiesOf, addCopy, dropCopy, plainSpares, isBaseKey,
   PITY_N, pityW, pityReady, pityAfter, XP_T, LVL_MAX, xpNeed, levelOf, levelProg, levelReward, UNLOCKS, FRAMES, unlocked, coinBonus, gainXP, notePull,
   SCORE_T, scoreOf, ACH, checkAch, SHELF_N, shelfToggle, featuredOf, FEATURED_BOOST, EVENTS, EBY, eventNow, inEvent, teamOfDay };
 if (NODE) module.exports = API;
