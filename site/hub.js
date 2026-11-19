@@ -283,13 +283,13 @@ async function route() {
   const hsh = (location.hash || "").slice(1) || "standings-" + lastSeason();
   const [v, a, b] = hsh.split("-");
   document.querySelectorAll("nav.main a").forEach(x => x.classList.toggle("on", x.dataset.v === v));
-  if (v !== "watch" && v !== "tv" && v !== "dunk") { $("broadcast").hidden = true; stopBroadcast(); }
+  if (v !== "watch" && v !== "tv" && v !== "dunk" && !(v === "nights" && a === "watch")) { $("broadcast").hidden = true; stopBroadcast(); }
   if (window.V7) V7.identity(null);
   const y = a && /^\d{4}$/.test(a) ? +a : lastSeason();
   let html;
   try {
     html = v === "standings" ? await vStandings(y) : v === "leaders" ? await vLeaders(y) : v === "history" ? await vHistory()
-      : v === "hof" ? await vHof() : v === "teams" ? await vTeams() : v === "team" ? await vTeam(a) : v === "player" ? await vPlayer(a, b) : v === "cards" ? await vCards(a, b)
+      : v === "hof" ? await vHof() : v === "teams" ? await vTeams() : v === "team" ? await vTeam(a) : v === "player" ? await vPlayer(a, b) : v === "cards" ? await vCards(a, b) : v === "nights" ? await vNights(a, b)
       : v === "moves" ? await vMoves(y) : v === "games" ? await vGames(y, b) : v === "watch" ? await vWatch(y, b) : v === "tv" ? await vTv(y, b, hsh.split("-")[3])
       : v === "blotter" ? await vBlotter(y) : v === "coaches" ? await vCoaches() : v === "coach" ? await vCoach(a)
       : v === "news" ? await V7.vNews(y) : v === "awards" ? await V7.vAwards(y) : v === "allstar" ? await V7.vAllStar(y) : v === "draft" ? await V7.vDraft(y)

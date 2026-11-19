@@ -151,6 +151,7 @@ const COLLECTIONS = [
   { key: "friday13",    name: "Friday the 13th",    kind: "holiday", group: "holidays", hol: "friday13", pose: "tackle", poses: ["tackle", "block", "guard"], frame: "cracked", blurb: "The unluckiest date on the calendar. One card for the season's best game on any Friday the 13th." },
   { key: "dunktober",   name: "Dunktober",          kind: "leader",  group: "holidays", custom: true, unit: "dunks in a game", short: "DNK", pose: "dunk", poses: ["dunk", "hangrim"], blurb: "October's three biggest single-game dunk shows each season." },
   { key: "game7",       name: "Game 7",             kind: "holiday", group: "holidays", pose: "celebrate", poses: ["celebrate", "fadeaway", "point"], frame: "game7", blurb: "The best player on the winning side of every Game 7." },
+  { key: "witness",     name: "Classic Nights",     kind: "witness", group: "classic", bump: 4, pose: "celebrate", poses: ["celebrate", "point", "fadeaway"], boost: "all", frame: "film", blurb: "A big night you watched on Classic Nights. One-off cards: they only drop for whoever saw the game." },
   // awards
   { key: "mvp",         name: "Most Valuable",      kind: "award",   group: "awards",  award: "mvp",  bump: 6, pose: "trophy",    boost: "all", blurb: "League MVP." },
   { key: "fmvp",        name: "Finals MVP",         kind: "award",   group: "awards",  award: "fmvp", bump: 5, pose: "trophy",    boost: "all", blurb: "Best player on the champion in the Finals." },

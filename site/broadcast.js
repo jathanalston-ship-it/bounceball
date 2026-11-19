@@ -452,6 +452,7 @@ function playEvents(fromTick, toTick) {
     }
   }
   for (const n of NOTABLE) if (n.tk > fromTick && n.tk <= toTick) { const a = arcadeFX(); callout(a ? arcadeLabel(n) : n.label, n.col, a ? arcadeSub(n) : ""); }
+  if (window.cnOnPlay) cnOnPlay(GAME, fromTick, toTick, NOTABLE); // Classic Nights: coins for big plays you watch
 }
 // free throw graphic: who's shooting, which attempt, how they've shot tonight
 function maybeFT(n) {
@@ -484,6 +485,7 @@ function cardAction(a) {
   else if (a === "again") { hideCard(); seek(0); V.playing = true; setPlayBtn(); }
 }
 function records(ctxx) {
+  if (ctxx && ctxx.classic) return ctxx.classic;
   if (!ctxx || !ctxx.S) return null;
   const { row, S: sd } = ctxx, [gid, day, h, a, , , , , type] = row, rec = { [h]: [0, 0], [a]: [0, 0] };
   for (const g of sd.games) {
@@ -553,9 +555,9 @@ function chaseCheck(e, i) {
 }
 function introHTML() {
   const R = records(V.ctx), H = TB[GAME.home], A = TB[GAME.away];
-  const tm = t => { const T = t ? A : H, rec = R && GAME.type !== 2 && R.rec[T.id]; return `<div class="tm" style="--c:${COLORS[t]}"><span class="cty">${esc(T.city)}</span><b>${esc(T.name)}</b><span class="rec">${rec ? rec[0] + "-" + rec[1] : ""}${R && R.coach[t] ? " · " + esc(R.coach[t]) : ""}</span></div>`; };
+  const tm = t => { const T = t ? A : H, rec = R && GAME.type !== 2 && R.rec[T.id]; return `<div class="tm" style="--c:${COLORS[t]}"><span class="cty">${R && R.yr ? R.yr[t] + " · " : ""}${esc(T.city)}</span><b>${esc(T.name)}</b><span class="rec">${rec ? rec[0] + "-" + rec[1] : ""}${R && R.coach[t] ? " · " + esc(R.coach[t]) : ""}</span></div>`; };
   const lu = t => `<ul style="--c:${COLORS[t]}">${GAME.roster.filter(r => r.t === t && r.starter).map(r => `<li><span class="num">${r.num}</span>${esc(r.short)}<em>${r.role === "SNIPER" ? "SN" : r.role === "BRUISER" ? "BR" : r.role}</em></li>`).join("")}</ul>`;
-  const kick = R ? `${R.season} · ${R.type === 2 ? "ALL-STAR SUNDAY" : R.type ? "PLAYOFFS · " + esc(R.series) : "DAY " + (R.day + 1)}` : "UBL";
+  const kick = R ? (R.classic ? `CLASSIC NIGHTS · ${esc(R.label)} · ${R.season} RULES` : `${R.season} · ${R.type === 2 ? "ALL-STAR SUNDAY" : R.type ? "PLAYOFFS · " + esc(R.series) : "DAY " + (R.day + 1)}`) : "UBL";
   return `<div class="cin"><div class="ck">UBL ON TV · ${kick}</div><div class="mu">${tm(1)}<div class="at">at</div>${tm(0)}</div>
     <div class="arena">${esc(H.arena || H.city + " Arena")} · ${esc(GAME.allstar && GAME.allstar.host && TB[GAME.allstar.host] ? TB[GAME.allstar.host].city : H.city)}${GAME.att ? ` · attendance ${GAME.att[0].toLocaleString()}${GAME.att[0] >= GAME.att[1] ? " (sellout)" : ""}` : ""}</div>
     <div class="lus">${lu(1)}${lu(0)}</div>
@@ -1105,6 +1107,16 @@ function loadGame(row, seasonData) {
     if (B3 && V.view3d) startIntro(); else showPlanCard(); // with the intro, the gameplans come up at tip-off
   }, 30);
 }
+// A game simulated elsewhere (Classic Nights builds its own exhibitions); ctx gives the season look and the records.
+function loadPrepared(game, ctx, colors) {
+  V.playing = false; V.channels = null; V.live = false; resetShow(); renderChannels(); resize();
+  V.ctx = ctx; useGame(game, colors || teamColors(game.home, game.away));
+  V.tick = 0; $("scrub").max = game.ticks; $("scrub").value = 0;
+  $("seed").innerHTML = (game.note || "") + keyHint();
+  $("bc-overlay").hidden = true; updateAll(true);
+  V.playing = true; setPlayBtn();
+  if (B3 && V.view3d) startIntro(); else showPlanCard();
+}
 // Load several games (one day's slate) to air together.
 function loadChannels(rows, seasonData) {
   V.playing = false; resetShow(); resize();
@@ -1234,7 +1246,7 @@ function updateAll(force) {
   if (!fin && V.card && V.card.kind === "fin") hideCard();
 }
 function maxTicks() { return V.channels ? Math.max(...V.channels.map(c => c.game.ticks)) : GAME.ticks; }
-function seek(tk) { stopReplay(); V.intro = null; V.hold = 0; if (V.card && V.card.kind !== "fin") hideCard(); V.tick = Math.max(0, Math.min(maxTicks(), tk)); V.live = false; V.visCount = -1; updateAll(true); }
+function seek(tk) { stopReplay(); V.intro = null; V.hold = 0; if (V.card && V.card.kind !== "fin") hideCard(); V.tick = Math.max(0, Math.min(maxTicks(), tk)); V.live = false; V.visCount = -1; updateAll(true); if (window.cnOnSeek) cnOnSeek(GAME, V.tick); }
 function autoQuality(dt) {
   if (!B3 || !V.view3d || V.qMode !== "auto" || document.hidden) return;
   const f = V.fps; f.n++; f.t += dt;

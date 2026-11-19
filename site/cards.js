@@ -57,6 +57,7 @@ function pcEarned(c) {
   const C = CC.CBY[c.col], y = c.season;
   if (!C) return "";
   if (c.col === "base") return c.upcoming ? `Ratings going into the ${y} season.` : `Ratings as the ${y} season tipped off.`;
+  if (c.col === "witness") { const w = (MY.load().wit || {})[pcKey(c)]; return w ? `Witnessed live on Classic Nights, ${new Date(w.d + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}: ${esc(w.line)} against the ${esc(w.vs)}, with his ${y} team.` : ""; }
   if (C.kind === "leader") return c.rank === 1 ? `Led the league with ${c.value} ${C.unit} in ${y}.` : `Finished #${c.rank} in the league with ${c.value} ${C.unit} in ${y}.`;
   if (c.col === "rapsheet") return `${y}: ${esc(c.value || "")}.`;
   if (c.col === "hof") return `Inducted into the Hall of Fame in ${c.value}. This card is his best season, ${y}.`;
@@ -149,7 +150,7 @@ async function pcOpen(i, key) {
       <div class="tierline"><span class="gem t-${c.tier.key}"></span>${c.tier.name} · ${c.ovr} OVR${c.ovr > c.base ? ` <span class="m">(${c.base} base <span class="up">+${c.ovr - c.base}</span> card boost)</span>` : ""}</div>
       <p>${pcEarned(c)} ${c.col === "base" ? "" : `<span class="m">${esc(C.blurb || "")}</span>`}</p>
       ${built && Object.keys(built.boosts).length ? `<p class="boostline">This card's build: ${Object.entries(built.boosts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `<b>${BB.RLABEL[k]}</b> <span class="up">+${v}</span>`).join(" · ")}${Object.keys(built.boosts).length > 5 ? ` <span class="m">and ${Object.keys(built.boosts).length - 5} more</span>` : ""}</p>` : c.col !== "base" ? `<p class="m small">This card keeps his ratings as they were that season.</p>` : ""}
-      <p><a class="btn" href="#player-${c.pid}" onclick="pcClose()">Player page →</a> ${c.col !== "base" ? `<a class="btn ghost" href="#cards-${c.col}" onclick="pcClose()">${esc(C.name)} collection →</a>` : ""}</p></div>
+      <p><a class="btn" href="#player-${c.pid}" onclick="pcClose()">Player page →</a> ${c.col === "witness" ? `<a class="btn ghost" href="#nights" onclick="pcClose()">Classic Nights →</a>` : c.col !== "base" ? `<a class="btn ghost" href="#cards-${c.col}" onclick="pcClose()">${esc(C.name)} collection →</a>` : ""}</p></div>
       ${cgCardBox(c)}</div>
     <h4>Attributes on this card</h4><div class="agrid">${attrs}</div></div>`;
   m.hidden = false; document.body.classList.add("noscroll");
@@ -501,7 +502,8 @@ async function vCards(col, season) {
   if (col === "mine") return pcMine(all);
   const C = CC.CBY[col]; if (!C) return `<p>Unknown collection.</p>`;
   if (PC.lastCol !== col) { PC.lastCol = col; PC.tierF = null; }
-  let list = col === "base" ? (PC.base || []).slice() : all.filter(c => c.col === col);
+  if (col === "witness") cgPrep(all);
+  let list = col === "base" ? (PC.base || []).slice() : col === "witness" ? Object.keys(MY.load().wit || {}).map(k => CG.byKey.get(k)).filter(Boolean) : all.filter(c => c.col === col);
   const seasons = [...new Set(list.map(c => c.season))].sort((a, b) => b - a);
   if (season) list = list.filter(c => c.season === +season);
   const sort = PC.sort || "ovr";

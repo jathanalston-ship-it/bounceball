@@ -38,7 +38,7 @@ const MY = {
 const CG = { all: null, base: null, viewCp: {} };
 function cgPrep(all) {
   const base = PC.base || [];
-  if (CG.all === all && CG.base === base) return; CG.all = all; CG.base = base;
+  if (CG.all === all && CG.base === base) { cgWitSync(); return; } CG.all = all; CG.base = base;
   CG.byKey = new Map(all.concat(base).map(c => [pcKey(c), c]));
   CG.sets = ECO.setsOf(all.map(ecoCard)).concat(ECO.baseSetsOf(base.map(ecoCard))); for (const st of CG.sets) st.ks = new Set(st.keys);
   CG.setBy = new Map(CG.sets.map(st => [st.key, st]));
@@ -46,6 +46,15 @@ function cgPrep(all) {
   CG.colN = {}; for (const c of all) CG.colN[c.col] = (CG.colN[c.col] || 0) + 1;
   CG.teams = [...new Set(base.map(c => c.teamId))].filter(t => TB[t]);
   CG.featCols = Object.keys(CG.colN).filter(k => CG.colN[k] >= 12);
+  cgWitSync();
+}
+// Classic Nights witness cards aren't in the card index: they're built from the save
+function cgWitSync() {
+  if (!CG.byKey) CG.byKey = new Map();
+  for (const [k, w] of Object.entries(CGSAVE.load().wit || {})) {
+    if (CG.byKey.has(k)) continue; const [, y, pid] = k.split(":");
+    CG.byKey.set(k, Object.assign(pcCard("witness", +y, +pid, w.team, w.ovr, 0, w.line, w.num), { base: Math.max(1, w.ovr - 4), extra: { date: w.d, o: w.vs } }));
+  }
 }
 const tierOfKey = k => { const c = CG.byKey && CG.byKey.get(k); return c ? c.tier.key : null; };
 function cgScore(s) { return ECO.scoreOf(s, tierOfKey); }
@@ -245,7 +254,9 @@ const cgRewardText = r => [r.coins ? coinH(r.coins) : "", cgTokText(r.tokens)].f
 function cgDaily() {
   const s = CGSAVE.load(), [today, yest] = cgToday(), r = ECO.claimDaily(s, today, yest); if (!r) return;
   cgPrep(CG.all || []); cgWeek(s); const fin = ECO.track(s, { type: "daily" }), ach = cgAch(s); CGSAVE.save();
+  const pu = BB.NIGHTS ? BB.NIGHTS.passGain(s, BB.NIGHTS.PASS_GAIN.daily, Date.now()) : []; CGSAVE.save();
   SFX.coin(); cgToast(`Day ${r.streak}: ${coinH(r.coins)} and a Standard pack${r.tokens.premium ? " + a Premium pack" : ""}`);
+  if (window.cnPassToasts) cnPassToasts(pu);
   for (const ch of fin) cgToast(`Challenge done: ${esc(ch.text)} · ${coinH(Math.round(ch.coins * ECO.coinBonus(s)))}`, "gold");
   cgLevelToasts(r.ups); cgAchToasts(ach);
   route();
@@ -274,7 +285,7 @@ async function cgOpen(key) {
   let cards = [];
   for (let k = 0; k < pk.n; k++) cards.push(pcDraw(pool, k === pk.n - 1 ? last : 0, pk.boost));
   if (pk.base) { const bp = cgBasePool(pk); if (bp.length) for (let i = 0; i < pk.base; i++) cards.push(pcDraw(bp, 0)); }
-  cards = cards.map(c => Object.assign({}, c, { cp: ECO.rollCopy() }));
+  cards = cards.map(c => Object.assign({}, c, { cp: pk.force ? ECO.forceCopy(ECO.rollCopy(), pk.force) : ECO.rollCopy() }));
   // base cards first, then by overall; the best card last, like a real pack
   cards.sort((a, b) => (b.col === "base") - (a.col === "base") || a.ovr - b.ovr || ECO.copyMult(a.cp) - ECO.copyMult(b.cp));
   const res = cgAddPulls(s, cards, key, pity); res.how = how;
@@ -297,6 +308,7 @@ function cgAddPulls(s, cards, key, pity) {
   res.paid = ECO.paySets(s, touched);
   for (const p of res.paid) { res.ups.push(...p.ups); if (p.kind === "team") res.fin.push(...ECO.track(s, { type: "teamset" })); }
   res.ach = cgAch(s); for (const a of res.ach) res.ups.push(...a.ups);
+  res.pass = BB.NIGHTS ? BB.NIGHTS.passGain(s, BB.NIGHTS.PASS_GAIN.pack, Date.now()) : [];
   const top = cards.reduce((a, c) => c.ovr > a.ovr ? c : a, cards[0]), best = s.best && CG.byKey.get(s.best);
   if (top && (!best || top.ovr > best.ovr)) s.best = pcKey(top);
   CGSAVE.save(); return res;
@@ -336,6 +348,7 @@ function cgSummary(cards, news, res) {
   for (const st of res.paid) out.push(`<span class="gold">Set complete: ${esc(cgSetName(st))} · ${cgRewardText(st.reward)}</span>`);
   for (const a of res.ach) out.push(`<span class="gold">Achievement: <b>${esc(a.name)}</b> · ${esc(a.text)} · ${cgRewardText(a.r)}</span>`);
   for (const u of res.ups) out.push(`<span class="lvup">Level ${u.L}! ${cgRewardText(u.reward)}${u.unlocks.length ? ` · unlocked: ${esc(u.unlocks.map(x => x.text).join(", "))}` : ""}</span>`);
+  for (const u of res.pass || []) out.push(`<span class="lvup">Season pass level ${u.L}! ${cgRewardText(u.reward)}</span>`);
   return out.join("");
 }
 function cgSetName(st) {
@@ -458,7 +471,7 @@ function pcMine(all) {
   const mine = all.filter(c => s.owned[pcKey(c)]).sort((a, b) => b.ovr - a.ovr), baseOwn = CG.base.filter(c => s.owned[pcKey(c)]);
   let h = `<p><a href="#cards">← All collections</a></p><div class="vh"><h2>My collection</h2><a class="btn" href="#cards-packs">Packs</a></div>`;
   h += cgWallet(s);
-  if (!mine.length && !baseOwn.length) return h + `<p class="m">Nothing yet. Open a pack and your cards land here.</p>` + cgBackup();
+  if (!mine.length && !baseOwn.length && !Object.keys(s.wit || {}).length) return h + `<p class="m">Nothing yet. Open a pack and your cards land here.</p>` + cgBackup();
   // the collector: level, score, numbers
   const total = all.length + CG.base.length, uniq = mine.length + baseOwn.length, st = s.st || {}, par = st.par || {};
   const nAch = ECO.ACH.filter(a => s.ach[a.id]).length;
@@ -474,6 +487,8 @@ function pcMine(all) {
   const frames = ECO.FRAMES.filter(f => ECO.levelOf(s.xp) >= f.L);
   h += `<div class="vh"><h3>Showcase</h3>${frames.length > 1 ? `<select class="sp" onchange="cgFrame(this.value)">${frames.map(f => `<option value="${f.key}" ${s.frame === f.key ? "selected" : ""}>${f.name} shelf</option>`).join("")}</select>` : ""}</div>
     <div class="shelf fr-${s.frame || "wood"}">${shelf.length ? `<div class="cgrid">${shelf.map((c, i) => pcTile(c, i, `${c.season}`, "shelf")).join("")}</div>` : `<p class="m small">Your trophy shelf. Open any card you own and tap ★ on a copy to put it here (up to ${ECO.SHELF_N}).</p>`}</div>`;
+  const wit = Object.keys(s.wit || {}).map(k => CG.byKey.get(k)).filter(Boolean).sort((a, b) => s.wit[pcKey(b)].d.localeCompare(s.wit[pcKey(a)].d));
+  if (wit.length) { pcSetList(wit, "wit"); h += `<div class="vh"><h3>Witnessed on Classic Nights · ${wit.length}</h3><a class="btn ghost sm" href="#nights">Classic Nights →</a></div><div class="cgrid">${wit.map((c, i) => pcTile(c, i, s.wit[pcKey(c)].d, "wit")).join("")}</div>`; }
   const best = mine.slice(0, 8); pcSetList(best, "mine");
   h += `<h3>Best pulls</h3><div class="cgrid">${best.map((c, i) => pcTile(c, i, `${c.season}`, "mine")).join("")}</div>`;
   // achievements

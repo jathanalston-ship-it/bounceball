@@ -529,6 +529,18 @@ const ART = {
     s += `<path d="M10,30 L125,6 L240,30Z" fill="url(#goldg)" opacity=".55"/>`;
     return s + halo(g, 132, 168, 120) + floor(g, "rgba(90,70,30,.28)") + word("HALL OF FAME", 132, 132, 28, "#7a5a12", .35);
   },
+  witness(g) {
+    const ex = g.extra || {};
+    let s = bg(g, "#05070d", mix(g.c1, "#000", .55), "#9fd3ff") + crowd(g, "#000", 196, .5) + bokeh(g, 18, ["#ffffff", "#9fd3ff", g.acc], 170, 5);
+    s += spot(125, -20, 150, 70, "#cfe8ff", .16, g.id);
+    s += `<g opacity=".16">${Array.from({ length: 88 }, (_, i) => `<rect x="0" y="${i * 4}" width="${W}" height="1.4" fill="#bfe3ff"/>`).join("")}</g>`;
+    s += `<rect x="16" y="22" width="${W - 32}" height="250" rx="26" fill="none" stroke="#cfe8ff" stroke-opacity=".22" stroke-width="3"/>`;
+    s += word("LIVE", 125, 150, 120, "#ffffff", .06) + halo(g, 132, 165, 125) + floor(g, "rgba(0,0,0,.5)") + courtLines(g, "#ffffff", .1);
+    const d = ex.date ? new Date(ex.date + "T12:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).toUpperCase() : "";
+    const bug = `<g transform="translate(78 30)"><rect x="0" y="0" width="94" height="17" rx="3" fill="rgba(5,7,10,.85)" stroke="#ff2a4a" stroke-width="1"/><circle class="livedot" cx="9" cy="8.5" r="3.2" fill="#ff2a4a"/><text x="17" y="12" font-family="${FONT}" font-weight="700" font-size="8.5" fill="#fff" letter-spacing="1.1">CLASSIC NIGHTS</text></g>
+<g transform="translate(22 196)"><rect width="112" height="30" rx="3" fill="rgba(5,7,10,.82)" stroke="${g.acc}"/><rect width="5" height="30" fill="${g.acc}"/><text x="12" y="13" font-family="${FONT}" font-size="8.5" fill="#cfd6e0" letter-spacing="1.1">${xe(d)}</text><text x="12" y="25" font-family="${FONT}" font-weight="700" font-size="9.5" fill="#fff" letter-spacing=".5"${String(ex.o || "").length > 16 ? ` textLength="96" lengthAdjust="spacingAndGlyphs"` : ""}>${xe(ex.o ? "VS " + ex.o : "")}</text></g>`;
+    return { bg: s, fg: bug };
+  },
   moments(g) {
     const k = (g.extra && g.extra.k) || "pts", lab = { pts: "POINTS", reb: "REBOUNDS", ast: "ASSISTS", tkl: "TACKLES", dnk: "DUNKS", fpm: "FOURS" }[k];
     let s = bg(g, "#06080c", mix(g.c1, "#000", .6), "#ffffff") + crowd(g, "#000", 196, .55) + bokeh(g, 22, ["#ffffff", g.acc, mix(g.c1, "#fff", .4)], 170, 6);
@@ -807,7 +819,8 @@ Object.assign(ICON, {
   aprilfools: `<path d="M-10,-6 L-4,4 L0,-8 L4,4 L10,-6 L8,8 H-8Z" fill="currentColor"/><circle cx="-10" cy="-8" r="2" fill="currentColor"/><circle cx="0" cy="-10" r="2" fill="currentColor"/><circle cx="10" cy="-8" r="2" fill="currentColor"/>`,
   friday13: `<text y="6" font-family="${FONT}" font-weight="700" font-size="16" text-anchor="middle" fill="currentColor">13</text>`,
   dunktober: `<rect x="-9" y="-11" width="18" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/><ellipse cy="1" rx="6" ry="1.8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M-6,4 L5,12 M-2,10 L6,6" stroke="currentColor" stroke-width="1.3"/>`,
-  game7: `<text y="8" font-family="${FONT}" font-weight="700" font-size="22" text-anchor="middle" fill="currentColor">7</text>`
+  game7: `<text y="8" font-family="${FONT}" font-weight="700" font-size="22" text-anchor="middle" fill="currentColor">7</text>`,
+  witness: `<rect x="-11" y="-7" width="22" height="15" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M-5,-12 L0,-7 L5,-12" stroke="currentColor" stroke-width="1.6" fill="none"/><circle cx="6.5" cy="4" r="1.7" fill="currentColor"/>`
 });
 const ABBR = { base: "", rookie: "RC", founders: "1954", wba: "WBA", posterized: "SLAM", swat: "SWAT", wrecking: "HIT", escape: "ESC", fouralarm: "4PT", splash: "3PT", dimes: "AST", boards: "REB", pickpockets: "STL", buckets: "PTS", mvp: "MVP", fmvp: "FMVP", dpoy: "DPOY", roy: "ROY", champ: "RING", ironworkers: "82", prime: "PRIME", hof: "HOF", rapsheet: "FILE" };
 
@@ -1218,7 +1231,7 @@ function front(c) {
   const ft = h => `${Math.floor(h / 12)}'${h % 12}"`, ex = c.extra || {};
   const ribbon = C.kind === "leader" ? (c.col === "dunktober" ? `${ex.date ? BB.CARDS.shortDate(ex.date) + " · " : ""}${c.value} DUNKS${ex.o ? " VS " + ex.o : ""}` : c.rank === 1 ? "LEAGUE LEADER" + (val ? " · " + val : "") : `#${c.rank}` + (val ? " · " + val : ""))
     : C.kind === "holiday" && c.col !== "game7" ? `${ex.date ? BB.CARDS.shortDate(ex.date) + " · " : ""}${c.value || ""}${ex.o ? " VS " + ex.o : ""}`
-    : ({ moments: () => `${c.value}${ex.o ? " VS " + ex.o : ""}`, fifty: () => `${c.value}${ex.o ? " VS " + ex.o : ""}`, immortals: () => `ALL-TIME #${c.rank}`, hof: () => c.value ? `CLASS OF ${c.value}` : "",
+    : ({ witness: () => String(c.value || ""), moments: () => `${c.value}${ex.o ? " VS " + ex.o : ""}`, fifty: () => `${c.value}${ex.o ? " VS " + ex.o : ""}`, immortals: () => `ALL-TIME #${c.rank}`, hof: () => c.value ? `CLASS OF ${c.value}` : "",
       numberone: () => `#1 PICK · ${c.value || c.season - 1}`, franchise: () => `${c.value} SEASONS`, journeyman: () => `${c.value} TEAMS`, younggun: () => `AGE ${c.value}`, ageless: () => `AGE ${c.value}`,
       skyscrapers: () => ft(c.value), pocket: () => ft(c.value), game7: () => `GAME 7 · ${c.value || ""}${ex.o ? " VS " + ex.o : ""}`, dynasty: () => `${c.value} STRAIGHT TITLES`, ironworkers: () => `${c.value} GAMES`, mvp: () => "MVP", fmvp: () => "FINALS MVP", dpoy: () => "DEFENSIVE POY", roy: () => "ROOKIE OF THE YEAR", champ: () => "CHAMPION" }[c.col] || (() => ""))().toUpperCase();
   const subTxt = (c.col === "base" ? (BB.ROLES[c.role] ? BB.ROLES[c.role].name + " · " + c.season : String(c.season)) : C.name + " · " + c.season).toUpperCase();
